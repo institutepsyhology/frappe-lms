@@ -36,7 +36,15 @@ import LessonContent from '@/components/LessonContent.vue'
 import { enablePlyr } from '@/utils/plyr'
 import { shouldStartDwellTimer } from '@/utils/lessonProgress'
 
-vi.stubGlobal('__', (s: string) => s)
+vi.stubGlobal('__', (message: string) =>
+	/{\d+}/.test(message)
+		? {
+			format: (...args: unknown[]) => message.replace(/{(\d+)}/g, (match, index) =>
+				args[Number(index)] === undefined ? match : String(args[Number(index)])
+			),
+		}
+		: message
+)
 
 const mountContent = (props: { content: string; youtube?: string }) =>
 	mount(LessonContent, { props, attachTo: document.body })

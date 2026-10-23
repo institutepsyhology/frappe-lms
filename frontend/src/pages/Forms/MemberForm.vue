@@ -22,14 +22,14 @@
 					<FormControl
 						v-model="member.first_name"
 						:label="__('First Name')"
-						placeholder="Jane"
+						:placeholder="__('First name')"
 						type="text"
 						class="w-full"
 					/>
 					<FormControl
 						v-model="member.last_name"
 						:label="__('Last Name')"
-						placeholder="Doe"
+						:placeholder="__('Last name')"
 						type="text"
 						class="w-full"
 					/>

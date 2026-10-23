@@ -71,7 +71,7 @@
 							{{ row.full_name }}
 						</div>
 						<div class="mb-4 line-clamp-1 text-sm leading-5">
-							{{ row.headline || 'Joined ' + dayjs(row.creation).fromNow() }}
+							{{ row.headline || __('Joined {0}').format(dayjs(row.creation).fromNow()) }}
 						</div>
 					</div>
 				</div>

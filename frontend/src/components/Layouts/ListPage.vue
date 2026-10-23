@@ -280,7 +280,7 @@ const loadedMessage = () => {
 	// failed first fetch also lands here, since the resource leaves `rows` empty
 	// and only records the failure on `error` — a signal this component is not
 	// given.
-	if (!props.rows.length) return __('No {0} Found').format(props.emptyName)
+	if (!props.rows.length) return __('No {0} Found').format(__(props.emptyName))
 	// Counted rather than named. `emptyName` is a plural noun passed untranslated
 	// ("Courses"), so a translated frame around it reads half-English, and there
 	// is no singular of it to reach for when the count is one.

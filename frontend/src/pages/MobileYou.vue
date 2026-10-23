@@ -206,8 +206,8 @@ const showColourMode = ref(false)
 
 // Called from script rather than inline in the template: a `<script setup>`
 // template resolves only what the component exposes.
-const colourModeSheetTitle = __('Colour mode')
-const colourModeSheetDescription = __('Applies to this device only.')
+const colourModeSheetTitle = computed(() => __('Colour mode'))
+const colourModeSheetDescription = computed(() => __('Applies to this device only.'))
 
 // The block's one control, and why the avatar and name above it are inert: a
 // single link carrying its own visible text has the accessible name "View
@@ -221,7 +221,7 @@ const colourModeSheetDescription = __('Applies to this device only.')
 //
 // The named route rather than `/user/${username}`: the router encodes the
 // parameter, and a username is user-supplied.
-const viewProfileLabel = __('View profile')
+const viewProfileLabel = computed(() => __('View profile'))
 
 // `px-3` is the compensation LessonForm and PageBody's filters sheet also make:
 // BottomSheet's body is px-2 against a px-5 header, so a caller adds 12px to
@@ -230,8 +230,8 @@ const viewProfileLabel = __('View profile')
 // A plain <a>, not a router link: /login is Frappe's own server-rendered page,
 // outside the SPA — the same reason MobileLayout's Log in tab uses
 // `window.location`.
-const signedOutPrompt = __('Log in to see your account.')
-const logInLabel = __('Log in')
+const signedOutPrompt = computed(() => __('Log in to see your account.'))
+const logInLabel = computed(() => __('Log in'))
 
 const chooseColourMode = (mode: string): void => {
 	setThemePreference(mode as ThemePreference)

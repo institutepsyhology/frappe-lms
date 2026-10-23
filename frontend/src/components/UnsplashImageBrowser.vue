@@ -14,7 +14,7 @@
 						<div class="flex-1">
 							<TextInput
 								type="text"
-								placeholder="search by keyword"
+								:placeholder="__('search by keyword')"
 								:aria-label="__('Search by keyword')"
 								v-model="search"
 								:debounce="300"
