@@ -10649,7 +10649,7 @@ msgid "You don't have any notifications."
 msgstr ""
 
 #: frontend/src/components/Quiz.vue:726
-#, python-format
+#, python-brace-format
 msgid "You got {0}% correct answers with a score of {1} out of {2}"
 msgstr ""
 
@@ -11406,5 +11406,134 @@ msgstr ""
 #. Count format of shortcut in the Learning Workspace
 #: lms/lms/workspace/learning/learning.json
 msgid "{} Published"
+msgstr ""
+
+msgid "Toggle Theme"
+msgstr ""
+
+msgid "Clear Demo Data"
+msgstr ""
+
+msgid "Login to Frappe Cloud"
+msgstr ""
+
+msgid "Log out"
+msgstr ""
+
+msgid "An image that represents the badge."
+msgstr ""
+
+msgid "Apply for this job"
+msgstr ""
+
+msgid "Student Progress"
+msgstr ""
+
+msgid "First name"
+msgstr ""
+
+msgid "Last name"
+msgstr ""
+
+msgid "Completions"
+msgstr ""
+
+msgid "Signups per day"
+msgstr ""
+
+msgid "Enrollments per day"
+msgstr ""
+
+msgid "Certifications per day"
+msgstr ""
+
+msgid "Course Completion"
+msgstr ""
+
+msgid "Previous page"
+msgstr ""
+
+msgid "Next page"
+msgstr ""
+
+msgid "Zoom out"
+msgstr ""
+
+msgid "Fit width"
+msgstr ""
+
+msgid "Zoom in"
+msgstr ""
+
+msgid "Open in new tab"
+msgstr ""
+
+msgid "Loading PDF…"
+msgstr ""
+
+msgid "Open the PDF in a new tab"
+msgstr ""
+
+msgid "This PDF could not be displayed."
+msgstr ""
+
+msgid "Only PDF file is allowed"
+msgstr ""
+
+msgid "Unread"
+msgstr ""
+
+msgid "Read"
+msgstr ""
+
+msgid "Joined {0}"
+msgstr ""
+
+msgid "No."
+msgstr ""
+
+msgid "Score out of"
+msgstr ""
+
+msgid "search by keyword"
+msgstr ""
+
+msgid "Restart"
+msgstr ""
+
+msgid "Rewind {0} seconds"
+msgstr ""
+
+msgid "Forward {0} seconds"
+msgstr ""
+
+msgid "{0} of {1}"
+msgstr ""
+
+msgid "Played"
+msgstr ""
+
+msgid "Buffered"
+msgstr ""
+
+msgid "Current time"
+msgstr ""
+
+msgid "Volume"
+msgstr ""
+
+msgid "Enter fullscreen"
+msgstr ""
+
+msgid "Exit fullscreen"
+msgstr ""
+
+msgid "Speed"
+msgstr ""
+
+msgid "Normal"
+msgstr ""
+
+msgid "Captions"
 msgstr ""
 
