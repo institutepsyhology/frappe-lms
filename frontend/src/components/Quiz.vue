@@ -1704,29 +1704,29 @@ const markForReview = (event, questionNumber) => {
 const getSubmissionColumns = () => {
 	return [
 		{
-			label: 'No.',
+			label: __('No.'),
 			key: 'idx',
 			width: 1,
 		},
 		{
-			label: 'Date',
+			label: __('Date'),
 			key: 'creation',
 			width: 2,
 		},
 		{
-			label: 'Score',
+			label: __('Score'),
 			key: 'score',
 			align: 'left',
 			width: 1,
 		},
 		{
-			label: 'Score out of',
+			label: __('Score out of'),
 			key: 'score_out_of',
 			align: 'left',
 			width: 1,
 		},
 		{
-			label: 'Percentage',
+			label: __('Percentage'),
 			key: 'percentage',
 			align: 'left',
 			width: 1,

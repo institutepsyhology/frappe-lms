@@ -46,7 +46,7 @@
 							:theme="statusTheme"
 							size="lg"
 						>
-							{{ submissionResource.doc?.status }}
+							{{ __(submissionResource.doc?.status) }}
 						</Badge>
 						<ShortcutTooltip
 							v-if="
@@ -535,9 +535,9 @@ onUnmounted(() => {
 
 const submissionStatusOptions = computed(() => {
 	return [
-		{ label: 'Not Graded', value: 'Not Graded' },
-		{ label: 'Pass', value: 'Pass' },
-		{ label: 'Fail', value: 'Fail' },
+		{ label: __('Not Graded'), value: 'Not Graded' },
+		{ label: __('Pass'), value: 'Pass' },
+		{ label: __('Fail'), value: 'Fail' },
 	]
 })
 
