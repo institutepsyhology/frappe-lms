@@ -1,11 +1,48 @@
 import Plyr from 'plyr'
 import 'plyr/dist/plyr.css'
 import { useSettings } from '@/stores/settings'
+import { waitForTranslations } from '@/translation'
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+export const getPlyrI18n = () => ({
+	restart: __('Restart'),
+	rewind: __('Rewind {0} seconds').format('{seektime}'),
+	play: __('Play'),
+	pause: __('Pause'),
+	fastForward: __('Forward {0} seconds').format('{seektime}'),
+	seek: __('Seek'),
+	seekLabel: __('{0} of {1}').format('{currentTime}', '{duration}'),
+	played: __('Played'),
+	buffered: __('Buffered'),
+	currentTime: __('Current time'),
+	duration: __('Duration'),
+	volume: __('Volume'),
+	mute: __('Mute'),
+	unmute: __('Unmute'),
+	enterFullscreen: __('Enter fullscreen'),
+	exitFullscreen: __('Exit fullscreen'),
+	settings: __('Settings'),
+	menuBack: __('Back'),
+	speed: __('Speed'),
+	normal: __('Normal'),
+	captions: __('Captions'),
+	disabled: __('Disabled'),
+	enabled: __('Enabled'),
+})
+
 export const enablePlyr = async () => {
-	await wait(500)
+	// A stalled catalog must not prevent playback. Only this widget's wait is
+	// bounded; the shared request can still complete and translate the app.
+	let translationTimeout
+	await Promise.all([
+		wait(500),
+		Promise.race([
+			waitForTranslations().catch(() => {}),
+			new Promise((resolve) => { translationTimeout = setTimeout(resolve, 1000) }),
+		]),
+	])
+	clearTimeout(translationTimeout)
 
 	const players = []
 	const videoElements = document.getElementsByClassName('video-player')
@@ -50,6 +87,7 @@ const setupPlyrForVideo = (video, players) => {
 	]
 
 	const player = new Plyr(video, {
+		i18n: getPlyrI18n(),
 		youtube: { noCookie: true },
 		controls: controls,
 		settings: ['speed'],

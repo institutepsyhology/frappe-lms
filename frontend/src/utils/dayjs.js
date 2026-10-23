@@ -11,6 +11,7 @@ import 'dayjs/esm/locale/ar'
 import 'dayjs/esm/locale/he'
 import 'dayjs/esm/locale/fa'
 import 'dayjs/esm/locale/ur'
+import 'dayjs/esm/locale/ru'
 
 dayjs.extend(updateLocale)
 dayjs.extend(relativeTime)
@@ -21,11 +22,15 @@ dayjs.extend(isSameOrAfter)
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
-if (
-	document.documentElement.dir === 'rtl' &&
-	['ar', 'he', 'fa', 'ur'].includes(window.lang)
-) {
-	dayjs.locale(window.lang)
-}
+const language = (
+	window.lang || document.documentElement.lang || navigator.language || 'en'
+).toLowerCase().split(/[-_]/)[0]
+
+dayjs.locale(
+	language === 'ru' ||
+	(document.documentElement.dir === 'rtl' && ['ar', 'he', 'fa', 'ur'].includes(language))
+		? language
+		: 'en'
+)
 
 export default dayjs
