@@ -34,7 +34,7 @@
 						v-if="submission.doc?.status"
 						:theme="submission.doc.status == 'Passed' ? 'green' : 'red'"
 					>
-						{{ submission.doc.status }}
+						{{ __(submission.doc.status) }}
 					</Badge>
 					<Button
 						v-if="
@@ -97,7 +97,7 @@
 										: 'text-ink-red-3'
 								"
 							>
-								{{ testCase.status }}
+								{{ __(testCase.status) }}
 							</span>
 						</div>
 						<div class="flex items-center justify-between w-[60%]">
