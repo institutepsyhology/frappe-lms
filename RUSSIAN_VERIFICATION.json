@@ -93,5 +93,19 @@
     "checked_files": 44,
     "mismatches": [],
     "ru_mo_bytes": 221793
+  },
+  "source_line_endings": {
+    "comparison_mode": "sha256_after_crlf_to_lf",
+    "normalization": "Replace CRLF (0D 0A) with LF (0A) only; preserve all other bytes.",
+    "note": "GitHub stores LF source copies. The tested Windows build context and deployed image retain their original line endings, including CRLF. Only the Git representation and post-build documentation changed; no rebuild or redeployment was performed for this normalization.",
+    "raw_image_verification_comparison_mode": "raw_sha256",
+    "raw_image_verification_preserved": true,
+    "raw_manifest_key": "files",
+    "normalized_manifest_key": "git_lf_files",
+    "manifest_file_count": 44,
+    "manifest_scope": "Original source snapshot used to build the verified image.",
+    "post_build_document_exception": [
+      "RUSSIAN_LOCALIZATION.md"
+    ]
   }
 }
