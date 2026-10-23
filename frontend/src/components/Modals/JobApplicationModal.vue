@@ -2,11 +2,11 @@
 	<Dialog
 		v-model:open="show"
 		class="text-base"
-		title="Apply for this job"
+		:title="__('Apply for this job')"
 		size="lg"
 		:actions="[
 			{
-				label: 'Submit',
+				label: __('Submit'),
 				variant: 'solid',
 				onClick: ({ close }) => submitResume(close),
 			},
@@ -90,7 +90,7 @@ const props = defineProps({
 const validateFile = (file) => {
 	let extension = file.name.split('.').pop().toLowerCase()
 	if (extension != 'pdf') {
-		return 'Only PDF file is allowed'
+		return __('Only PDF file is allowed')
 	}
 }
 
