@@ -1,0 +1,97 @@
+{
+  "release": "2.64.0-ru.20261024",
+  "baseline_commit": "7c46bb8f4976222b3f6aa84368551c424edaa194",
+  "source_branch": "russian-localization-2.64",
+  "source_revision_verified_before_deployment": "85c3ac425ba38a9b1d023510b613996be023bd25",
+  "catalog": {
+    "template_messages": 2284,
+    "russian_messages": 2377,
+    "untranslated": 0,
+    "fuzzy": 0,
+    "compiled_mo_bytes": 221793,
+    "validation_passed": true
+  },
+  "backend_language_checks": {
+    "passed": 5,
+    "environment": "Frappe runtime; mocked session and database lookups; no production DB test writes",
+    "full_backend_suite_run": false
+  },
+  "browser_checks": {
+    "mastervision_menu_translated": true,
+    "iomp_empty_state_translated": true,
+    "new_page_load_without_second_refresh": true
+  },
+  "post_build_release_files": [
+    "RUSSIAN_LOCALIZATION.md",
+    "RUSSIAN_SOURCE_MANIFEST.json",
+    "RUSSIAN_VERIFICATION.json",
+    "russian-deploy.py"
+  ],
+  "deployment": {
+    "previous_image": "sha256:30a77dba1c33dcd3e221c17a54806dc5ac64f718a11093e3186dc1cfc23653dc",
+    "image": "sha256:35b5b3e30e863b5b4488ee4c60345cebb742cfe4096aa2f582fcd4d62f31229b",
+    "backup_directory": "/opt/company-lms/backups/russian-release-20261023T233203828962Z",
+    "ok": true,
+    "counts_and_language_unchanged": true,
+    "counts_not_decreased": true,
+    "sites": [
+      {
+        "site": "my-lk.mastervision.su",
+        "dictionary_entries": 8288,
+        "checks": {
+          "guest_new_catalog": true,
+          "administrator_login": true,
+          "administrator_identity": true,
+          "authenticated_new_catalog": true,
+          "lms_html_ru": true,
+          "compiled_js_available": true,
+          "desk_html_ru": true
+        }
+      },
+      {
+        "site": "my-lk.iomp.ru",
+        "dictionary_entries": 8288,
+        "checks": {
+          "guest_new_catalog": true,
+          "administrator_login": true,
+          "administrator_identity": true,
+          "authenticated_new_catalog": true,
+          "lms_html_ru": true,
+          "compiled_js_available": true,
+          "desk_html_ru": true
+        }
+      },
+      {
+        "site": "my-lk.mv-centr.ru",
+        "dictionary_entries": 8288,
+        "checks": {
+          "guest_new_catalog": true,
+          "administrator_login": true,
+          "administrator_identity": true,
+          "authenticated_new_catalog": true,
+          "lms_html_ru": true,
+          "compiled_js_available": true,
+          "desk_html_ru": true
+        }
+      }
+    ],
+    "application_services_healthy": true,
+    "completed_at_utc": "2026-10-23T23:32:42.568357+00:00"
+  },
+  "frontend_tests": {
+    "numTotalTestSuites": 472,
+    "numPassedTestSuites": 472,
+    "numFailedTestSuites": 0,
+    "numTotalTests": 1575,
+    "numPassedTests": 1575,
+    "numFailedTests": 0,
+    "success": true,
+    "exit_code": 0,
+    "failures": []
+  },
+  "image_verification": {
+    "checked_files": 44,
+    "mismatches": [],
+    "ru_mo_bytes": 221793
+  }
+}
