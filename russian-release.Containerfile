@@ -10,6 +10,9 @@ COPY --chown=frappe:0 source/ apps/lms/
 COPY --chown=frappe:0 russian-source-manifest.json russian-source-manifest.json
 
 RUN env/bin/python apps/lms/check-russian-translations.py
+# Vite imports this public compile-time port. The runtime image deliberately
+# carries no site-specific configuration; never copy the server's real config.
+RUN env/bin/python -c "import json; from pathlib import Path; p=Path('sites/common_site_config.json'); config=json.loads(p.read_text()); config.setdefault('socketio_port',9000); p.write_text(json.dumps(config))"
 RUN cd apps/lms/frontend && NODE_OPTIONS=--max-old-space-size=4096 yarn build
 RUN env/bin/python -c "from pathlib import Path; from babel.messages.pofile import read_po; from babel.messages.mofile import write_mo; p=Path('assets/locale/ru/LC_MESSAGES/lms.mo'); p.parent.mkdir(parents=True,exist_ok=True); catalog=read_po(open('apps/lms/lms/locale/ru.po',encoding='utf-8'),locale='ru'); write_mo(open(p,'wb'),catalog,use_fuzzy=False)"
 
