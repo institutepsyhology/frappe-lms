@@ -113,15 +113,38 @@ afterEach(() => {
 	vi.resetModules()
 })
 
-async function mountPdf() {
+const translationGlobals = { mocks: { __: (message: string) => message } }
+
+async function mountPdf(messages: Record<string, string> = {}) {
 	const { default: PdfBlock } = await import('@/components/PdfBlock.vue')
-	const wrapper = mount(PdfBlock, { props: { file: '/files/x.pdf' } })
+	const wrapper = mount(PdfBlock, {
+		props: { file: '/files/x.pdf' },
+		global: { mocks: { __: (message: string) => messages[message] || message } },
+	})
 	await flushPromises()
 	await flushPromises()
 	return wrapper
 }
 
 describe('PdfBlock', () => {
+	it('translates reader controls and the failed-document fallback', async () => {
+		state.shouldReject = true
+		const wrapper = await mountPdf({
+			'Previous page': 'Предыдущая страница',
+			'Next page': 'Следующая страница',
+			'Zoom out': 'Уменьшить',
+			'Fit width': 'По ширине',
+			'Zoom in': 'Увеличить',
+			'Open in new tab': 'Открыть в новой вкладке',
+			'This PDF could not be displayed.': 'Не удалось отобразить PDF.',
+			'Open the PDF in a new tab': 'Открыть PDF в новой вкладке',
+		})
+		expect(wrapper.get('button').attributes('aria-label')).toBe('Предыдущая страница')
+		expect(wrapper.get('.pdf-error').text()).toContain('Не удалось отобразить PDF.')
+		expect(wrapper.get('.pdf-fallback-link').text()).toBe('Открыть PDF в новой вкладке')
+		wrapper.unmount()
+	})
+
 	it('shows a loading state, then renders one placeholder per page', async () => {
 		const wrapper = await mountPdf()
 		expect(wrapper.findAll('.pdf-page')).toHaveLength(3)
@@ -157,7 +180,7 @@ describe('PdfBlock', () => {
 		// The ref is taken synchronously at mount, so an unmount that races the
 		// in-flight dynamic import must still balance it (no stranded worker).
 		const { default: PdfBlock } = await import('@/components/PdfBlock.vue')
-		const wrapper = mount(PdfBlock, { props: { file: '/files/x.pdf' } })
+		const wrapper = mount(PdfBlock, { props: { file: '/files/x.pdf' }, global: translationGlobals })
 		expect(createPdfWorker).toHaveBeenCalledTimes(1)
 		wrapper.unmount() // before any flushPromises -> load() still pending
 		expect(terminate).toHaveBeenCalledTimes(1)
@@ -169,8 +192,8 @@ describe('PdfBlock', () => {
 
 	it('ref-counts the shared worker across instances', async () => {
 		const { default: PdfBlock } = await import('@/components/PdfBlock.vue')
-		const a = mount(PdfBlock, { props: { file: '/files/a.pdf' } })
-		const b = mount(PdfBlock, { props: { file: '/files/b.pdf' } })
+		const a = mount(PdfBlock, { props: { file: '/files/a.pdf' }, global: translationGlobals })
+		const b = mount(PdfBlock, { props: { file: '/files/b.pdf' }, global: translationGlobals })
 		await flushPromises()
 		await flushPromises()
 		// one worker shared by both
@@ -220,7 +243,7 @@ describe('PdfBlock', () => {
 			}),
 			destroy: state.taskDestroy,
 		} as unknown as ReturnType<typeof pdf.getDocument>)
-		const wrapper = mount(PdfBlock, { props: { file: '/files/slow.pdf' } })
+		const wrapper = mount(PdfBlock, { props: { file: '/files/slow.pdf' }, global: translationGlobals })
 		await flushPromises()
 		wrapper.unmount()
 		expect(state.taskDestroy).toHaveBeenCalledTimes(1)
