@@ -1,7 +1,7 @@
 <template>
 	<Dialog
 		v-model:open="show"
-		title="Student Progress"
+		:title="__('Student Progress')"
 		:size="hasAssessmentData ? '4xl' : 'xl'"
 	>
 		<template #default>
@@ -122,7 +122,7 @@
 										{{ assignment.assignment_title }}
 									</div>
 									<Badge :theme="getAssessmentStatusTheme(assignment.status)">
-										{{ assignment.status }}
+										{{ __(assignment.status) }}
 									</Badge>
 								</li>
 							</ul>
@@ -147,7 +147,7 @@
 										{{ exercise.exercise_title }}
 									</div>
 									<Badge :theme="getAssessmentStatusTheme(exercise.status)">
-										{{ exercise.status }}
+										{{ __(exercise.status) }}
 									</Badge>
 								</li>
 							</ul>
