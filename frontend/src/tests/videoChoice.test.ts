@@ -58,6 +58,9 @@ describe('videoChoice EditorJS block', () => {
 		expect(root.querySelector('iframe')?.src).toBe(rutubeEmbed)
 		expect([...root.querySelectorAll('button')].map((button) => button.textContent)).toEqual(['Rutube', 'YouTube'])
 		expect(root.querySelector('button[aria-pressed="true"]')?.textContent).toBe('Rutube')
+		const activeButton = root.querySelector('button[aria-pressed="true"]')!
+		expect(getComputedStyle(activeButton).backgroundColor).toBe('rgb(17, 24, 39)')
+		expect(getComputedStyle(activeButton).color).toBe('rgb(255, 255, 255)')
 		expect(root.querySelector('a')).toBeNull()
 		expect(root.querySelector('input')).toBeNull()
 		expect(root.querySelector('iframe')?.getAttribute('sandbox')).toBe('allow-scripts allow-same-origin allow-presentation')

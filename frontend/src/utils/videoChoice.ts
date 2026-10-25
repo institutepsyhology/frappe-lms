@@ -199,8 +199,11 @@ export class VideoChoice {
 				button.disabled = !available
 				button.setAttribute('aria-pressed', String(selected))
 				button.className = selected
-					? 'rounded-md border border-ink-gray-9 bg-ink-gray-9 text-white px-4 py-2 text-sm font-medium'
+					? 'rounded-md border px-4 py-2 text-sm font-medium'
 					: 'rounded-md border border-outline-gray-2 bg-surface-base text-ink-gray-9 px-4 py-2 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed'
+				button.style.backgroundColor = selected ? '#111827' : ''
+				button.style.borderColor = selected ? '#111827' : ''
+				button.style.color = selected ? '#ffffff' : ''
 			}
 			const invalid = Boolean(this.data[provider].trim()) && !available
 			this.inputs.get(provider)?.setAttribute('aria-invalid', String(invalid))

@@ -9,4 +9,4 @@ COPY --chown=frappe:0 frontend/src/tests/videoChoice.test.ts apps/lms/frontend/s
 RUN cd apps/lms/frontend && node node_modules/vitest/vitest.mjs run --maxWorkers=2 > /tmp/video-choice-tests.log 2>&1; status=$?; if [ "$status" = 0 ]; then tail -12 /tmp/video-choice-tests.log; else tail -90 /tmp/video-choice-tests.log; fi; exit "$status"
 RUN cd apps/lms/frontend && NODE_OPTIONS=--max-old-space-size=4096 yarn build
 LABEL org.opencontainers.image.source="https://github.com/institutepsyhology/frappe-lms"
-LABEL org.opencontainers.image.version="2.64.0-ru.video-choice.20261026"
+LABEL org.opencontainers.image.version="2.64.0-ru.video-choice.20261026.2"

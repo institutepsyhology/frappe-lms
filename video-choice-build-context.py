@@ -9,7 +9,7 @@ import subprocess
 ROOT = Path(__file__).resolve().parent
 BASE_TAG = 'company-lms:russian-2.64.0-20261024'
 BASE_ID = 'sha256:35b5b3e30e863b5b4488ee4c60345cebb742cfe4096aa2f582fcd4d62f31229b'
-TAG = 'company-lms:video-choice-2.64.0-20261026'
+TAG = 'company-lms:video-choice-2.64.0-20261026-r2'
 FILES = [
     'frontend/src/utils/index.js',
     'frontend/src/utils/videoChoice.ts',

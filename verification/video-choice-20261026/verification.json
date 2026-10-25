@@ -1,0 +1,198 @@
+{
+  "date": "2026-10-26",
+  "timezone": "Europe/Moscow",
+  "site": "my-lk.iomp.ru",
+  "course": "5",
+  "result": "functional_fix_verified_github_publication_blocked",
+  "deployment": {
+    "previous_image": "sha256:70f4c8dd261d3afaba758e87aae8439a50bfc37f71f35905ce4e0aa8f7dc9d1e",
+    "image": "sha256:d7ee1478951488710ff2c577f2e5c3d199a241a84836272e2896abbe1cf5ae99",
+    "backup_directory": "/opt/company-lms/backups/video-choice-20261025T234809763228Z",
+    "ok": true,
+    "counts_and_language_unchanged": true,
+    "sites": [
+      {
+        "site": "my-lk.mastervision.su",
+        "dictionary_entries": 8288,
+        "checks": {
+          "guest_new_catalog": true,
+          "administrator_login": true,
+          "administrator_identity": true,
+          "authenticated_new_catalog": true,
+          "lms_html_ru": true,
+          "compiled_js_available": true,
+          "desk_html_ru": true
+        }
+      },
+      {
+        "site": "my-lk.iomp.ru",
+        "dictionary_entries": 8288,
+        "checks": {
+          "guest_new_catalog": true,
+          "administrator_login": true,
+          "administrator_identity": true,
+          "authenticated_new_catalog": true,
+          "lms_html_ru": true,
+          "compiled_js_available": true,
+          "desk_html_ru": true
+        }
+      },
+      {
+        "site": "my-lk.mv-centr.ru",
+        "dictionary_entries": 8288,
+        "checks": {
+          "guest_new_catalog": true,
+          "administrator_login": true,
+          "administrator_identity": true,
+          "authenticated_new_catalog": true,
+          "lms_html_ru": true,
+          "compiled_js_available": true,
+          "desk_html_ru": true
+        }
+      }
+    ],
+    "application_services_healthy": true,
+    "completed_at_utc": "2026-10-25T23:48:51.054858+00:00"
+  },
+  "tests": {
+    "full_frontend": {
+      "files": 155,
+      "passed": 1598,
+      "failed": 0,
+      "scope": "first implementation after token correction"
+    },
+    "contrast_followup": {
+      "files": 2,
+      "passed": 35,
+      "failed": 0,
+      "scope": "videoChoice and deadDesignTokens; production assets rebuilt"
+    }
+  },
+  "lessons": [
+    {
+      "name": "0002 День 1",
+      "title_preserved": true,
+      "course_preserved": true,
+      "chapter_preserved": true,
+      "preview_preserved": true,
+      "body_empty": true,
+      "video_choice_count": 1,
+      "source_pair_preserved": true,
+      "default_rutube": true,
+      "outgoing_anchors": false,
+      "block_types": [
+        "videoChoice"
+      ],
+      "modified": "2026-10-26 02:36:55.345675"
+    },
+    {
+      "name": "0003 День 2",
+      "title_preserved": true,
+      "course_preserved": true,
+      "chapter_preserved": true,
+      "preview_preserved": true,
+      "body_empty": true,
+      "video_choice_count": 1,
+      "source_pair_preserved": true,
+      "default_rutube": true,
+      "outgoing_anchors": false,
+      "block_types": [
+        "videoChoice"
+      ],
+      "modified": "2026-10-26 02:36:57.715321"
+    },
+    {
+      "name": "0004 День 3",
+      "title_preserved": true,
+      "course_preserved": true,
+      "chapter_preserved": true,
+      "preview_preserved": true,
+      "body_empty": true,
+      "video_choice_count": 1,
+      "source_pair_preserved": true,
+      "default_rutube": true,
+      "outgoing_anchors": false,
+      "block_types": [
+        "videoChoice"
+      ],
+      "modified": "2026-10-26 02:36:59.998179"
+    },
+    {
+      "name": "0005 День 4",
+      "title_preserved": true,
+      "course_preserved": true,
+      "chapter_preserved": true,
+      "preview_preserved": true,
+      "body_empty": true,
+      "video_choice_count": 1,
+      "source_pair_preserved": true,
+      "default_rutube": true,
+      "outgoing_anchors": false,
+      "block_types": [
+        "videoChoice"
+      ],
+      "modified": "2026-10-26 02:37:02.361585"
+    },
+    {
+      "name": "0006 День 5",
+      "title_preserved": true,
+      "course_preserved": true,
+      "chapter_preserved": true,
+      "preview_preserved": true,
+      "body_empty": true,
+      "video_choice_count": 1,
+      "source_pair_preserved": true,
+      "default_rutube": true,
+      "outgoing_anchors": false,
+      "block_types": [
+        "videoChoice"
+      ],
+      "modified": "2026-10-26 02:40:46.428162"
+    }
+  ],
+  "course_state": {
+    "name": "5",
+    "published": 0,
+    "lesson_count": 5,
+    "chapter_count": 1
+  },
+  "browser": {
+    "all_five_lesson_selectors_checked": true,
+    "one_player_per_lesson": true,
+    "own_outgoing_video_links": 0,
+    "student_inputs": 0,
+    "rutube_playback_observed": true,
+    "youtube_playback_observed": true,
+    "youtube_playback_seconds_observed": 16,
+    "playback_scope": "Actual playback on lesson 1; selector and data checks across all five lessons.",
+    "editor_roundtrip_verified_on": "0006 День 5",
+    "active_button_background": "rgb(17, 24, 39)",
+    "active_button_text": "rgb(255, 255, 255)",
+    "provider_navigation": {
+      "youtube_external_target": "_blank",
+      "sandbox": "allow-scripts allow-same-origin allow-presentation",
+      "popups_permission": false,
+      "top_navigation_permission": false,
+      "actual_external_link_click_tested": false
+    },
+    "evidence": "Local screenshot kept outside repository; presenter and private media identifiers are excluded from repository artifacts."
+  },
+  "rollback": {
+    "lesson_fields_backup": "/opt/company-lms/backups/video-choice-course5-20261025T232240852599Z/lesson-fields.before.json",
+    "private_data_exported": false,
+    "original_image": "sha256:35b5b3e30e863b5b4488ee4c60345cebb742cfe4096aa2f582fcd4d62f31229b"
+  },
+  "publication": {
+    "repository": "https://github.com/institutepsyhology/frappe-lms",
+    "branch": "feature/embedded-video-choice-20261026",
+    "status": "blocked",
+    "reason": "Git has no credentials for github.com; non-interactive push could not read Username."
+  },
+  "limits": [
+    "No app version or dependency upgrade",
+    "Course remains unpublished with unchanged access flags",
+    "Video watch-time and completion enforcement are not integrated; existing settings were preserved",
+    "Provider branding is not removed; no DRM claim",
+    "No mobile viewport or fullscreen interaction test was run"
+  ]
+}

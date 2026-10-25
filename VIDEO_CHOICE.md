@@ -46,6 +46,8 @@ python3 video-choice-build-context.py /NEW/EMPTY/OUTSIDE/CHECKOUT --build
 
 The Containerfile runs the full frontend Vitest suite before building the app. After reviewing build results, run the copied `video-choice-deploy.py` alongside `russian-deploy.py` on the existing host. It requires the reviewed old image, backs up the exact runtime environment root-only, recreates only six application services, verifies all three sites and their counts/languages, and rolls back on failure. It performs no content edit or migration.
 
+The current deploy script is the second, contrast-only release: it expects the first verified video-choice image `sha256:70f4c8dd261d3afaba758e87aae8439a50bfc37f71f35905ce4e0aa8f7dc9d1e` and installs the `-r2` tag. Do not change this guard without inspecting the actual runtime. The original localized image is still the build base. The first release passed all 1598 frontend tests; the contrast follow-up reruns the two affected suites and rebuilds the production assets. The default reproducible Containerfile retains the full suite.
+
 Before lesson migration, keep a server-only root-readable backup of the existing lesson fields. Update the five intended lessons only, preserve titles/order/access flags, clear `body`, set JSON `content`, and re-read all records through the authenticated application API. Then check the actual lesson editor and student view with both provider buttons and real videos.
 
 Primary implementation references: [EditorJS Tools API](https://editorjs.io/tools-api/), [EditorJS read-only mode](https://editorjs.io/configuration/), [Rutube private-video embedding](https://rutube.ru/info/embed/).

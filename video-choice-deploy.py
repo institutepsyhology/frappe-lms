@@ -14,8 +14,8 @@ import time
 
 ROOT = Path(__file__).resolve().parent
 BASE = Path('/opt/company-lms')
-EXPECTED_OLD = 'sha256:35b5b3e30e863b5b4488ee4c60345cebb742cfe4096aa2f582fcd4d62f31229b'
-TAG = 'company-lms:video-choice-2.64.0-20261026'
+EXPECTED_OLD = 'sha256:70f4c8dd261d3afaba758e87aae8439a50bfc37f71f35905ce4e0aa8f7dc9d1e'
+TAG = 'company-lms:video-choice-2.64.0-20261026-r2'
 
 
 def main():
