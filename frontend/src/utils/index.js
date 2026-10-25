@@ -7,6 +7,7 @@ import { Markdown } from '@/utils/markdownParser'
 import { useSettings } from '@/stores/settings'
 import { usersStore } from '@/stores/user'
 import { Heading } from '@/utils/heading'
+import { VideoChoice } from '@/utils/videoChoice'
 import Paragraph from '@editorjs/paragraph'
 import { CodeBox } from '@/utils/code'
 import NestedList from '@editorjs/nested-list'
@@ -182,6 +183,7 @@ export function getEditorTools(
 			inlineToolbar: INLINE_TOOLBAR_ORDER,
 		},
 		image: SimpleImage,
+		videoChoice: VideoChoice,
 		paragraph: {
 			class: Paragraph,
 			inlineToolbar: INLINE_TOOLBAR_ORDER,

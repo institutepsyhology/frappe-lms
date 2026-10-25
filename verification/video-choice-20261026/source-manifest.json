@@ -1,0 +1,11 @@
+{
+  "base_image": "sha256:35b5b3e30e863b5b4488ee4c60345cebb742cfe4096aa2f582fcd4d62f31229b",
+  "source_sha256_lf": {
+    "frontend/src/utils/index.js": "e72eb83dc88ab6ca769a550598b5140d11e07c1cec083316a6c8d0542aad0542",
+    "frontend/src/utils/videoChoice.ts": "ee93edd34e67461c0c51b3dff93f8b6037d3adfe714fc16c0d52535477be2102",
+    "frontend/src/tests/videoChoice.test.ts": "0c724d120146921d0d9def63bee8d6b6e4c34ecf13e47e8d5ae308ff0ef77737",
+    "video-choice-release.Containerfile": "d5d799035e9084077faa8e17f3af352388fcfda5eb8028f97e9abf5705b0962a",
+    "video-choice-deploy.py": "9330c0f669fba2929c2cc199be0565e0cc9cbd5ed389fef4eee90bd4e329526a",
+    "russian-deploy.py": "e6da4dbbf3a3486cd10997adca3b5249df1159da48170b1d91bffb7924223d33"
+  }
+}
