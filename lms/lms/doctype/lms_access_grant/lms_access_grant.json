@@ -1,0 +1,25 @@
+{
+ "doctype": "DocType",
+ "name": "LMS Access Grant",
+ "description": "Experimental administrative record. This document does not control access until the integration is enabled and verified.",
+ "module": "LMS",
+ "engine": "InnoDB",
+ "autoname": "hash",
+ "track_changes": 1,
+ "field_order": ["member", "course", "status", "starts_at", "personal_end_type", "ends_at", "course_end_type", "course_ends_at", "ignore_course_end", "lessons"],
+ "fields": [
+  {"fieldname": "member", "fieldtype": "Link", "label": "Member", "options": "User", "reqd": 1, "in_list_view": 1, "search_index": 1},
+  {"fieldname": "course", "fieldtype": "Link", "label": "Course", "options": "LMS Course", "reqd": 1, "in_list_view": 1, "search_index": 1},
+  {"fieldname": "status", "fieldtype": "Select", "label": "Status", "options": "Draft\nActive\nFrozen\nRevoked", "default": "Draft", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "starts_at", "fieldtype": "Datetime", "label": "Starts At"},
+  {"fieldname": "personal_end_type", "fieldtype": "Select", "label": "Personal End Type", "options": "Unknown\nUnlimited\nAt", "default": "Unknown", "reqd": 1},
+  {"fieldname": "ends_at", "fieldtype": "Datetime", "label": "Personal End"},
+  {"fieldname": "course_end_type", "fieldtype": "Select", "label": "Course End Type", "options": "Unknown\nUnlimited\nAt", "default": "Unknown", "reqd": 1},
+  {"fieldname": "course_ends_at", "fieldtype": "Datetime", "label": "Course End"},
+  {"fieldname": "ignore_course_end", "fieldtype": "Check", "label": "Ignore Course End", "default": "0"},
+  {"fieldname": "lessons", "fieldtype": "Table", "label": "Assigned Lessons", "options": "LMS Access Grant Lesson"}
+ ],
+ "permissions": [
+  {"role": "System Manager", "read": 1, "write": 1, "create": 1}
+ ]
+}
