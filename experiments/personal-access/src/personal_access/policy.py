@@ -100,7 +100,7 @@ def resolve_term(course: Term, personal: Term, reference: datetime | None) -> Bo
         return Bound.unknown()
     if not _aware(reference):
         raise ValueError("reference must be an aware datetime")
-    return Bound.until(reference + chosen.value)
+    return Bound.until(reference.astimezone(timezone.utc) + chosen.value)
 
 
 @dataclass(frozen=True)
@@ -179,7 +179,7 @@ class Decision:
 def _bound_reason(bound: Bound, now: datetime, label: str) -> str | None:
     if not isinstance(bound, Bound) or bound.kind == "unknown":
         return "unknown_" + label
-    if bound.kind == "until" and now >= bound.at:
+    if bound.kind == "until" and now >= bound.at.astimezone(timezone.utc):
         return "expired_" + label
     return None
 
@@ -191,7 +191,7 @@ def _check(grant: Grant, lesson: str, now: datetime) -> Decision:
         return Decision(False, "frozen_or_unknown")
     if not _aware(grant.starts_at):
         return Decision(False, "unknown_start")
-    if now < grant.starts_at:
+    if now < grant.starts_at.astimezone(timezone.utc):
         return Decision(False, "not_started")
     if reason := _bound_reason(grant.ends_at, now, "personal_end"):
         return Decision(False, reason)
@@ -208,7 +208,7 @@ def _check(grant: Grant, lesson: str, now: datetime) -> Decision:
         return Decision(False, "lesson_restricted_or_unknown")
     if not _aware(row.opens_at):
         return Decision(False, "unknown_opening")
-    if now < row.opens_at:
+    if now < row.opens_at.astimezone(timezone.utc):
         return Decision(False, "not_open_yet")
     if row.prerequisite_met is not True:
         return Decision(False, "prerequisite_or_unknown")
@@ -226,6 +226,7 @@ def evaluate(grants: Sequence[Grant], *, student: str, course: str, lesson: str,
         raise ValueError("now must be an aware datetime")
     if not all(isinstance(value, str) and value for value in (student, course, lesson)):
         raise ValueError("student, course and lesson are required")
+    now = now.astimezone(timezone.utc)
     denied = Decision(False, "no_matching_grant")
     for item in grants:
         if not isinstance(item, Grant) or item.student != student or item.course != course:

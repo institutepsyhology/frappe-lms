@@ -1,6 +1,6 @@
 import unittest
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, tzinfo
 
 from personal_access.policy import (
     Bound, FreezePolicy, Grant, LessonAccess, Term, evaluate, freeze_preview,
@@ -157,6 +157,37 @@ class IndividualAccessTests(unittest.TestCase):
         self.assertEqual(reset.effects, ("reset_progress", "delete_homework"))
         with self.assertRaises(ValueError):
             freeze_preview(FreezePolicy(reset_progress=None, delete_homework=False))
+
+    def test_ambiguous_local_clock_does_not_open_lesson_an_hour_early(self):
+        class FoldZone(tzinfo):
+            def utcoffset(self, value):
+                return timedelta(hours=1 if value.fold == 0 else 0)
+
+            def dst(self, value):
+                return timedelta(0)
+
+        zone = FoldZone()
+        first = datetime(2026, 10, 25, 1, 30, tzinfo=zone, fold=0)
+        second = datetime(2026, 10, 25, 1, 30, tzinfo=zone, fold=1)
+        g = grant(starts_at=second, lessons={"lesson-1": lesson(opens_at=first)})
+        result = evaluate([g], student="student-a", course="course-a", lesson="lesson-1", now=first)
+        self.assertFalse(result.allowed)
+
+    def test_expiration_checks_instant_not_repeated_local_clock(self):
+        class FoldZone(tzinfo):
+            def utcoffset(self, value):
+                return timedelta(hours=1 if value.fold == 0 else 0)
+
+            def dst(self, value):
+                return timedelta(0)
+
+        zone = FoldZone()
+        first = datetime(2026, 10, 25, 1, 30, tzinfo=zone, fold=0)
+        second = datetime(2026, 10, 25, 1, 30, tzinfo=zone, fold=1)
+        g = grant(starts_at=first - timedelta(days=1), ends_at=Bound.until(second),
+                  lessons={"lesson-1": lesson(opens_at=first - timedelta(days=1))})
+        result = evaluate([g], student="student-a", course="course-a", lesson="lesson-1", now=first)
+        self.assertTrue(result.allowed)
 
 
 if __name__ == "__main__":
