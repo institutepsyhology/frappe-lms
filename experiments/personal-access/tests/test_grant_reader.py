@@ -30,6 +30,7 @@ class GrantReaderTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("test_individual_access", ROOT / "lms/lms/individual_access.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
+        self.module = module
         self.check = lambda user="student-a", lesson="lesson-a": module.grant_allows_lesson(
             user=user, lesson=lesson, now=NOW)
 
@@ -97,6 +98,23 @@ class GrantReaderTests(unittest.TestCase):
     def test_any_valid_grant_is_sufficient(self):
         self.grants = [self.grant(personal_end_type="Unknown"), self.grant()]
         self.assertTrue(self.check())
+
+    def test_release_barrier_leaves_existing_course_behavior_unchanged(self):
+        self.assertFalse(self.module.policy_applies("course-a"))
+        self.grants = []
+        self.assertTrue(self.module.restrict_member_lesson(
+            course="course-a", lesson="lesson-a", user="student-a", enrolled=True))
+        self.assertFalse(self.module.restrict_member_lesson(
+            course="course-a", lesson="lesson-a", user="student-a", enrolled=False))
+
+    def test_policy_when_simulated_narrows_membership_and_never_creates_it(self):
+        with patch.object(self.module, "policy_applies", return_value=True):
+            self.assertTrue(self.module.restrict_member_lesson(
+                course="course-a", lesson="lesson-a", user="student-a", enrolled=True))
+            self.assertFalse(self.module.restrict_member_lesson(
+                course="course-a", lesson="lesson-a", user="student-b", enrolled=True))
+            self.assertFalse(self.module.restrict_member_lesson(
+                course="course-a", lesson="lesson-a", user="student-a", enrolled=False))
 
 
 if __name__ == "__main__":

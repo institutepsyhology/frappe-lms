@@ -264,8 +264,15 @@ def resolve_lesson_access(lesson: str, *, user: str | None = None) -> tuple[bool
 		frappe.session.user = user
 		if can_modify_course(lesson_row.course):
 			return True, True
-		if get_membership(lesson_row.course, user):
-			return False, True
+		from lms.lms.individual_access import policy_applies, restrict_member_lesson
+
+		membership = bool(get_membership(lesson_row.course, user))
+		if membership:
+			return False, restrict_member_lesson(
+				course=lesson_row.course, lesson=lesson, user=user, enrolled=True
+			)
+		if policy_applies(lesson_row.course):
+			return False, False
 		# Preview is for prospective students of a LIVE course. Require the course to be
 		# published so draft lessons don't leak via this gate (matches get_course_details,
 		# which already hides unpublished courses from non-authors). Instructors/members

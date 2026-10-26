@@ -10,6 +10,20 @@ import frappe
 from frappe.utils import get_datetime, now_datetime
 
 
+def policy_applies(course):
+	"""Release barrier: no course can opt in until every access route is covered."""
+	return False
+
+
+def restrict_member_lesson(*, course, lesson, user, enrolled):
+	"""Narrow enrollment for a future selected course; never create enrollment."""
+	if not enrolled:
+		return False
+	if not policy_applies(course):
+		return True
+	return grant_allows_lesson(user=user, lesson=lesson)
+
+
 def _valid_end(kind, value, now):
 	if kind == "Unlimited":
 		return not value

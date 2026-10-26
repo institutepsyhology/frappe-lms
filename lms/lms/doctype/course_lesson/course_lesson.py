@@ -358,6 +358,13 @@ def _save_progress(lesson: str, course: str, scorm_details: dict = None):
 	if not membership:
 		return 0
 
+	from lms.lms.individual_access import policy_applies
+
+	if policy_applies(course) and (
+		frappe.db.get_value("Course Lesson", lesson, "course") != course or not can_access_lesson(lesson)
+	):
+		frappe.throw(_("This lesson is not available to you."), frappe.PermissionError)
+
 	# On a sequential course this endpoint writes the gate's own unlock state, so an
 	# enrolled student could otherwise complete every lesson name the outline publishes
 	# and open the whole course. The lesson a student is legitimately on is the first
