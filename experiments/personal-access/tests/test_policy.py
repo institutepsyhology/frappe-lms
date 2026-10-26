@@ -3,8 +3,8 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone, tzinfo
 
 from personal_access.policy import (
-    Bound, FreezePolicy, Grant, LessonAccess, Term, evaluate, freeze_preview,
-    resolve_term, resume_deadline,
+    Bound, ClosureOptions, Grant, LessonAccess, OpeningRule, Term, closure_preview,
+    evaluate, resolve_opening, resolve_term, resume_deadline,
 )
 
 
@@ -150,13 +150,13 @@ class IndividualAccessTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             resume_deadline(Bound.until(NOW), NOW, NOW - timedelta(seconds=1), extend=True)
 
-    def test_freeze_can_preview_preservation_or_deletion_without_mutating_data(self):
-        kept = freeze_preview(FreezePolicy(reset_progress=False, delete_homework=False))
-        reset = freeze_preview(FreezePolicy(reset_progress=True, delete_homework=True))
+    def test_manual_closure_can_preview_preservation_or_deletion_without_mutating_data(self):
+        kept = closure_preview(ClosureOptions(reset_progress=False, delete_homework=False))
+        reset = closure_preview(ClosureOptions(reset_progress=True, delete_homework=True))
         self.assertEqual(kept.effects, ())
         self.assertEqual(reset.effects, ("reset_progress", "delete_homework"))
         with self.assertRaises(ValueError):
-            freeze_preview(FreezePolicy(reset_progress=None, delete_homework=False))
+            closure_preview(ClosureOptions(reset_progress=None, delete_homework=False))
 
     def test_ambiguous_local_clock_does_not_open_lesson_an_hour_early(self):
         class FoldZone(tzinfo):
@@ -188,6 +188,61 @@ class IndividualAccessTests(unittest.TestCase):
                   lessons={"lesson-1": lesson(opens_at=first - timedelta(days=1))})
         result = evaluate([g], student="student-a", course="course-a", lesson="lesson-1", now=first)
         self.assertTrue(result.allowed)
+
+    def test_expired_course_can_retain_one_explicitly_eligible_lesson(self):
+        retained = lesson(keep_after_personal_end=True, retention_ends_at=Bound.unlimited())
+        expired = grant(ends_at=Bound.until(NOW), lessons={"lesson-1": retained})
+        self.assertTrue(self.check([expired]).allowed)
+        self.assertFalse(self.check([expired], target="lesson-2").allowed)
+        self.assertFalse(self.check([replace(expired, student="someone-else")]).allowed)
+        self.assertFalse(self.check([replace(expired, frozen=True)]).allowed)
+
+    def test_retention_does_not_skip_other_expirations_or_lesson_restrictions(self):
+        retained = lesson(keep_after_personal_end=True, keep_after_course_end=False,
+                          retention_ends_at=Bound.unlimited())
+        expired = grant(ends_at=Bound.until(NOW), course_ends_at=Bound.until(NOW),
+                        lessons={"lesson-1": retained})
+        self.assertFalse(self.check([expired]).allowed)
+        retained = replace(retained, keep_after_course_end=True)
+        self.assertTrue(self.check([replace(expired, lessons={"lesson-1": retained})]).allowed)
+        self.assertFalse(self.check([replace(expired, lessons={"lesson-1": replace(retained, assigned=False)})]).allowed)
+        self.assertFalse(self.check([replace(expired, lessons={"lesson-1": replace(retained, opens_at=NOW + timedelta(minutes=1))})]).allowed)
+
+    def test_retention_requires_known_unexpired_end_and_explicit_eligibility(self):
+        for retention_end in (None, Bound.unknown(), Bound.until(NOW)):
+            with self.subTest(retention_end=retention_end):
+                retained = lesson(keep_after_personal_end=True, retention_ends_at=retention_end)
+                self.assertFalse(self.check([grant(ends_at=Bound.until(NOW), lessons={"lesson-1": retained})]).allowed)
+        retained = lesson(keep_after_personal_end=None, retention_ends_at=Bound.unlimited())
+        self.assertFalse(self.check([grant(ends_at=Bound.until(NOW), lessons={"lesson-1": retained})]).allowed)
+
+    def test_lesson_schedule_preserves_individual_start_minutes(self):
+        rule = OpeningRule.after_start(timedelta(days=2))
+        first = NOW.replace(hour=10, minute=15)
+        second = NOW.replace(hour=13, minute=45)
+        self.assertEqual(resolve_opening(rule, OpeningRule.inherit(), start=first, previous=None),
+                         first + timedelta(days=2))
+        self.assertEqual(resolve_opening(rule, OpeningRule.inherit(), start=second, previous=None),
+                         second + timedelta(days=2))
+
+    def test_individual_fixed_date_can_override_course_schedule(self):
+        rule = OpeningRule.after_start(timedelta(days=2))
+        fixed = NOW + timedelta(days=9, minutes=17)
+        self.assertEqual(resolve_opening(rule, OpeningRule.at(fixed), start=NOW, previous=None), fixed)
+
+    def test_lesson_can_open_relative_to_preceding_lesson(self):
+        rule = OpeningRule.after_previous(timedelta(days=3))
+        previous = NOW + timedelta(days=2, minutes=30)
+        self.assertEqual(resolve_opening(rule, OpeningRule.inherit(), start=NOW, previous=previous),
+                         previous + timedelta(days=3))
+
+    def test_missing_or_unconfirmed_schedule_stays_unknown(self):
+        self.assertIsNone(resolve_opening(OpeningRule.after_previous(timedelta(days=1)),
+                                         OpeningRule.inherit(), start=NOW, previous=None))
+        self.assertIsNone(resolve_opening(OpeningRule.unknown(), OpeningRule.inherit(),
+                                         start=NOW, previous=NOW))
+        with self.assertRaises(ValueError):
+            OpeningRule.after_start(timedelta(days=-1))
 
 
 if __name__ == "__main__":

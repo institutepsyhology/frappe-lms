@@ -104,20 +104,81 @@ def resolve_term(course: Term, personal: Term, reference: datetime | None) -> Bo
 
 
 @dataclass(frozen=True)
-class FreezePolicy:
+class OpeningRule:
+    kind: Literal["at", "after_start", "after_previous", "unknown", "inherit"]
+    value: datetime | timedelta | None = None
+
+    def __post_init__(self):
+        if self.kind == "at":
+            if not _aware(self.value):
+                raise ValueError("fixed opening requires an aware datetime")
+        elif self.kind in {"after_start", "after_previous"}:
+            if not isinstance(self.value, timedelta) or self.value < timedelta(0):
+                raise ValueError("opening delay must be a non-negative timedelta")
+        elif self.kind in {"unknown", "inherit"}:
+            if self.value is not None:
+                raise ValueError("opening rule must not carry a value")
+        else:
+            raise ValueError("invalid opening rule")
+
+    @classmethod
+    def at(cls, value: datetime):
+        return cls("at", value)
+
+    @classmethod
+    def after_start(cls, value: timedelta):
+        return cls("after_start", value)
+
+    @classmethod
+    def after_previous(cls, value: timedelta):
+        return cls("after_previous", value)
+
+    @classmethod
+    def unknown(cls):
+        return cls("unknown")
+
+    @classmethod
+    def inherit(cls):
+        return cls("inherit")
+
+
+def resolve_opening(course: OpeningRule, personal: OpeningRule, *,
+                    start: datetime | None, previous: datetime | None) -> datetime | None:
+    """Resolve an explicit fixed or elapsed-time opening rule.
+
+    `previous` must already be the trusted preceding lesson's opening instant.
+    This does not infer AWO's reference, calendar-day semantics, or lesson order.
+    """
+    if not isinstance(course, OpeningRule) or not isinstance(personal, OpeningRule) or course.kind == "inherit":
+        raise ValueError("invalid course or personal opening rule")
+    chosen = course if personal.kind == "inherit" else personal
+    if chosen.kind == "unknown":
+        return None
+    if chosen.kind == "at":
+        return chosen.value.astimezone(timezone.utc)
+    reference = start if chosen.kind == "after_start" else previous
+    if reference is None:
+        return None
+    if not _aware(reference):
+        raise ValueError("opening reference must be an aware datetime")
+    return reference.astimezone(timezone.utc) + chosen.value
+
+
+@dataclass(frozen=True)
+class ClosureOptions:
     reset_progress: bool | None
     delete_homework: bool | None
 
 
 @dataclass(frozen=True)
-class FreezePreview:
+class ClosurePreview:
     effects: tuple[str, ...]
 
 
-def freeze_preview(policy: FreezePolicy) -> FreezePreview:
-    """Describe configured consequences only; this function changes no data."""
-    if not isinstance(policy, FreezePolicy):
-        raise ValueError("freeze policy is required")
+def closure_preview(policy: ClosureOptions) -> ClosurePreview:
+    """Describe explicitly chosen closure consequences; this changes no data."""
+    if not isinstance(policy, ClosureOptions):
+        raise ValueError("closure options are required")
     if policy.reset_progress is not True and policy.reset_progress is not False:
         raise ValueError("progress behavior must be explicitly configured")
     if policy.delete_homework is not True and policy.delete_homework is not False:
@@ -127,7 +188,7 @@ def freeze_preview(policy: FreezePolicy) -> FreezePreview:
         effects.append("reset_progress")
     if policy.delete_homework:
         effects.append("delete_homework")
-    return FreezePreview(tuple(effects))
+    return ClosurePreview(tuple(effects))
 
 
 def resume_deadline(deadline: Bound, frozen_at: datetime, resumed_at: datetime, *, extend: bool | None) -> Bound:
@@ -155,6 +216,9 @@ class LessonAccess:
     hidden: bool | None
     opens_at: datetime | None
     prerequisite_met: bool | None
+    keep_after_personal_end: bool | None = None
+    keep_after_course_end: bool | None = None
+    retention_ends_at: Bound | None = None
 
 
 @dataclass(frozen=True)
@@ -193,19 +257,29 @@ def _check(grant: Grant, lesson: str, now: datetime) -> Decision:
         return Decision(False, "unknown_start")
     if now < grant.starts_at.astimezone(timezone.utc):
         return Decision(False, "not_started")
-    if reason := _bound_reason(grant.ends_at, now, "personal_end"):
-        return Decision(False, reason)
+    personal_end_reason = _bound_reason(grant.ends_at, now, "personal_end")
+    if personal_end_reason == "unknown_personal_end":
+        return Decision(False, personal_end_reason)
+    course_end_reason = None
     if grant.ignore_course_end is not True:
         if grant.ignore_course_end is not False:
             return Decision(False, "unknown_course_end_rule")
-        if reason := _bound_reason(grant.course_ends_at, now, "course_end"):
-            return Decision(False, reason)
+        course_end_reason = _bound_reason(grant.course_ends_at, now, "course_end")
+        if course_end_reason == "unknown_course_end":
+            return Decision(False, course_end_reason)
 
     row = grant.lessons.get(lesson)
     if not isinstance(row, LessonAccess):
         return Decision(False, "not_assigned")
     if row.assigned is not True or row.available is not True or row.hidden is not False:
         return Decision(False, "lesson_restricted_or_unknown")
+    if personal_end_reason and row.keep_after_personal_end is not True:
+        return Decision(False, personal_end_reason)
+    if course_end_reason and row.keep_after_course_end is not True:
+        return Decision(False, course_end_reason)
+    if personal_end_reason or course_end_reason:
+        if reason := _bound_reason(row.retention_ends_at, now, "retention_end"):
+            return Decision(False, reason)
     if not _aware(row.opens_at):
         return Decision(False, "unknown_opening")
     if now < row.opens_at.astimezone(timezone.utc):
