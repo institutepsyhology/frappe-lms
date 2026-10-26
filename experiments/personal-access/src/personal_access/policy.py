@@ -261,6 +261,25 @@ class ReportGate:
             raise ValueError("boundary must be boolean or unknown")
 
 
+def auto_approve_on_submission(submitted_at: datetime | None, manual_review_end: Bound) -> bool | None:
+    """Evaluate a new submission only; the exact cutoff instant is unconfirmed.
+
+    A finite cutoff can auto-approve submissions after it. Unknown data and the
+    exact boundary return None; this helper never changes a stored report.
+    """
+    if not isinstance(manual_review_end, Bound):
+        raise ValueError("manual review deadline must be a bound")
+    if submitted_at is None or manual_review_end.kind == "unknown":
+        return None
+    if not _aware(submitted_at):
+        raise ValueError("submission time must be an aware datetime")
+    if manual_review_end.kind == "unlimited":
+        return False
+    submitted = submitted_at.astimezone(timezone.utc)
+    deadline = manual_review_end.at.astimezone(timezone.utc)
+    return None if submitted == deadline else submitted > deadline
+
+
 def report_barriers_cleared(prior_gates: Sequence[ReportGate]) -> bool | None:
     """Evaluate already identified preceding report barriers.
 

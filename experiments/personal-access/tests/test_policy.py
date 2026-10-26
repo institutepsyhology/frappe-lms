@@ -4,7 +4,7 @@ from datetime import datetime, time, timedelta, timezone, tzinfo
 
 from personal_access.policy import (
     Bound, ClosureOptions, Grant, LessonAccess, OpeningRule, ReportGate, StartRule, Term,
-    closure_preview, evaluate, report_barriers_cleared, resolve_opening, resolve_start,
+    auto_approve_on_submission, closure_preview, evaluate, report_barriers_cleared, resolve_opening, resolve_start,
     resolve_term, resume_deadline,
 )
 
@@ -40,6 +40,17 @@ def lesson(**changes):
 
 
 class IndividualAccessTests(unittest.TestCase):
+    def test_manual_review_deadline_applies_to_new_report_only(self):
+        deadline = Bound.until(NOW)
+        self.assertFalse(auto_approve_on_submission(NOW - timedelta(seconds=1), deadline))
+        self.assertTrue(auto_approve_on_submission(NOW + timedelta(seconds=1), deadline))
+        self.assertIsNone(auto_approve_on_submission(NOW, deadline))
+        self.assertFalse(auto_approve_on_submission(NOW, Bound.unlimited()))
+        self.assertIsNone(auto_approve_on_submission(NOW, Bound.unknown()))
+        self.assertIsNone(auto_approve_on_submission(None, deadline))
+        with self.assertRaises(ValueError):
+            auto_approve_on_submission(datetime(2026, 10, 27, 12), deadline)
+
     def check(self, grants, student="student-a", course="course-a", target="lesson-1"):
         return evaluate(grants, student=student, course=course, lesson=target, now=NOW)
 
