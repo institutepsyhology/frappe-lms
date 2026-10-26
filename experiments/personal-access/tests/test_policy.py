@@ -1,10 +1,10 @@
 import unittest
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone, tzinfo
+from datetime import datetime, time, timedelta, timezone, tzinfo
 
 from personal_access.policy import (
-    Bound, ClosureOptions, Grant, LessonAccess, OpeningRule, Term, closure_preview,
-    evaluate, resolve_opening, resolve_term, resume_deadline,
+    Bound, ClosureOptions, Grant, LessonAccess, OpeningRule, StartRule, Term, closure_preview,
+    evaluate, resolve_opening, resolve_start, resolve_term, resume_deadline,
 )
 
 
@@ -151,12 +151,29 @@ class IndividualAccessTests(unittest.TestCase):
             resume_deadline(Bound.until(NOW), NOW, NOW - timedelta(seconds=1), extend=True)
 
     def test_manual_closure_can_preview_preservation_or_deletion_without_mutating_data(self):
-        kept = closure_preview(ClosureOptions(reset_progress=False, delete_homework=False))
-        reset = closure_preview(ClosureOptions(reset_progress=True, delete_homework=True))
+        kept = closure_preview(ClosureOptions(mode="close", retained_lessons=("lesson-1",),
+                                              reset_progress=False, delete_homework=False))
+        reset = closure_preview(ClosureOptions(mode="remove", retained_lessons=(),
+                                               reset_progress=True, delete_homework=True))
         self.assertEqual(kept.effects, ())
         self.assertEqual(reset.effects, ("reset_progress", "delete_homework"))
+        self.assertEqual(kept.course_card_action, "keep")
+        self.assertEqual(kept.retained_lessons, ("lesson-1",))
+        self.assertEqual(reset.course_card_action, "remove")
         with self.assertRaises(ValueError):
-            closure_preview(ClosureOptions(reset_progress=None, delete_homework=False))
+            closure_preview(ClosureOptions(mode="close", retained_lessons=(),
+                                           reset_progress=None, delete_homework=False))
+
+    def test_manual_closure_rejects_inconsistent_or_incomplete_options(self):
+        with self.assertRaises(ValueError):
+            closure_preview(ClosureOptions(mode="remove", retained_lessons=("lesson-1",),
+                                           reset_progress=False, delete_homework=False))
+        with self.assertRaises(ValueError):
+            closure_preview(ClosureOptions(mode="close", retained_lessons=("lesson-1", "lesson-1"),
+                                           reset_progress=False, delete_homework=False))
+        with self.assertRaises(ValueError):
+            closure_preview(ClosureOptions(mode="unknown", retained_lessons=(),
+                                           reset_progress=False, delete_homework=False))
 
     def test_ambiguous_local_clock_does_not_open_lesson_an_hour_early(self):
         class FoldZone(tzinfo):
@@ -243,6 +260,75 @@ class IndividualAccessTests(unittest.TestCase):
                                          start=NOW, previous=NOW))
         with self.assertRaises(ValueError):
             OpeningRule.after_start(timedelta(days=-1))
+
+    def test_course_start_can_be_immediate_fixed_or_personally_overridden(self):
+        assigned = datetime(2026, 10, 27, 10, 37, tzinfo=timezone.utc)
+        fixed = datetime(2026, 11, 1, 11, 12, tzinfo=timezone.utc)
+        self.assertEqual(resolve_start(StartRule.immediate(), StartRule.inherit(), assigned), assigned)
+        self.assertEqual(resolve_start(StartRule.fixed(fixed), StartRule.inherit(), assigned), fixed)
+        self.assertEqual(resolve_start(StartRule.fixed(fixed), StartRule.fixed(assigned), assigned), assigned)
+
+    def test_next_weekday_starts_at_specified_local_time(self):
+        moscow = timezone(timedelta(hours=3))
+        rule = StartRule.weekly(weekday=0, local_time=time(12, 15), zone=moscow, fold=0)
+        assigned = datetime(2026, 10, 26, 9, 10, tzinfo=timezone.utc)
+        self.assertEqual(resolve_start(rule, StartRule.inherit(), assigned),
+                         datetime(2026, 10, 26, 9, 15, tzinfo=timezone.utc))
+        later = datetime(2026, 10, 26, 9, 16, tzinfo=timezone.utc)
+        self.assertEqual(resolve_start(rule, StartRule.inherit(), later),
+                         datetime(2026, 11, 2, 9, 15, tzinfo=timezone.utc))
+
+    def test_unknown_start_and_bad_weekday_are_not_inferred(self):
+        self.assertIsNone(resolve_start(StartRule.unknown(), StartRule.inherit(), NOW))
+        self.assertIsNone(resolve_start(StartRule.immediate(), StartRule.inherit(), None))
+        with self.assertRaises(ValueError):
+            StartRule.weekly(weekday=7, local_time=time(12), zone=timezone.utc, fold=0)
+
+    def test_nonexistent_local_start_time_is_not_invented(self):
+        class SpringChange(tzinfo):
+            def utcoffset(self, value):
+                wall = value.replace(tzinfo=None)
+                return timedelta(hours=2 if wall >= datetime(2026, 3, 29, 3) else 1)
+
+            def dst(self, value):
+                return timedelta(0)
+
+            def fromutc(self, value):
+                utc = value.replace(tzinfo=None)
+                offset = timedelta(hours=2 if utc >= datetime(2026, 3, 29, 1) else 1)
+                return (utc + offset).replace(tzinfo=self)
+
+        rule = StartRule.weekly(weekday=6, local_time=time(2, 30), zone=SpringChange(), fold=0)
+        assigned = datetime(2026, 3, 28, 12, tzinfo=timezone.utc)
+        self.assertIsNone(resolve_start(rule, StartRule.inherit(), assigned))
+
+    def test_weekly_start_uses_explicit_fold_when_clock_repeats(self):
+        class AutumnChange(tzinfo):
+            def utcoffset(self, value):
+                wall = value.replace(tzinfo=None)
+                transition = datetime(2026, 10, 25, 2)
+                if transition <= wall < transition + timedelta(hours=1):
+                    return timedelta(hours=1 if value.fold else 2)
+                return timedelta(hours=2 if wall < transition else 1)
+
+            def dst(self, value):
+                return timedelta(0)
+
+            def fromutc(self, value):
+                utc = value.replace(tzinfo=None)
+                transition = datetime(2026, 10, 25, 1)
+                offset = timedelta(hours=2 if utc < transition else 1)
+                fold = int(transition <= utc < transition + timedelta(hours=1))
+                return (utc + offset).replace(tzinfo=self, fold=fold)
+
+        zone = AutumnChange()
+        assigned = datetime(2026, 10, 24, 12, tzinfo=timezone.utc)
+        first = StartRule.weekly(weekday=6, local_time=time(2, 30), zone=zone, fold=0)
+        second = StartRule.weekly(weekday=6, local_time=time(2, 30), zone=zone, fold=1)
+        self.assertEqual(resolve_start(first, StartRule.inherit(), assigned),
+                         datetime(2026, 10, 25, 0, 30, tzinfo=timezone.utc))
+        self.assertEqual(resolve_start(second, StartRule.inherit(), assigned),
+                         datetime(2026, 10, 25, 1, 30, tzinfo=timezone.utc))
 
 
 if __name__ == "__main__":

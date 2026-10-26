@@ -6,7 +6,7 @@ and calculation of source fields still require evidence from each AWO configurat
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone, tzinfo
 from typing import Literal, Mapping, Sequence
 
 
@@ -165,7 +165,91 @@ def resolve_opening(course: OpeningRule, personal: OpeningRule, *,
 
 
 @dataclass(frozen=True)
+class StartRule:
+    kind: Literal["immediate", "fixed", "weekly", "unknown", "inherit"]
+    when: datetime | None = None
+    weekday: int | None = None
+    local_time: time | None = None
+    zone: tzinfo | None = None
+    fold: int | None = None
+
+    def __post_init__(self):
+        weekly = (self.weekday, self.local_time, self.zone, self.fold)
+        if self.kind == "fixed":
+            if not _aware(self.when) or any(value is not None for value in weekly):
+                raise ValueError("fixed start requires only an aware instant")
+        elif self.kind == "weekly":
+            if (self.when is not None or type(self.weekday) is not int or self.weekday not in range(7)
+                    or not isinstance(self.local_time, time) or self.local_time.tzinfo is not None
+                    or not isinstance(self.zone, tzinfo) or type(self.fold) is not int or self.fold not in (0, 1)):
+                raise ValueError("weekly start requires weekday, local time, timezone, and fold")
+        elif self.kind in {"immediate", "unknown", "inherit"}:
+            if self.when is not None or any(value is not None for value in weekly):
+                raise ValueError("start rule must not carry additional values")
+        else:
+            raise ValueError("invalid start rule")
+
+    @classmethod
+    def immediate(cls):
+        return cls("immediate")
+
+    @classmethod
+    def fixed(cls, value: datetime):
+        return cls("fixed", when=value)
+
+    @classmethod
+    def weekly(cls, *, weekday: int, local_time: time, zone: tzinfo, fold: int):
+        return cls("weekly", weekday=weekday, local_time=local_time, zone=zone, fold=fold)
+
+    @classmethod
+    def unknown(cls):
+        return cls("unknown")
+
+    @classmethod
+    def inherit(cls):
+        return cls("inherit")
+
+
+def resolve_start(course: StartRule, personal: StartRule, assigned_at: datetime | None) -> datetime | None:
+    """Resolve a proposed course start without assuming AWO's weekly boundary rule.
+
+    The `weekly` variant selects the next configured local weekday/time at or after
+    assignment, with an explicit fold for repeated local times. A nonexistent local
+    time returns unknown. AWO's precise rule still needs source-side verification.
+    """
+    if not isinstance(course, StartRule) or not isinstance(personal, StartRule) or course.kind == "inherit":
+        raise ValueError("invalid course or personal start rule")
+    chosen = course if personal.kind == "inherit" else personal
+    if chosen.kind == "unknown":
+        return None
+    if chosen.kind == "fixed":
+        return chosen.when.astimezone(timezone.utc)
+    if assigned_at is None:
+        return None
+    if not _aware(assigned_at):
+        raise ValueError("assignment time must be an aware datetime")
+    instant = assigned_at.astimezone(timezone.utc)
+    if chosen.kind == "immediate":
+        return instant
+    local_date = instant.astimezone(chosen.zone).date()
+    target_date = local_date + timedelta(days=(chosen.weekday - local_date.weekday()) % 7)
+
+    def candidate(day):
+        wall = datetime.combine(day, chosen.local_time)
+        result = wall.replace(tzinfo=chosen.zone, fold=chosen.fold).astimezone(timezone.utc)
+        roundtrip = result.astimezone(chosen.zone)
+        return result if roundtrip.replace(tzinfo=None) == wall else None
+
+    start = candidate(target_date)
+    if start is None:
+        return None
+    return candidate(target_date + timedelta(days=7)) if start < instant else start
+
+
+@dataclass(frozen=True)
 class ClosureOptions:
+    mode: Literal["close", "remove"]
+    retained_lessons: tuple[str, ...]
     reset_progress: bool | None
     delete_homework: bool | None
 
@@ -173,12 +257,29 @@ class ClosureOptions:
 @dataclass(frozen=True)
 class ClosurePreview:
     effects: tuple[str, ...]
+    course_card_action: Literal["keep", "remove"]
+    retained_lessons: tuple[str, ...]
 
 
 def closure_preview(policy: ClosureOptions) -> ClosurePreview:
-    """Describe explicitly chosen closure consequences; this changes no data."""
+    """Describe one requested action; this changes no data.
+
+    This preview does not decide the final course visibility or effective access:
+    other independent grants may still apply. A future server adapter must verify
+    the selected lesson identifiers and reconcile all matching grants.
+    """
     if not isinstance(policy, ClosureOptions):
         raise ValueError("closure options are required")
+    if policy.mode not in {"close", "remove"}:
+        raise ValueError("closure mode must be selected")
+    if not isinstance(policy.retained_lessons, tuple) or any(
+        not isinstance(item, str) or not item for item in policy.retained_lessons
+    ):
+        raise ValueError("retained lessons must be an explicit tuple of identifiers")
+    if len(set(policy.retained_lessons)) != len(policy.retained_lessons):
+        raise ValueError("duplicate retained lesson")
+    if policy.mode == "remove" and policy.retained_lessons:
+        raise ValueError("removed course cannot retain visible lessons in this action")
     if policy.reset_progress is not True and policy.reset_progress is not False:
         raise ValueError("progress behavior must be explicitly configured")
     if policy.delete_homework is not True and policy.delete_homework is not False:
@@ -188,7 +289,7 @@ def closure_preview(policy: ClosureOptions) -> ClosurePreview:
         effects.append("reset_progress")
     if policy.delete_homework:
         effects.append("delete_homework")
-    return ClosurePreview(tuple(effects))
+    return ClosurePreview(tuple(effects), "keep" if policy.mode == "close" else "remove", policy.retained_lessons)
 
 
 def resume_deadline(deadline: Bound, frozen_at: datetime, resumed_at: datetime, *, extend: bool | None) -> Bound:
