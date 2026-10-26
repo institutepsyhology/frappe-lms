@@ -247,6 +247,48 @@ def resolve_start(course: StartRule, personal: StartRule, assigned_at: datetime 
 
 
 @dataclass(frozen=True)
+class ReportGate:
+    mode: Literal["continue", "wait_approval", "until_next_report", "unknown"]
+    status: Literal["unsubmitted", "pending", "approved", "rejected", "unknown"]
+    at_or_after_next_report: bool | None
+
+    def __post_init__(self):
+        if self.mode not in {"continue", "wait_approval", "until_next_report", "unknown"}:
+            raise ValueError("invalid report-gate mode")
+        if self.status not in {"unsubmitted", "pending", "approved", "rejected", "unknown"}:
+            raise ValueError("invalid report state")
+        if self.at_or_after_next_report is not None and type(self.at_or_after_next_report) is not bool:
+            raise ValueError("boundary must be boolean or unknown")
+
+
+def report_barriers_cleared(prior_gates: Sequence[ReportGate]) -> bool | None:
+    """Evaluate already identified preceding report barriers.
+
+    The caller determines lesson order, report ownership, approval and boundary.
+    `None` means insufficient evidence; it must never be treated as permission.
+    The AWO modes and boundary behavior still require live verification.
+    """
+    unresolved = False
+    for gate in prior_gates:
+        if not isinstance(gate, ReportGate):
+            raise ValueError("invalid report gate")
+        if gate.mode == "continue":
+            continue
+        if gate.mode == "unknown":
+            unresolved = True
+            continue
+        if gate.status == "approved":
+            continue
+        if gate.mode == "until_next_report" and gate.at_or_after_next_report is False:
+            continue
+        if gate.status == "unknown" or (gate.mode == "until_next_report" and gate.at_or_after_next_report is None):
+            unresolved = True
+            continue
+        return False
+    return None if unresolved else True
+
+
+@dataclass(frozen=True)
 class ClosureOptions:
     mode: Literal["close", "remove"]
     retained_lessons: tuple[str, ...]

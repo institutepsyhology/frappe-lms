@@ -3,8 +3,9 @@ from dataclasses import replace
 from datetime import datetime, time, timedelta, timezone, tzinfo
 
 from personal_access.policy import (
-    Bound, ClosureOptions, Grant, LessonAccess, OpeningRule, StartRule, Term, closure_preview,
-    evaluate, resolve_opening, resolve_start, resolve_term, resume_deadline,
+    Bound, ClosureOptions, Grant, LessonAccess, OpeningRule, ReportGate, StartRule, Term,
+    closure_preview, evaluate, report_barriers_cleared, resolve_opening, resolve_start,
+    resolve_term, resume_deadline,
 )
 
 
@@ -329,6 +330,63 @@ class IndividualAccessTests(unittest.TestCase):
                          datetime(2026, 10, 25, 0, 30, tzinfo=timezone.utc))
         self.assertEqual(resolve_start(second, StartRule.inherit(), assigned),
                          datetime(2026, 10, 25, 1, 30, tzinfo=timezone.utc))
+
+    def test_stop_lesson_requires_approval_for_following_lessons(self):
+        pending = ReportGate(mode="wait_approval", status="pending", at_or_after_next_report=None)
+        accepted = replace(pending, status="approved")
+        rejected = replace(pending, status="rejected")
+        self.assertFalse(report_barriers_cleared([pending]))
+        self.assertFalse(report_barriers_cleared([rejected]))
+        self.assertTrue(report_barriers_cleared([accepted]))
+
+    def test_continue_until_next_homework_blocks_at_the_boundary(self):
+        before = ReportGate(mode="until_next_report", status="pending", at_or_after_next_report=False)
+        boundary = replace(before, at_or_after_next_report=True)
+        self.assertTrue(report_barriers_cleared([before]))
+        self.assertFalse(report_barriers_cleared([boundary]))
+        self.assertTrue(report_barriers_cleared([replace(boundary, status="approved")]))
+
+    def test_unknown_report_modes_and_states_do_not_open_a_locked_lesson(self):
+        self.assertIsNone(report_barriers_cleared([ReportGate(mode="unknown", status="approved",
+                                                             at_or_after_next_report=True)]))
+        self.assertIsNone(report_barriers_cleared([ReportGate(mode="wait_approval", status="unknown",
+                                                             at_or_after_next_report=None)]))
+        self.assertIsNone(report_barriers_cleared([ReportGate(mode="until_next_report", status="pending",
+                                                             at_or_after_next_report=None)]))
+        self.assertTrue(report_barriers_cleared([ReportGate(mode="continue", status="unknown",
+                                                           at_or_after_next_report=None)]))
+
+    def test_all_applicable_stop_lessons_must_be_satisfied(self):
+        passed = ReportGate(mode="wait_approval", status="approved", at_or_after_next_report=None)
+        waiting = replace(passed, status="pending")
+        self.assertFalse(report_barriers_cleared([passed, waiting]))
+        self.assertTrue(report_barriers_cleared([passed, passed]))
+
+    def test_two_students_different_start_stop_and_retained_lesson(self):
+        start_a = NOW
+        start_b = NOW + timedelta(hours=2, minutes=30)
+        opening_rule = OpeningRule.after_start(timedelta(days=1))
+        gate = ReportGate(mode="wait_approval", status="pending", at_or_after_next_report=None)
+        a_lesson_1 = lesson(opens_at=start_a, keep_after_personal_end=True,
+                            retention_ends_at=Bound.unlimited())
+        a_lesson_2 = lesson(opens_at=resolve_opening(opening_rule, OpeningRule.inherit(),
+                                                     start=start_a, previous=None),
+                            prerequisite_met=report_barriers_cleared([gate]))
+        a = grant(starts_at=start_a, ends_at=Bound.until(start_a + timedelta(days=2)),
+                  lessons={"lesson-1": a_lesson_1, "lesson-2": a_lesson_2})
+        b = grant(student="student-b", starts_at=start_b,
+                  lessons={"lesson-1": lesson(opens_at=start_b)})
+        def check(student, target, instant, items):
+            return evaluate(items, student=student, course="course-a", lesson=target, now=instant).allowed
+        self.assertTrue(check("student-a", "lesson-1", start_a, [a, b]))
+        self.assertFalse(check("student-b", "lesson-1", start_a, [a, b]))
+        self.assertFalse(check("student-a", "lesson-2", start_a + timedelta(days=1), [a, b]))
+        approved = replace(a_lesson_2, prerequisite_met=report_barriers_cleared([replace(gate, status="approved")]))
+        a = replace(a, lessons={"lesson-1": a_lesson_1, "lesson-2": approved})
+        self.assertTrue(check("student-a", "lesson-2", start_a + timedelta(days=1), [a, b]))
+        self.assertTrue(check("student-a", "lesson-1", start_a + timedelta(days=2), [a, b]))
+        self.assertFalse(check("student-a", "lesson-2", start_a + timedelta(days=2), [a, b]))
+        self.assertTrue(check("student-b", "lesson-1", start_a + timedelta(days=2), [a, b]))
 
 
 if __name__ == "__main__":
