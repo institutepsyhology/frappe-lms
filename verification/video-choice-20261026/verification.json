@@ -3,7 +3,7 @@
   "timezone": "Europe/Moscow",
   "site": "my-lk.iomp.ru",
   "course": "5",
-  "result": "functional_fix_verified_github_publication_blocked",
+  "result": "functional_fix_verified_github_published",
   "deployment": {
     "previous_image": "sha256:70f4c8dd261d3afaba758e87aae8439a50bfc37f71f35905ce4e0aa8f7dc9d1e",
     "image": "sha256:d7ee1478951488710ff2c577f2e5c3d199a241a84836272e2896abbe1cf5ae99",
@@ -185,8 +185,9 @@
   "publication": {
     "repository": "https://github.com/institutepsyhology/frappe-lms",
     "branch": "feature/embedded-video-choice-20261026",
-    "status": "blocked",
-    "reason": "Git has no credentials for github.com; non-interactive push could not read Username."
+    "status": "published",
+    "verified_source_commit": "44e38551e0fe660a902a9f344353ea746f20ddf0",
+    "verified_at_utc": "2026-10-26T13:03:45Z"
   },
   "limits": [
     "No app version or dependency upgrade",
