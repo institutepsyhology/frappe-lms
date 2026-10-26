@@ -116,6 +116,18 @@ class GrantReaderTests(unittest.TestCase):
             self.assertFalse(self.module.restrict_member_lesson(
                 course="course-a", lesson="lesson-a", user="student-a", enrolled=False))
 
+    def test_outline_masks_closed_lesson_media_and_keeps_open_lesson(self):
+        first = types.SimpleNamespace(name="lesson-a", youtube="video-a", quiz_id="quiz-a", question="q-a")
+        second = types.SimpleNamespace(name="lesson-b", youtube="video-b", quiz_id="quiz-b", question="q-b")
+        outline = [types.SimpleNamespace(lessons=[first, second])]
+        self.module.mask_inaccessible_outline(outline, lambda lesson: lesson == "lesson-a")
+        self.assertEqual(first.youtube, "video-a")
+        self.assertEqual(first.quiz_id, "quiz-a")
+        self.assertEqual(second.locked, 1)
+        self.assertIsNone(second.youtube)
+        self.assertIsNone(second.quiz_id)
+        self.assertIsNone(second.question)
+
 
 if __name__ == "__main__":
     unittest.main()

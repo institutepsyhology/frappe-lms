@@ -24,6 +24,18 @@ def restrict_member_lesson(*, course, lesson, user, enrolled):
 	return grant_allows_lesson(user=user, lesson=lesson)
 
 
+def mask_inaccessible_outline(outline, can_access):
+	"""Withhold lesson media identifiers from an already constructed outline."""
+	for chapter in outline:
+		for lesson in chapter.lessons:
+			if not can_access(lesson.name):
+				lesson.locked = 1
+				lesson.youtube = None
+				lesson.quiz_id = None
+				lesson.question = None
+	return outline
+
+
 def _valid_end(kind, value, now):
 	if kind == "Unlimited":
 		return not value

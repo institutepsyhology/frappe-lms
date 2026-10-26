@@ -373,6 +373,12 @@ def can_access_quiz(quiz: str, *, user: str | None = None) -> bool:
 				return True
 			if not get_membership(course, user):
 				continue
+			from lms.lms.individual_access import policy_applies
+
+			if policy_applies(course):
+				lessons = {lesson for lesson in lessons if lesson and can_access_lesson(lesson, user=user)}
+				if not lessons:
+					continue
 			locked = get_locked_lessons(course)
 			if not locked:
 				return True

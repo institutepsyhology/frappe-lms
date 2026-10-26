@@ -1452,7 +1452,14 @@ def get_course_outline(course: str, progress: bool = False) -> list:
 
 	enforce = enforces_lesson_completion(course) if progress else False
 
-	return build_outline(chapters, lesson_rows, files_by_name, completed, progress, enforce)
+	outline = build_outline(chapters, lesson_rows, files_by_name, completed, progress, enforce)
+	from lms.lms.individual_access import mask_inaccessible_outline, policy_applies
+
+	if policy_applies(course):
+		from lms.lms.permissions import can_access_lesson
+
+		mask_inaccessible_outline(outline, can_access_lesson)
+	return outline
 
 
 def can_view_course(course: str) -> bool:
