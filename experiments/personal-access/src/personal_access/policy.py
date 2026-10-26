@@ -359,6 +359,7 @@ class LessonAccess:
     hidden: bool | None
     opens_at: datetime | None
     prerequisite_met: bool | None
+    manual_open: bool | None = None
     keep_after_personal_end: bool | None = None
     keep_after_course_end: bool | None = None
     retention_ends_at: Bound | None = None
@@ -423,12 +424,15 @@ def _check(grant: Grant, lesson: str, now: datetime) -> Decision:
     if personal_end_reason or course_end_reason:
         if reason := _bound_reason(row.retention_ends_at, now, "retention_end"):
             return Decision(False, reason)
-    if not _aware(row.opens_at):
-        return Decision(False, "unknown_opening")
-    if now < row.opens_at.astimezone(timezone.utc):
-        return Decision(False, "not_open_yet")
-    if row.prerequisite_met is not True:
-        return Decision(False, "prerequisite_or_unknown")
+    # A deliberate personal override applies only to the schedule and prerequisite.
+    # Its interaction with other AWO restrictions still needs source-side testing.
+    if row.manual_open is not True:
+        if not _aware(row.opens_at):
+            return Decision(False, "unknown_opening")
+        if now < row.opens_at.astimezone(timezone.utc):
+            return Decision(False, "not_open_yet")
+        if row.prerequisite_met is not True:
+            return Decision(False, "prerequisite_or_unknown")
     return Decision(True, "allowed")
 
 

@@ -93,6 +93,30 @@ class IndividualAccessTests(unittest.TestCase):
         self.assertFalse(self.check([blocked]).allowed)
         self.assertTrue(self.check([replace(later, lessons={"lesson-1": lesson(opens_at=NOW)})]).allowed)
 
+    def test_explicit_manual_open_is_personal_and_bypasses_schedule_and_prerequisite(self):
+        future = lesson(opens_at=NOW + timedelta(days=5), prerequisite_met=False)
+        a = grant(lessons={"lesson-1": replace(future, manual_open=True)})
+        b = grant(student="student-b", lessons={"lesson-1": future})
+        self.assertTrue(self.check([a, b]).allowed)
+        self.assertFalse(self.check([a, b], student="student-b").allowed)
+        self.assertFalse(self.check([a], student="student-b").allowed)
+
+    def test_manual_open_does_not_bypass_course_or_assignment_checks(self):
+        opened = lesson(opens_at=None, prerequisite_met=None, manual_open=True)
+        for changes in ({"frozen": True}, {"active": False}, {"starts_at": NOW + timedelta(seconds=1)},
+                        {"ends_at": Bound.until(NOW)}, {"course_ends_at": Bound.until(NOW)}):
+            with self.subTest(changes=changes):
+                self.assertFalse(self.check([grant(lessons={"lesson-1": opened}, **changes)]).allowed)
+        for changes in ({"assigned": False}, {"available": False}, {"hidden": True}):
+            with self.subTest(changes=changes):
+                self.assertFalse(self.check([grant(lessons={"lesson-1": replace(opened, **changes)})]).allowed)
+
+    def test_unknown_or_non_boolean_manual_open_does_not_override_schedule(self):
+        for value in (None, False, 1, "yes"):
+            with self.subTest(value=value):
+                row = lesson(opens_at=NOW + timedelta(days=1), manual_open=value)
+                self.assertFalse(self.check([grant(lessons={"lesson-1": row})]).allowed)
+
     def test_revoked_frozen_and_multiple_independent_grants(self):
         good = grant()
         revoked = replace(good, active=False)
