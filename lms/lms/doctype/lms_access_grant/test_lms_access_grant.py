@@ -5,10 +5,12 @@ from unittest.mock import patch
 
 import frappe
 from frappe.utils import add_to_date, now_datetime
+from frappe.utils.file_manager import save_file
 
 from lms.lms.doctype.course_lesson import course_lesson
-from lms.lms.permissions import can_access_lesson
+from lms.lms.permissions import can_access_lesson, file_has_permission
 from lms.lms.test_helpers import BaseTestUtils
+from lms.lms.utils import get_course_outline, get_lesson
 
 
 class TestIndividualAccessIntegration(BaseTestUtils):
@@ -77,3 +79,27 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		self.assertFalse(frappe.has_permission("LMS Assignment", "read", assignment.name))
 		frappe.set_user(self.student.email)
 		self.assertTrue(frappe.has_permission("LMS Assignment", "read", assignment.name))
+
+	def test_lesson_and_outline_hide_content_from_other_student(self):
+		frappe.db.set_value("Course Lesson", self.lesson.name, "youtube", "https://example.invalid/test-video")
+		frappe.set_user(self.other.email)
+		self.assertTrue(get_lesson(self.course.name, 1, 1).get("no_preview"))
+		outline = get_course_outline(self.course.name, progress=True)
+		row = outline[0].lessons[0]
+		self.assertEqual(row.locked, 1)
+		self.assertIsNone(row.youtube)
+		frappe.set_user(self.student.email)
+		self.assertFalse(get_lesson(self.course.name, 1, 1).get("no_preview"))
+
+	def test_private_file_is_gated_by_its_real_lesson(self):
+		frappe.set_user(self.teacher.email)
+		file_doc = save_file("stage-example.txt", b"test", "Course Lesson", self.lesson.name, is_private=1)
+		file_doc.db_set("attached_to_field", "content")
+		frappe.set_user(self.other.email)
+		self.assertFalse(file_has_permission(file_doc))
+		with self.assertRaises(frappe.PermissionError):
+			course_lesson.serve_resource(file_doc.file_url)
+		frappe.set_user(self.student.email)
+		self.assertTrue(file_has_permission(file_doc))
+		with patch.object(course_lesson, "_serve_private_file", return_value="allowed"):
+			self.assertEqual(course_lesson.serve_resource(file_doc.file_url), "allowed")
