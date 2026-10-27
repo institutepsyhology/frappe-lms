@@ -1768,12 +1768,6 @@ def get_lesson(course: str, chapter: int, lesson: int) -> dict:
 			"redirect_to": get_lesson_index(resume) if resume else "1-1",
 		}
 
-	if lesson_details.is_scorm_package:
-		return {
-			"is_scorm_package": True,
-			"chapter_name": chapter_name,
-		}
-
 	membership = get_membership(course)
 	course_info = frappe.db.get_value(
 		"LMS Course",
@@ -1795,6 +1789,12 @@ def get_lesson(course: str, chapter: int, lesson: int) -> dict:
 			"title": lesson_details.title,
 			"course_title": course_info.title,
 			"disable_self_learning": course_info.disable_self_learning,
+		}
+
+	if lesson_details.is_scorm_package:
+		return {
+			"is_scorm_package": True,
+			"chapter_name": chapter_name,
 		}
 
 	# instructor_content / instructor_notes are instructor-only (permissions.INSTRUCTOR_FIELDS).

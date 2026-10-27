@@ -129,6 +129,15 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		with patch.object(course_lesson, "_serve_private_file", return_value="allowed"):
 			self.assertEqual(course_lesson.serve_resource(file_doc.file_url), "allowed")
 
+	def test_scorm_lesson_checks_personal_access_before_redirect(self):
+		frappe.db.set_value("Course Lesson", self.lesson.name, "is_scorm_package", 1)
+		frappe.set_user(self.other.email)
+		blocked = get_lesson(self.course.name, 1, 1)
+		self.assertTrue(blocked.get("no_preview"))
+		self.assertFalse(blocked.get("is_scorm_package"))
+		frappe.set_user(self.student.email)
+		self.assertTrue(get_lesson(self.course.name, 1, 1).get("is_scorm_package"))
+
 	def test_explicit_course_opt_in_requires_server_release_switch(self):
 		self.policy.stop()
 		from lms.lms.individual_access import protected_courses
