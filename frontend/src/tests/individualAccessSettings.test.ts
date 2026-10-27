@@ -31,7 +31,7 @@ describe('individual access settings', () => {
 		expect(wrapper.text()).toContain('student@example.invalid')
 		const button = wrapper.findAll('button').find((item) => item.text() === 'Возобновить')!
 		expect(button.attributes('disabled')).toBeDefined()
-		await wrapper.find('select').setValue('0')
+		await wrapper.findAll('select').find((item) => item.text().includes('Не продлевать'))!.setValue('0')
 		await button.trigger('click')
 		await flushPromises()
 		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.resume_grant',
@@ -75,6 +75,21 @@ describe('individual access settings', () => {
 			course: 'course-1', defaults: { default_personal_end_type: 'After Start', default_personal_end_at: null,
 				default_personal_end_days: 30, global_end_type: 'Unlimited', global_end_at: null,
 				completed_retention_type: 'Days', completed_retention_days: 14 },
+		})
+	})
+
+	it('saves a lesson opening rule with a delay', async () => {
+		const wrapper = render(true)
+		await flushPromises()
+		await wrapper.findAll('select').find((item) => item.text().includes('Выберите урок'))!.setValue('lesson-1')
+		await wrapper.findAll('select').find((item) => item.text().includes('Через дни после начала курса'))!.setValue('After Start')
+		await wrapper.find('input[type=number]').setValue(3)
+		await wrapper.findAll('select').find((item) => item.text().includes('Без условия'))!.setValue('None')
+		await wrapper.findAll('button').find((item) => item.text() === 'Сохранить правило урока')!.trigger('click')
+		await flushPromises()
+		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.update_course_lesson_rule', {
+			course: 'course-1', lesson: 'lesson-1', rule: { opening_type: 'After Start', opens_at: null,
+				delay_days: 3, prerequisite_type: 'None', prerequisite_lesson: null, prerequisite_assignment: null },
 		})
 	})
 })

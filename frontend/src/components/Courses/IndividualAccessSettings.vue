@@ -48,6 +48,46 @@
 					<button class="underline" :disabled="busy" @click="saveDefaults">Сохранить общие сроки</button>
 				</div>
 			</details>
+			<details v-if="overview.policy_exists && !overview.policy_enabled" class="border rounded p-3">
+				<summary class="cursor-pointer">Расписание отдельных уроков</summary>
+				<div class="space-y-2 mt-3">
+					<label class="block">Урок
+						<select v-model="selectedLesson" class="border rounded w-full p-1">
+							<option value="">Выберите урок</option>
+							<option v-for="lesson in overview.lessons" :key="lesson.name" :value="lesson.name">{{ lesson.title || lesson.name }}</option>
+						</select>
+					</label>
+					<template v-if="selectedLesson">
+						<label class="block">Открыть урок
+							<select v-model="lessonRule.opening_type" class="border rounded w-full p-1">
+								<option value="Unknown">Не задано</option><option value="After Start">Через дни после начала курса</option><option value="At">В указанную дату</option>
+							</select>
+						</label>
+						<label v-if="lessonRule.opening_type === 'After Start'" class="block">Дней после начала
+							<input v-model.number="lessonRule.delay_days" type="number" min="0" class="border rounded w-full p-1" />
+						</label>
+						<label v-if="lessonRule.opening_type === 'At'" class="block">Дата и время ({{ overview.timezone }})
+							<input v-model="lessonRule.opens_at" type="datetime-local" step="1" class="border rounded w-full p-1" />
+						</label>
+						<label class="block">Дополнительное условие
+							<select v-model="lessonRule.prerequisite_type" class="border rounded w-full p-1">
+								<option value="Unknown">Не задано</option><option value="None">Без условия</option>
+								<option value="Lesson Complete">Завершён другой урок</option><option value="Assignment Submitted">Отправлено задание</option><option value="Assignment Passed">Задание принято</option>
+							</select>
+						</label>
+						<label v-if="!['Unknown', 'None'].includes(lessonRule.prerequisite_type)" class="block">Урок с условием
+							<select v-model="lessonRule.prerequisite_lesson" class="border rounded w-full p-1">
+								<option :value="null">Выберите урок</option>
+								<option v-for="lesson in overview.lessons.filter(item => item.name !== selectedLesson)" :key="lesson.name" :value="lesson.name">{{ lesson.title || lesson.name }}</option>
+							</select>
+						</label>
+						<label v-if="['Assignment Submitted', 'Assignment Passed'].includes(lessonRule.prerequisite_type)" class="block">Идентификатор задания в выбранном уроке
+							<input v-model.trim="lessonRule.prerequisite_assignment" class="border rounded w-full p-1" />
+						</label>
+						<button class="underline" :disabled="busy" @click="saveLessonRule">Сохранить правило урока</button>
+					</template>
+				</div>
+			</details>
 			<details v-if="overview.policy_exists" class="border rounded p-3">
 				<summary class="cursor-pointer">Добавить персональную карточку</summary>
 				<div class="space-y-2 mt-3">
@@ -98,7 +138,8 @@ import type { SessionUser } from '@/types'
 
 type Grant = { name: string; member: string; status: string; starts_at?: string; ends_at?: string }
 type Defaults = { default_personal_end_type: string; default_personal_end_at: string | null; default_personal_end_days: number; global_end_type: string; global_end_at: string | null; completed_retention_type: string; completed_retention_days: number }
-type Overview = { release_enabled: boolean; policy_enabled: boolean; policy_exists: boolean; policy?: Defaults | null; timezone: string; grants: Grant[]; truncated: boolean; lessons: {name: string; title: string}[]; lessons_truncated: boolean }
+type LessonRule = { lesson?: string; opening_type: string; opens_at: string | null; delay_days: number; prerequisite_type: string; prerequisite_lesson: string | null; prerequisite_assignment: string | null }
+type Overview = { release_enabled: boolean; policy_enabled: boolean; policy_exists: boolean; policy?: Defaults | null; timezone: string; grants: Grant[]; truncated: boolean; lessons: {name: string; title: string}[]; lessons_truncated: boolean; schedule: LessonRule[] }
 const props = defineProps<{ course: string }>()
 const user = inject<SessionUser>('$user')
 const overview = ref<Overview | null>(null)
@@ -112,6 +153,9 @@ const newLessons = ref<string[]>([])
 const defaults = reactive<Defaults>({ default_personal_end_type: 'Unknown', default_personal_end_at: null,
 	default_personal_end_days: 0, global_end_type: 'Unknown', global_end_at: null,
 	completed_retention_type: 'None', completed_retention_days: 0 })
+const selectedLesson = ref('')
+const lessonRule = reactive<LessonRule>({ opening_type: 'Unknown', opens_at: null, delay_days: 0,
+	prerequisite_type: 'Unknown', prerequisite_lesson: null, prerequisite_assignment: null })
 const labels: Record<string, string> = { Draft: 'Черновик', Active: 'Действует', Frozen: 'Заморожен', Limited: 'Ограничен', Revoked: 'Закрыт' }
 
 async function load() {
@@ -195,6 +239,31 @@ async function saveDefaults() {
 		await load()
 	} catch {
 		toast.error('Не удалось сохранить сроки. Проверьте даты и количество дней.')
+	} finally {
+		busy.value = false
+	}
+}
+watch(selectedLesson, (name) => {
+	const saved = overview.value?.schedule?.find((item) => item.lesson === name)
+	Object.assign(lessonRule, { opening_type: 'Unknown', opens_at: null, delay_days: 0,
+		prerequisite_type: 'Unknown', prerequisite_lesson: null, prerequisite_assignment: null }, saved || {})
+	lessonRule.opens_at = lessonRule.opens_at?.replace(' ', 'T') || null
+})
+async function saveLessonRule() {
+	if (!selectedLesson.value) return
+	busy.value = true
+	try {
+		await call('lms.lms.access_actions.update_course_lesson_rule', { course: props.course, lesson: selectedLesson.value, rule: {
+			opening_type: lessonRule.opening_type,
+			opens_at: lessonRule.opening_type === 'At' ? lessonRule.opens_at : null,
+			delay_days: lessonRule.opening_type === 'After Start' ? lessonRule.delay_days : 0,
+			prerequisite_type: lessonRule.prerequisite_type,
+			prerequisite_lesson: ['Unknown', 'None'].includes(lessonRule.prerequisite_type) ? null : lessonRule.prerequisite_lesson,
+			prerequisite_assignment: ['Assignment Submitted', 'Assignment Passed'].includes(lessonRule.prerequisite_type) ? lessonRule.prerequisite_assignment : null,
+		} })
+		await load()
+	} catch {
+		toast.error('Не удалось сохранить правило. Проверьте дату, урок и задание.')
 	} finally {
 		busy.value = false
 	}

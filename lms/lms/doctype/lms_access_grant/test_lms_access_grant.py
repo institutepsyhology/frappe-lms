@@ -107,6 +107,23 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		with self.assertRaises(frappe.ValidationError):
 			update_course_access_defaults(self.course.name, values)
 
+	def test_lesson_rule_is_validated_without_enabling_policy(self):
+		from lms.lms.access_actions import create_course_access_policy, update_course_lesson_rule
+
+		name = create_course_access_policy(self.course.name)["name"]
+		rule = {"opening_type": "After Start", "opens_at": None, "delay_days": 3,
+			"prerequisite_type": "None", "prerequisite_lesson": None, "prerequisite_assignment": None}
+		frappe.set_user(self.other.email)
+		with self.assertRaises(frappe.PermissionError):
+			update_course_lesson_rule(self.course.name, self.lesson.name, rule)
+		frappe.set_user("Administrator")
+		update_course_lesson_rule(self.course.name, self.lesson.name, rule)
+		policy = frappe.get_doc("LMS Access Policy", name)
+		self.assertFalse(policy.enabled)
+		self.assertEqual(policy.lessons[0].delay_days, 3)
+		with self.assertRaises(frappe.ValidationError):
+			update_course_lesson_rule(self.course.name, "unknown-lesson", rule)
+
 	def test_admin_creates_inherited_grant_for_enrolled_student(self):
 		from lms.lms.access_actions import create_grant_for_enrolled_student
 

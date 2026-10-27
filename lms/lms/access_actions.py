@@ -36,6 +36,10 @@ def get_course_access_overview(course):
 		fields=["name", "member", "status", "starts_at", "ends_at"], order_by="modified desc", limit_page_length=201)
 	lessons = frappe.get_all("Course Lesson", filters={"course": course},
 		fields=["name", "title"], order_by="name asc", limit_page_length=501)
+	schedule = frappe.get_all("LMS Access Policy Lesson", filters={"parent": policy.name,
+		"parenttype": "LMS Access Policy", "parentfield": "lessons"},
+		fields=["lesson", "opening_type", "opens_at", "delay_days", "prerequisite_type",
+			"prerequisite_lesson", "prerequisite_assignment"], limit_page_length=0) if policy else []
 	return {
 		"release_enabled": frappe.conf.get("individual_access_release_enabled") is True,
 		"policy_enabled": bool(policy and policy.enabled),
@@ -46,6 +50,7 @@ def get_course_access_overview(course):
 		"truncated": len(grants) > 200,
 		"lessons": lessons[:500],
 		"lessons_truncated": len(lessons) > 500,
+		"schedule": schedule,
 	}
 
 
@@ -87,6 +92,34 @@ def update_course_access_defaults(course, defaults):
 	policy.update(defaults)
 	policy.save()
 	return {"name": policy.name, "enabled": False}
+
+
+@frappe.whitelist(methods=["POST"])
+def update_course_lesson_rule(course, lesson, rule):
+	"""Save a lesson's opening and prerequisite rule on a disabled policy."""
+	frappe.only_for("System Manager")
+	if isinstance(rule, str):
+		rule = frappe.parse_json(rule)
+	fields = {"opening_type", "opens_at", "delay_days", "prerequisite_type", "prerequisite_lesson", "prerequisite_assignment"}
+	if not isinstance(rule, dict) or set(rule) != fields:
+		frappe.throw(_("Provide the complete lesson access rule."), frappe.ValidationError)
+	if not isinstance(course, str) or not frappe.db.get_value("LMS Course", course, "name", for_update=True):
+		frappe.throw(_("Course not found."), frappe.ValidationError)
+	name = frappe.db.get_value("LMS Access Policy", {"course": course}, "name", for_update=True)
+	if not name:
+		frappe.throw(_("Set up the course access policy first."), frappe.ValidationError)
+	policy = frappe.get_doc("LMS Access Policy", name, for_update=True)
+	policy.check_permission("write")
+	if policy.enabled:
+		frappe.throw(_("Disable the policy before editing its lesson rules."), frappe.ValidationError)
+	if frappe.db.get_value("Course Lesson", lesson, "course") != course:
+		frappe.throw(_("The lesson does not belong to this course."), frappe.ValidationError)
+	row = next((item for item in policy.lessons if item.lesson == lesson), None)
+	if not row:
+		row = policy.append("lessons", {"lesson": lesson})
+	row.update(rule)
+	policy.save()
+	return {"name": policy.name, "lesson": lesson, "enabled": False}
 
 
 @frappe.whitelist(methods=["POST"])
