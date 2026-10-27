@@ -541,8 +541,9 @@ def _lock_state(course: str) -> tuple[set, list, set]:
 	from lms.lms.individual_access import grant_allows_lesson, policy_applies
 
 	if policy_applies(course):
-		locked = {name for name in locked if not grant_allows_lesson(
-			user=frappe.session.user, lesson=name, require_manual=True
+		locked = {name for name in locked if not (
+			grant_allows_lesson(user=frappe.session.user, lesson=name, require_manual=True)
+			or grant_allows_lesson(user=frappe.session.user, lesson=name, require_retained=True)
 		)}
 	return locked, names, completed
 

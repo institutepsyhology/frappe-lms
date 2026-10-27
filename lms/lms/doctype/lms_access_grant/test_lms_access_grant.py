@@ -282,3 +282,22 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		grant = frappe.get_doc("LMS Access Grant", self.grant.name)
 		grant.save(ignore_permissions=True)
 		self.assertEqual(grant.lessons[0].prerequisite_state, "Satisfied")
+
+	def test_explicitly_retained_lesson_bypasses_sequence_after_closure(self):
+		from lms.lms.access_actions import limit_grant
+
+		second = self._create_lesson("Retained isolated lesson", self.chapter.name, self.course.name)
+		frappe.get_doc({"doctype": "Lesson Reference", "lesson": second.name, "parent": self.chapter.name,
+			"parenttype": "Course Chapter", "parentfield": "lessons", "idx": 2}).insert(ignore_permissions=True)
+		frappe.db.set_value("LMS Course", self.course.name, "enforce_lesson_completion", 1)
+		grant = frappe.get_doc("LMS Access Grant", self.grant.name)
+		grant.append("lessons", {"lesson": second.name, "opening_type": "At",
+			"opens_at": add_to_date(now_datetime(), days=2), "prerequisite_state": "Blocked"})
+		grant.save(ignore_permissions=True)
+		limit_grant(self.grant.name, [second.name], "Unlimited")
+		frappe.set_user(self.student.email)
+		payload = get_lesson(self.course.name, 1, 2)
+		self.assertFalse(payload.get("locked"))
+		self.assertFalse(payload.get("no_preview"))
+		frappe.set_user(self.other.email)
+		self.assertFalse(can_access_lesson(second.name))

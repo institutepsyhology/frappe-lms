@@ -181,7 +181,7 @@ def _valid_end(kind, value, now):
 	return now < get_datetime(value)
 
 
-def grant_allows_lesson(*, user, lesson, now=None, require_manual=False):
+def grant_allows_lesson(*, user, lesson, now=None, require_manual=False, require_retained=False):
 	"""Check a persisted matching grant, failing closed on incomplete records.
 
 	This does not implement access retention, subscriptions, homework-derived
@@ -214,9 +214,11 @@ def grant_allows_lesson(*, user, lesson, now=None, require_manual=False):
 		)
 		if not row:
 			continue
+		retained = False
 		if grant.status == "Limited":
 			if row.retain_when_limited != 1 or not _valid_end(row.retention_end_type, row.retention_ends_at, now):
 				continue
+			retained = True
 		else:
 			policy = None
 			if (grant.personal_end_type == "Inherit" or grant.course_end_type == "Inherit"
@@ -258,6 +260,15 @@ def grant_allows_lesson(*, user, lesson, now=None, require_manual=False):
 				if not frappe.db.exists("LMS Course Progress", {"member": user, "course": course,
 						"lesson": lesson, "status": "Complete"}):
 					continue
+				retained = True
+		if retained:
+			if not require_manual:
+				return True
+			if row.manual_open == 1:
+				return True
+			continue
+		if require_retained:
+			continue
 		if row.manual_open == 1:
 			return True
 		if require_manual:

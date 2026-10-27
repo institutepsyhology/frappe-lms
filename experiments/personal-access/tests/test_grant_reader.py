@@ -229,6 +229,11 @@ class GrantReaderTests(unittest.TestCase):
         self.assertFalse(self.check())
         self.lesson = self.row(retain_when_limited=1, retention_end_type="Unlimited")
         self.assertTrue(self.check())
+        self.assertTrue(self.module.grant_allows_lesson(user="student-a", lesson="lesson-a", now=NOW,
+                                                       require_retained=True))
+        self.lesson.prerequisite_state = "Blocked"
+        self.lesson.opens_at = NOW + timedelta(days=3)
+        self.assertTrue(self.check())
         self.assertFalse(self.check(user="student-b"))
         self.lesson.retention_end_type = "At"
         self.lesson.retention_ends_at = NOW
@@ -239,6 +244,9 @@ class GrantReaderTests(unittest.TestCase):
                                   completed_retention_type="Days", completed_retention_days=2)]
         self.assertFalse(self.check())
         self.completed = True
+        self.assertTrue(self.check())
+        self.lesson.prerequisite_state = "Blocked"
+        self.lesson.opens_at = NOW + timedelta(days=3)
         self.assertTrue(self.check())
         self.grants = [self.grant(personal_end_type="At", ends_at=NOW - timedelta(days=2),
                                   completed_retention_type="Days", completed_retention_days=2)]
