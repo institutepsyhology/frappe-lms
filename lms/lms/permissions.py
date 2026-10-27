@@ -314,6 +314,48 @@ def _protected_assignment_placements(assignment):
 	return [lesson for lesson in lessons if assignment_in_lesson(assignment, get_editorjs_blocks(lesson.content))]
 
 
+def _protected_quiz_placements(quiz):
+	from lms.lms.individual_access import protected_courses, quiz_in_lesson
+	from lms.lms.utils import get_editorjs_blocks
+	from lms.md import find_macros
+
+	courses = protected_courses()
+	if not courses:
+		return []
+	lessons = frappe.db.get_all("Course Lesson", filters={"course": ("in", list(courses))},
+		fields=["name", "course", "content", "body", "quiz_id"])
+	return [row for row in lessons if row.quiz_id == quiz or quiz_in_lesson(quiz, get_editorjs_blocks(row.content))
+		or any(name == "Quiz" and value == quiz for name, value in find_macros(row.body or ""))]
+
+
+def quiz_has_permission(doc, ptype="read", user=None):
+	"""Preserve existing authoring rules and restrict protected quiz placements."""
+	from lms.lms.individual_access import policy_applies
+
+	user = user or frappe.session.user
+	if not has_authored_content_permission(doc, ptype, user):
+		return False
+	if doc is None or ptype is None or doc.is_new():
+		return True
+	course = frappe.db.get_value("LMS Quiz", doc.name, "course")
+	if not policy_applies(course) and not _protected_quiz_placements(doc.name):
+		return True
+	if ptype in COURSE_READ_PTYPES:
+		return can_access_quiz(doc.name, user=user)
+	return True
+
+
+def quiz_query_conditions(user=None):
+	from lms.lms.individual_access import protected_courses
+
+	user = user or frappe.session.user
+	if not protected_courses() or is_site_administrator(user) or "Moderator" in frappe.get_roles(user):
+		return ""
+	quizzes = frappe.db.get_all("LMS Quiz", pluck="name")
+	allowed = [name for name in quizzes if quiz_has_permission(frappe.get_doc("LMS Quiz", name), user=user)]
+	return "`tabLMS Quiz`.name in (" + ", ".join(frappe.db.escape(name) for name in allowed) + ")" if allowed else "1 = 0"
+
+
 def assignment_has_permission(doc, ptype="read", user=None):
 	"""Narrow assignment reads for protected placements; DocPerm still applies."""
 	from lms.lms.individual_access import policy_applies
@@ -417,6 +459,8 @@ def can_access_quiz(quiz: str, *, user: str | None = None) -> bool:
 		for row in frappe.get_all("Course Lesson", filters={"quiz_id": quiz}, fields=["course", "name"]):
 			if row.course:
 				placements.setdefault(row.course, set()).add(row.name)
+		for row in _protected_quiz_placements(quiz):
+			placements.setdefault(row.course, set()).add(row.name)
 		for course, lessons in placements.items():
 			if can_modify_course(course):
 				return True

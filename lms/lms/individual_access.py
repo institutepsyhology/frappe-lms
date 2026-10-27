@@ -55,6 +55,19 @@ def assignment_in_lesson(assignment, blocks):
 	)
 
 
+def quiz_in_lesson(quiz, blocks):
+	for block in blocks:
+		if not isinstance(block, dict) or not isinstance(block.get("data"), dict):
+			continue
+		data = block["data"]
+		if block.get("type") == "quiz" and data.get("quiz") == quiz:
+			return True
+		if block.get("type") == "upload" and isinstance(data.get("quizzes"), list):
+			if any(isinstance(item, dict) and item.get("quiz") == quiz for item in data["quizzes"]):
+				return True
+	return False
+
+
 def schedule_opening(rule, starts_at):
 	"""Resolve known opening rules; unknown or inconsistent values fail closed."""
 	if not rule:

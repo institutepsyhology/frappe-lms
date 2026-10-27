@@ -92,6 +92,7 @@ after_migrate = [
 
 permission_query_conditions = {
 	"LMS Assignment": "lms.lms.permissions.assignment_query_conditions",
+	"LMS Quiz": "lms.lms.permissions.quiz_query_conditions",
 	"LMS Course": "lms.lms.permissions.course_query_conditions",
 	"Course Chapter": "lms.lms.permissions.chapter_query_conditions",
 	"LMS Course Progress": "lms.lms.permissions.course_record_query_conditions",
@@ -119,7 +120,7 @@ has_permission = {
 	"Course Lesson": "lms.lms.doctype.course_lesson.course_lesson.has_permission",
 	"LMS Certificate Evaluation": "lms.lms.doctype.lms_certificate_evaluation.lms_certificate_evaluation.has_permission",
 	"File": "lms.lms.permissions.file_has_permission",
-	"LMS Quiz": "lms.lms.permissions.has_authored_content_permission",
+	"LMS Quiz": "lms.lms.permissions.quiz_has_permission",
 	"LMS Programming Exercise": "lms.lms.permissions.has_authored_content_permission",
 	"LMS Question": "lms.lms.permissions.has_authored_content_permission",
 }

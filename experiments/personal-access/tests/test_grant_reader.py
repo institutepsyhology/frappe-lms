@@ -160,6 +160,14 @@ class GrantReaderTests(unittest.TestCase):
         self.assertFalse(self.module.assignment_in_lesson("assignment-b", blocks))
         self.assertFalse(self.module.assignment_in_lesson("assignment", blocks))
 
+    def test_quiz_reference_in_lesson_and_video_is_matched_exactly(self):
+        blocks = [{"type": "quiz", "data": {"quiz": "quiz-a"}},
+                  {"type": "upload", "data": {"quizzes": [{"quiz": "quiz-b"}, None]}},
+                  {"type": "text", "data": {"quiz": "quiz-c"}}]
+        self.assertTrue(self.module.quiz_in_lesson("quiz-a", blocks))
+        self.assertTrue(self.module.quiz_in_lesson("quiz-b", blocks))
+        self.assertFalse(self.module.quiz_in_lesson("quiz-c", blocks))
+
     def test_course_schedule_uses_each_student_start_and_allows_personal_override(self):
         self.default_rule = self.row(opening_type="After Start", opens_at=None, delay_days=2)
         self.lesson = self.row(opening_type="Inherit", opens_at=None)

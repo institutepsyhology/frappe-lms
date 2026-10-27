@@ -218,3 +218,13 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		frappe.db.set_value("LMS Access Grant", self.grant.name, {"personal_end_type": "Unknown", "ends_at": None})
 		frappe.set_user(self.student.email)
 		self.assertFalse(can_access_lesson(self.lesson.name))
+
+	def test_quiz_direct_read_requires_access_to_its_protected_lesson(self):
+		quiz = frappe.get_doc({"doctype": "LMS Quiz", "title": "Isolated quiz"}).insert(ignore_permissions=True)
+		content = json.dumps({"blocks": [{"type": "quiz", "data": {"quiz": quiz.name}}]})
+		frappe.db.set_value("Course Lesson", self.lesson.name, "content", content)
+		frappe.set_user(self.other.email)
+		self.assertFalse(frappe.has_permission("LMS Quiz", "read", quiz.name))
+		self.assertNotIn(quiz.name, frappe.get_list("LMS Quiz", pluck="name"))
+		frappe.set_user(self.student.email)
+		self.assertTrue(frappe.has_permission("LMS Quiz", "read", quiz.name))
