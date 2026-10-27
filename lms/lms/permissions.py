@@ -533,7 +533,14 @@ def _lock_state(course: str) -> tuple[set, list, set]:
 	rows = get_ordered_lesson_rows(course)
 	completed = get_completed_lessons(course, rows)
 	names = [row.name for row in rows]
-	return compute_locked_lessons(names, completed), names, completed
+	locked = compute_locked_lessons(names, completed)
+	from lms.lms.individual_access import grant_allows_lesson, policy_applies
+
+	if policy_applies(course):
+		locked = {name for name in locked if not grant_allows_lesson(
+			user=frappe.session.user, lesson=name, require_manual=True
+		)}
+	return locked, names, completed
 
 
 def get_lesson_gate(course: str) -> tuple[set, str | None]:

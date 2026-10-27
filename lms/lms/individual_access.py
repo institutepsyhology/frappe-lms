@@ -136,7 +136,7 @@ def _valid_end(kind, value, now):
 	return now < get_datetime(value)
 
 
-def grant_allows_lesson(*, user, lesson, now=None):
+def grant_allows_lesson(*, user, lesson, now=None, require_manual=False):
 	"""Check a persisted matching grant, failing closed on incomplete records.
 
 	This does not implement access retention, subscriptions, homework-derived
@@ -215,6 +215,8 @@ def grant_allows_lesson(*, user, lesson, now=None):
 					continue
 		if row.manual_open == 1:
 			return True
+		if require_manual:
+			continue
 		rule = row
 		if row.opening_type == "Inherit":
 			policy = frappe.db.get_value("LMS Access Policy", {"course": course, "enabled": 1}, "name")

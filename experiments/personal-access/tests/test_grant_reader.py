@@ -111,6 +111,16 @@ class GrantReaderTests(unittest.TestCase):
         self.lesson = None
         self.assertFalse(self.check())
 
+    def test_manual_override_check_never_uses_a_normal_open_grant(self):
+        self.assertFalse(self.module.grant_allows_lesson(user="student-a", lesson="lesson-a", now=NOW,
+                                                        require_manual=True))
+        self.lesson.manual_open = 1
+        self.assertTrue(self.module.grant_allows_lesson(user="student-a", lesson="lesson-a", now=NOW,
+                                                       require_manual=True))
+        self.grants = [self.grant(status="Frozen")]
+        self.assertFalse(self.module.grant_allows_lesson(user="student-a", lesson="lesson-a", now=NOW,
+                                                        require_manual=True))
+
     def test_any_valid_grant_is_sufficient(self):
         self.grants = [self.grant(personal_end_type="Unknown"), self.grant()]
         self.assertTrue(self.check())

@@ -228,3 +228,18 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		self.assertNotIn(quiz.name, frappe.get_list("LMS Quiz", pluck="name"))
 		frappe.set_user(self.student.email)
 		self.assertTrue(frappe.has_permission("LMS Quiz", "read", quiz.name))
+
+	def test_manual_override_bypasses_sequence_only_for_the_selected_student(self):
+		second = self._create_lesson("Second isolated lesson", self.chapter.name, self.course.name)
+		frappe.get_doc({"doctype": "Lesson Reference", "lesson": second.name, "parent": self.chapter.name,
+			"parenttype": "Course Chapter", "parentfield": "lessons", "idx": 2}).insert(ignore_permissions=True)
+		frappe.db.set_value("LMS Course", self.course.name, "enforce_lesson_completion", 1)
+		grant = frappe.get_doc("LMS Access Grant", self.grant.name)
+		grant.append("lessons", {"lesson": second.name, "opening_type": "Unknown", "manual_open": 1})
+		grant.save(ignore_permissions=True)
+		frappe.set_user(self.student.email)
+		payload = get_lesson(self.course.name, 1, 2)
+		self.assertFalse(payload.get("locked"))
+		self.assertFalse(payload.get("no_preview"))
+		frappe.set_user(self.other.email)
+		self.assertFalse(can_access_lesson(second.name))
