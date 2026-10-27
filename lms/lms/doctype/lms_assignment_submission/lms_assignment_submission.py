@@ -15,12 +15,38 @@ from lms.lms.utils import PRIVILEGED_ROLES, get_lms_route
 class LMSAssignmentSubmission(Document):
 	def validate(self):
 		self.enforce_member_ownership()
+		self.enforce_lesson_access()
 		self.enforce_grading_permission()
 		self.sanitize_rich_text_fields()
 		self.validate_schedule_window()
 		self.validate_duplicates()
 		self.validate_url()
 		self.validate_status()
+
+	def enforce_lesson_access(self):
+		"""Check the stored assignment's course, not a client-submitted course."""
+		if PRIVILEGED_ROLES & set(frappe.get_roles()):
+			return
+		from lms.lms.individual_access import assignment_in_lesson, policy_applies
+		from lms.lms.permissions import _protected_assignment_placements, can_access_lesson
+		from lms.lms.utils import get_editorjs_blocks
+
+		previous = None if self.is_new() else self.get_doc_before_save()
+		for record in (previous, self):
+			if not record or not record.assignment:
+				continue
+			course = frappe.db.get_value("LMS Assignment", record.assignment, "course")
+			placements = _protected_assignment_placements(record.assignment)
+			if not policy_applies(course) and not placements:
+				continue
+			lesson = frappe.db.get_value("Course Lesson", record.lesson, ["course", "content"], as_dict=True) if record.lesson else None
+			if (
+				not lesson
+				or not any(item.name == record.lesson for item in placements)
+				or not assignment_in_lesson(record.assignment, get_editorjs_blocks(lesson.content))
+				or not can_access_lesson(record.lesson)
+			):
+				frappe.throw(_("This assignment is not available to you."), frappe.PermissionError)
 
 	def sanitize_rich_text_fields(self):
 		"""Drop form controls the framework's allowlist keeps: `comments` is mailed as

@@ -300,6 +300,55 @@ def can_access_lesson(lesson: str, *, instructor_only: bool = False, user: str |
 	return is_instructor if instructor_only else can_access
 
 
+def _protected_assignment_placements(assignment):
+	"""Find real placements, including assignments with no course field."""
+	from lms.lms.individual_access import assignment_in_lesson, protected_courses
+	from lms.lms.utils import get_editorjs_blocks
+
+	courses = protected_courses()
+	if not courses:
+		return []
+	lessons = frappe.db.get_all(
+		"Course Lesson", filters={"course": ("in", list(courses))}, fields=["name", "course", "content"]
+	)
+	return [lesson for lesson in lessons if assignment_in_lesson(assignment, get_editorjs_blocks(lesson.content))]
+
+
+def assignment_has_permission(doc, ptype="read", user=None):
+	"""Narrow assignment reads for protected placements; DocPerm still applies."""
+	from lms.lms.individual_access import policy_applies
+
+	user = user or frappe.session.user
+	if not has_authored_content_permission(doc, ptype, user):
+		return False
+	if doc is None or ptype is None:
+		return True
+	course = doc.get("course") if doc.is_new() else frappe.db.get_value("LMS Assignment", doc.name, "course")
+	placements = [] if doc.is_new() else _protected_assignment_placements(doc.name)
+	if not policy_applies(course) and not placements:
+		return True
+	if course and can_author_course(course, user=user):
+		return True
+	if any(can_author_course(lesson.course, user=user) for lesson in placements):
+		return True
+	if ptype not in COURSE_READ_PTYPES or doc.is_new():
+		return False
+	return any(can_access_lesson(lesson.name, user=user) for lesson in placements)
+
+
+def assignment_query_conditions(user=None):
+	"""Filter even assignments whose protected lesson has no course link."""
+	from lms.lms.individual_access import protected_courses
+
+	courses = protected_courses()
+	user = user or frappe.session.user
+	if not courses or is_site_administrator(user) or "Moderator" in frappe.get_roles(user):
+		return ""
+	assignments = frappe.db.get_all("LMS Assignment", pluck="name")
+	allowed = [name for name in assignments if assignment_has_permission(frappe.get_doc("LMS Assignment", name), user=user)]
+	return "`tabLMS Assignment`.name in (" + ", ".join(frappe.db.escape(name) for name in allowed) + ")" if allowed else "1 = 0"
+
+
 def courses_authored_by(user: str, courses) -> set[str]:
 	"""The subset of `courses` that `user` may author (a moderator authors every one).
 
@@ -498,6 +547,18 @@ def file_has_permission(doc, ptype="read", user=None):
 	orphaned instructor file.
 	"""
 	user = user or frappe.session.user
+	from lms.lms.individual_access import policy_applies, protected_courses
+
+	if protected_courses() and doc.get("is_private") and doc.get("file_url"):
+		from lms.lms.doctype.course_lesson.course_lesson import (
+			_references_vouched_by_owner,
+			_resolve_lesson_references,
+		)
+
+		references = _references_vouched_by_owner(_resolve_lesson_references(doc.file_url), doc.owner)
+		if any(policy_applies(frappe.db.get_value("Course Lesson", lesson, "course")) for lesson, _ in references):
+			if not any(can_access_lesson(lesson, instructor_only=only, user=user) for lesson, only in references):
+				return False
 
 	if doc.attached_to_doctype != "Course Lesson":
 		return True

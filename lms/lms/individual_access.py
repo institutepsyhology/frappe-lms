@@ -10,9 +10,13 @@ import frappe
 from frappe.utils import get_datetime, now_datetime
 
 
+def protected_courses():
+	"""Release barrier: return no courses until integration is verified."""
+	return ()
+
+
 def policy_applies(course):
-	"""Release barrier: no course can opt in until every access route is covered."""
-	return False
+	return course in protected_courses()
 
 
 def restrict_member_lesson(*, course, lesson, user, enrolled):
@@ -34,6 +38,17 @@ def mask_inaccessible_outline(outline, can_access):
 				lesson.quiz_id = None
 				lesson.question = None
 	return outline
+
+
+def assignment_in_lesson(assignment, blocks):
+	"""A submitted lesson is valid only if it actually contains this assignment."""
+	return any(
+		isinstance(block, dict)
+		and block.get("type") == "assignment"
+		and isinstance(block.get("data"), dict)
+		and block["data"].get("assignment") == assignment
+		for block in blocks
+	)
 
 
 def _valid_end(kind, value, now):

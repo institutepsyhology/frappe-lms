@@ -163,7 +163,22 @@ def get_permission_query_conditions(user=None):
 		)
 
 	joined = " or ".join(conditions)
-	return f"({joined})"
+	from lms.lms.individual_access import protected_courses
+
+	courses = protected_courses()
+	if not courses:
+		return f"({joined})"
+	protected = ", ".join(frappe.db.escape(course) for course in courses)
+	candidates = frappe.db.get_all("Course Lesson", filters={"course": ("in", list(courses))}, pluck="name")
+	allowed = [name for name in candidates if can_access_lesson(name, user=user)]
+	allowed_clause = (
+		"`tabCourse Lesson`.name in (" + ", ".join(frappe.db.escape(name) for name in allowed) + ")"
+		if allowed else "1 = 0"
+	)
+	return f"""({joined}) and (`tabCourse Lesson`.course not in ({protected})
+		or `tabCourse Lesson`.course in (select parent from `tabCourse Instructor`
+			where instructor = {escaped} and parenttype = 'LMS Course')
+		or {allowed_clause})"""
 
 
 # Lesson content fields a student may reach vs. instructor-only fields (gated harder).

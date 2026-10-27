@@ -128,6 +128,14 @@ class GrantReaderTests(unittest.TestCase):
         self.assertIsNone(second.quiz_id)
         self.assertIsNone(second.question)
 
+    def test_assignment_reference_must_be_exact_and_in_assignment_block(self):
+        blocks = [{"type": "assignment", "data": {"assignment": "assignment-a"}},
+                  {"type": "text", "data": {"assignment": "assignment-b"}},
+                  {"type": "assignment", "data": None}]
+        self.assertTrue(self.module.assignment_in_lesson("assignment-a", blocks))
+        self.assertFalse(self.module.assignment_in_lesson("assignment-b", blocks))
+        self.assertFalse(self.module.assignment_in_lesson("assignment", blocks))
+
 
 if __name__ == "__main__":
     unittest.main()
