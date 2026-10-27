@@ -16,7 +16,7 @@ import subprocess
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[3]
 BASE = Path("/opt/company-lms")
 OLD = "sha256:d7ee1478951488710ff2c577f2e5c3d199a241a84836272e2896abbe1cf5ae99"
 BASE_TAG = "company-lms:video-choice-2.64.0-20261026-r2"
