@@ -340,8 +340,12 @@ def quiz_has_permission(doc, ptype="read", user=None):
 	course = frappe.db.get_value("LMS Quiz", doc.name, "course")
 	if not policy_applies(course) and not _protected_quiz_placements(doc.name):
 		return True
-	if ptype in COURSE_READ_PTYPES:
+	if ptype in (*COURSE_READ_PTYPES, "export", "email", "report"):
 		return can_access_quiz(doc.name, user=user)
+	if ptype == "share":
+		return bool(course and can_author_course(course, user=user)) or any(
+			can_author_course(row.course, user=user) for row in _protected_quiz_placements(doc.name)
+		)
 	return True
 
 

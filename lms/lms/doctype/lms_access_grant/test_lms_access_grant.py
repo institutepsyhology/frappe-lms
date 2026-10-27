@@ -225,9 +225,11 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		frappe.db.set_value("Course Lesson", self.lesson.name, "content", content)
 		frappe.set_user(self.other.email)
 		self.assertFalse(frappe.has_permission("LMS Quiz", "read", quiz.name))
+		self.assertFalse(frappe.has_permission("LMS Quiz", "export", quiz.name))
 		self.assertNotIn(quiz.name, frappe.get_list("LMS Quiz", pluck="name"))
 		frappe.set_user(self.student.email)
 		self.assertTrue(frappe.has_permission("LMS Quiz", "read", quiz.name))
+		self.assertFalse(frappe.has_permission("LMS Quiz", "share", quiz.name))
 
 	def test_manual_override_bypasses_sequence_only_for_the_selected_student(self):
 		second = self._create_lesson("Second isolated lesson", self.chapter.name, self.course.name)
