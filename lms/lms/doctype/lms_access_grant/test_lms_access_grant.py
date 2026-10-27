@@ -201,3 +201,20 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		self.assertEqual(grant.personal_end_type, "At")
 		self.assertGreater(grant.ends_at, add_to_date(now_datetime(), days=5))
 		self.assertEqual(grant.course_end_type, "Unlimited")
+
+	def test_completed_lesson_retention_requires_actual_progress_and_known_expiry(self):
+		frappe.get_doc({"doctype": "LMS Access Policy", "course": self.course.name, "enabled": 1,
+			"completed_retention_type": "Days", "completed_retention_days": 2}).insert(ignore_permissions=True)
+		frappe.db.set_value("LMS Access Grant", self.grant.name,
+			{"personal_end_type": "At", "ends_at": add_to_date(now_datetime(), days=-1)})
+		frappe.set_user(self.student.email)
+		self.assertFalse(can_access_lesson(self.lesson.name))
+		frappe.set_user("Administrator")
+		progress = self._create_progress(self.student.email, self.course.name, self.lesson.name)
+		frappe.db.set_value("LMS Course Progress", progress.name, "status", "Complete")
+		frappe.set_user(self.student.email)
+		self.assertTrue(can_access_lesson(self.lesson.name))
+		frappe.set_user("Administrator")
+		frappe.db.set_value("LMS Access Grant", self.grant.name, {"personal_end_type": "Unknown", "ends_at": None})
+		frappe.set_user(self.student.email)
+		self.assertFalse(can_access_lesson(self.lesson.name))

@@ -19,8 +19,10 @@ class GrantReaderTests(unittest.TestCase):
         self.lesson = self.row()
         self.default_rule = None
         self.default_end = None
+        self.completed = False
         self.course = "course-a"
-        db = types.SimpleNamespace(get_value=self.get_value, get_all=self.get_all)
+        db = types.SimpleNamespace(get_value=self.get_value, get_all=self.get_all,
+                                   exists=lambda doctype, filters: self.completed if doctype == "LMS Course Progress" else False)
         frappe = types.ModuleType("frappe")
         frappe.db = db
         frappe.conf = {}
@@ -42,7 +44,8 @@ class GrantReaderTests(unittest.TestCase):
     def grant(**changes):
         value = dict(name="grant-a", member="student-a", course="course-a", status="Active",
                      starts_at=NOW - timedelta(days=1), personal_end_type="Unlimited", ends_at=None, personal_end_days=0,
-                     course_end_type="Unlimited", course_ends_at=None, ignore_course_end=0)
+                     course_end_type="Unlimited", course_ends_at=None, ignore_course_end=0,
+                     completed_retention_type="None", completed_retention_days=0)
         value.update(changes)
         return types.SimpleNamespace(**value)
 
@@ -184,7 +187,7 @@ class GrantReaderTests(unittest.TestCase):
     def test_inherited_duration_and_global_end_can_be_personally_overridden(self):
         self.default_end = types.SimpleNamespace(default_personal_end_type="After Start",
             default_personal_end_at=None, default_personal_end_days=2,
-            global_end_type="At", global_end_at=NOW)
+            global_end_type="At", global_end_at=NOW, completed_retention_type="None", completed_retention_days=0)
         self.grants = [self.grant(personal_end_type="Inherit", course_end_type="Inherit")]
         self.assertFalse(self.check())
         self.grants = [self.grant(personal_end_type="Inherit", course_end_type="Inherit", ignore_course_end=1)]
@@ -200,6 +203,18 @@ class GrantReaderTests(unittest.TestCase):
         self.assertFalse(self.check(user="student-b"))
         self.lesson.retention_end_type = "At"
         self.lesson.retention_ends_at = NOW
+        self.assertFalse(self.check())
+
+    def test_completed_retention_requires_explicit_rule_and_completed_progress(self):
+        self.grants = [self.grant(personal_end_type="At", ends_at=NOW - timedelta(days=1),
+                                  completed_retention_type="Days", completed_retention_days=2)]
+        self.assertFalse(self.check())
+        self.completed = True
+        self.assertTrue(self.check())
+        self.grants = [self.grant(personal_end_type="At", ends_at=NOW - timedelta(days=2),
+                                  completed_retention_type="Days", completed_retention_days=2)]
+        self.assertFalse(self.check())
+        self.grants = [self.grant(personal_end_type="Unknown", completed_retention_type="Unlimited")]
         self.assertFalse(self.check())
 
 

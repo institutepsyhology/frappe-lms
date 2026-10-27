@@ -108,6 +108,13 @@ def resolve_end(kind, value, days, starts_at):
 	return "Unknown", None
 
 
+def validate_retention(kind, days, *, inherit_allowed=False):
+	valid = {"None", "Unlimited", "Days"} | ({"Inherit"} if inherit_allowed else set())
+	days = days or 0
+	if kind not in valid or type(days) is not int or (kind == "Days" and days <= 0) or (kind != "Days" and days != 0):
+		frappe.throw("The completed-lesson retention rule and duration do not match.")
+
+
 def _valid_end(kind, value, now):
 	if kind == "Unlimited":
 		return not value
@@ -135,7 +142,7 @@ def grant_allows_lesson(*, user, lesson, now=None):
 		"LMS Access Grant",
 		filters={"member": user, "course": course, "status": ("in", ["Active", "Limited"])},
 		fields=["name", "status", "starts_at", "personal_end_type", "ends_at", "personal_end_days", "course_end_type",
-			"course_ends_at", "ignore_course_end"],
+			"course_ends_at", "ignore_course_end", "completed_retention_type", "completed_retention_days"],
 	)
 	for grant in grants:
 		if not grant.starts_at or now < get_datetime(grant.starts_at):
@@ -154,11 +161,12 @@ def grant_allows_lesson(*, user, lesson, now=None):
 				continue
 		else:
 			policy = None
-			if grant.personal_end_type == "Inherit" or grant.course_end_type == "Inherit":
+			if (grant.personal_end_type == "Inherit" or grant.course_end_type == "Inherit"
+					or grant.completed_retention_type == "Inherit"):
 				policy = frappe.db.get_value(
 					"LMS Access Policy", {"course": course, "enabled": 1},
 					["default_personal_end_type", "default_personal_end_at", "default_personal_end_days",
-						"global_end_type", "global_end_at"], as_dict=True,
+						"global_end_type", "global_end_at", "completed_retention_type", "completed_retention_days"], as_dict=True,
 				)
 			personal_type, personal_at, personal_days = grant.personal_end_type, grant.ends_at, grant.personal_end_days
 			if personal_type == "Inherit":
@@ -167,15 +175,31 @@ def grant_allows_lesson(*, user, lesson, now=None):
 					if policy else ("Unknown", None, 0)
 				)
 			personal_type, personal_at = resolve_end(personal_type, personal_at, personal_days, grant.starts_at)
-			if not _valid_end(personal_type, personal_at, now):
-				continue
 			if grant.ignore_course_end not in (0, 1, False, True):
 				continue
 			course_type, course_at = grant.course_end_type, grant.course_ends_at
 			if course_type == "Inherit":
 				course_type, course_at = (policy.global_end_type, policy.global_end_at) if policy else ("Unknown", None)
-			if not grant.ignore_course_end and not _valid_end(course_type, course_at, now):
-				continue
+			bounds = [(personal_type, personal_at)]
+			if not grant.ignore_course_end:
+				bounds.append((course_type, course_at))
+			invalid = [(kind, at) for kind, at in bounds if not _valid_end(kind, at, now)]
+			if invalid:
+				# A missing/invalid bound is not an expired bound and cannot unlock retention.
+				if any(kind != "At" or not at or now < get_datetime(at) for kind, at in invalid):
+					continue
+				retention, days = grant.completed_retention_type, grant.completed_retention_days
+				if retention == "Inherit":
+					retention, days = ((policy.completed_retention_type, policy.completed_retention_days)
+						if policy else ("None", 0))
+				if retention == "Days":
+					if type(days) is not int or days <= 0 or now >= min(get_datetime(at) for _, at in invalid) + timedelta(days=days):
+						continue
+				elif retention != "Unlimited" or days:
+					continue
+				if not frappe.db.exists("LMS Course Progress", {"member": user, "course": course,
+						"lesson": lesson, "status": "Complete"}):
+					continue
 		if row.manual_open == 1:
 			return True
 		rule = row
