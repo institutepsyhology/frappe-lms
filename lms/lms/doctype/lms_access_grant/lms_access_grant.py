@@ -18,3 +18,9 @@ class LMSAccessGrant(Document):
 		from lms.lms.individual_access import validate_schedule_rows
 
 		validate_schedule_rows(self.course, self.lessons, inherit_allowed=True)
+		for row in self.lessons or []:
+			if row.retain_when_limited:
+				if row.retention_end_type not in ("Unlimited", "At") or (row.retention_end_type == "At") != bool(row.retention_ends_at):
+					frappe.throw(_("Choose a valid end for retained lesson access."))
+			elif row.retention_end_type != "Unknown" or row.retention_ends_at:
+				frappe.throw(_("A non-retained lesson cannot have a retained-access end."))

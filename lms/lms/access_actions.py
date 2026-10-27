@@ -59,3 +59,33 @@ def resume_grant(name, extend_personal_end):
 	grant.frozen_at = None
 	grant.save()
 	return {"name": grant.name, "status": grant.status, "personal_end": grant.ends_at}
+
+
+@frappe.whitelist(methods=["POST"])
+def limit_grant(name, retained_lessons, retention_end_type, retention_ends_at=None):
+	"""Close a grant except explicit assigned lessons; never delete learning data."""
+	if isinstance(retained_lessons, str):
+		retained_lessons = frappe.parse_json(retained_lessons)
+	if not isinstance(retained_lessons, list) or any(not isinstance(value, str) or not value for value in retained_lessons):
+		frappe.throw(_("Explicitly select the lessons to keep."), frappe.ValidationError)
+	selected = set(retained_lessons)
+	if len(selected) != len(retained_lessons):
+		frappe.throw(_("The retained lesson list contains duplicates."), frappe.ValidationError)
+	if retention_end_type not in ("Unlimited", "At") or (retention_end_type == "At") != bool(retention_ends_at):
+		frappe.throw(_("Select an unlimited or a fixed retained-access end."), frappe.ValidationError)
+	if retention_ends_at and get_datetime(retention_ends_at) <= now_datetime():
+		frappe.throw(_("Retained access must end in the future."), frappe.ValidationError)
+	grant = _admin_grant(name)
+	if grant.status not in ("Active", "Frozen"):
+		frappe.throw(_("Only active or frozen access can be limited."), frappe.ValidationError)
+	if not selected.issubset({row.lesson for row in grant.lessons}):
+		frappe.throw(_("A retained lesson is not assigned to this grant."), frappe.ValidationError)
+	for row in grant.lessons:
+		keep = row.lesson in selected
+		row.retain_when_limited = int(keep)
+		row.retention_end_type = retention_end_type if keep else "Unknown"
+		row.retention_ends_at = retention_ends_at if keep else None
+	grant.status = "Limited"
+	grant.frozen_at = None
+	grant.save()
+	return {"name": grant.name, "status": grant.status, "retained_count": len(selected)}

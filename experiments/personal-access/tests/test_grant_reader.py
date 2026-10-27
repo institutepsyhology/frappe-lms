@@ -47,7 +47,8 @@ class GrantReaderTests(unittest.TestCase):
 
     @staticmethod
     def row(**changes):
-        value = dict(opening_type="At", opens_at=NOW, delay_days=0, prerequisite_state="Clear", manual_open=0)
+        value = dict(opening_type="At", opens_at=NOW, delay_days=0, prerequisite_state="Clear", manual_open=0,
+                     retain_when_limited=0, retention_end_type="Unknown", retention_ends_at=None)
         value.update(changes)
         return types.SimpleNamespace(**value)
 
@@ -64,7 +65,9 @@ class GrantReaderTests(unittest.TestCase):
 
     def get_all(self, doctype, filters, fields):
         self.assertEqual(doctype, "LMS Access Grant")
-        return [g for g in self.grants if all(getattr(g, key) == value for key, value in filters.items())]
+        return [g for g in self.grants if all(
+            getattr(g, key) in value[1] if isinstance(value, tuple) and value[0] == "in"
+            else getattr(g, key) == value for key, value in filters.items())]
 
     def test_matching_student_course_and_lesson_are_all_required(self):
         self.assertTrue(self.check())
@@ -165,6 +168,16 @@ class GrantReaderTests(unittest.TestCase):
 
     def test_missing_default_schedule_remains_closed(self):
         self.lesson = self.row(opening_type="Inherit", opens_at=None)
+        self.assertFalse(self.check())
+
+    def test_closed_course_keeps_only_explicit_lessons_for_the_selected_student(self):
+        self.grants = [self.grant(status="Limited", ends_at=NOW, personal_end_type="At")]
+        self.assertFalse(self.check())
+        self.lesson = self.row(retain_when_limited=1, retention_end_type="Unlimited")
+        self.assertTrue(self.check())
+        self.assertFalse(self.check(user="student-b"))
+        self.lesson.retention_end_type = "At"
+        self.lesson.retention_ends_at = NOW
         self.assertFalse(self.check())
 
 

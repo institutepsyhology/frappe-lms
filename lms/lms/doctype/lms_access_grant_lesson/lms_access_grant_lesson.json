@@ -4,14 +4,17 @@
  "module": "LMS",
  "istable": 1,
  "editable_grid": 1,
- "field_order": ["lesson", "opening_type", "opens_at", "delay_days", "prerequisite_state", "manual_open"],
+ "field_order": ["lesson", "opening_type", "opens_at", "delay_days", "prerequisite_state", "manual_open", "retain_when_limited", "retention_end_type", "retention_ends_at"],
  "fields": [
   {"fieldname": "lesson", "fieldtype": "Link", "label": "Lesson", "options": "Course Lesson", "reqd": 1, "in_list_view": 1},
   {"fieldname": "opening_type", "fieldtype": "Select", "label": "Opening Rule", "options": "Inherit\nUnknown\nAt\nAfter Start", "default": "Inherit", "reqd": 1},
   {"fieldname": "opens_at", "fieldtype": "Datetime", "label": "Opens At", "in_list_view": 1},
   {"fieldname": "delay_days", "fieldtype": "Int", "label": "Days After Start", "default": "0", "non_negative": 1},
   {"fieldname": "prerequisite_state", "fieldtype": "Select", "label": "Prerequisite State", "options": "Unknown\nClear\nBlocked", "default": "Unknown", "reqd": 1},
-  {"fieldname": "manual_open", "fieldtype": "Check", "label": "Manual Early Opening", "default": "0", "in_list_view": 1}
+  {"fieldname": "manual_open", "fieldtype": "Check", "label": "Manual Early Opening", "default": "0", "in_list_view": 1},
+  {"fieldname": "retain_when_limited", "fieldtype": "Check", "label": "Retain When Course Is Closed", "default": "0"},
+  {"fieldname": "retention_end_type", "fieldtype": "Select", "label": "Retained Access End Type", "options": "Unknown\nUnlimited\nAt", "default": "Unknown", "reqd": 1},
+  {"fieldname": "retention_ends_at", "fieldtype": "Datetime", "label": "Retained Access Ends At"}
  ],
  "permissions": []
 }

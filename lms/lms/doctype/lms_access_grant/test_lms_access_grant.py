@@ -154,3 +154,21 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		self.assertEqual(grant.status, "Active")
 		self.assertGreater(grant.ends_at, add_to_date(end, days=1))
 		self.assertEqual(grant.course_end_type, "Unlimited")
+
+	def test_limiting_access_retains_only_selected_lessons_and_preserves_progress(self):
+		from lms.lms.access_actions import limit_grant
+
+		progress = self._create_progress(self.student.email, self.course.name, self.lesson.name)
+		limit_grant(self.grant.name, [self.lesson.name], "Unlimited")
+		self.assertTrue(frappe.db.exists("LMS Course Progress", progress.name))
+		frappe.set_user(self.student.email)
+		self.assertTrue(can_access_lesson(self.lesson.name))
+		frappe.set_user(self.other.email)
+		self.assertFalse(can_access_lesson(self.lesson.name))
+
+	def test_limiting_access_rejects_unassigned_lesson_without_changing_grant(self):
+		from lms.lms.access_actions import limit_grant
+
+		with self.assertRaises(frappe.ValidationError):
+			limit_grant(self.grant.name, ["unknown-lesson"], "Unlimited")
+		self.assertEqual(frappe.db.get_value("LMS Access Grant", self.grant.name, "status"), "Active")

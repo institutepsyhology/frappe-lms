@@ -111,27 +111,32 @@ def grant_allows_lesson(*, user, lesson, now=None):
 	now = get_datetime(now if now is not None else now_datetime())
 	grants = frappe.db.get_all(
 		"LMS Access Grant",
-		filters={"member": user, "course": course, "status": "Active"},
-		fields=["name", "starts_at", "personal_end_type", "ends_at", "course_end_type",
+		filters={"member": user, "course": course, "status": ("in", ["Active", "Limited"])},
+		fields=["name", "status", "starts_at", "personal_end_type", "ends_at", "course_end_type",
 			"course_ends_at", "ignore_course_end"],
 	)
 	for grant in grants:
 		if not grant.starts_at or now < get_datetime(grant.starts_at):
 			continue
-		if not _valid_end(grant.personal_end_type, grant.ends_at, now):
-			continue
-		if grant.ignore_course_end not in (0, 1, False, True):
-			continue
-		if not grant.ignore_course_end and not _valid_end(grant.course_end_type, grant.course_ends_at, now):
-			continue
 		row = frappe.db.get_value(
 			"LMS Access Grant Lesson",
 			{"parent": grant.name, "parenttype": "LMS Access Grant", "parentfield": "lessons", "lesson": lesson},
-			["opening_type", "opens_at", "delay_days", "prerequisite_state", "manual_open"],
+			["opening_type", "opens_at", "delay_days", "prerequisite_state", "manual_open",
+				"retain_when_limited", "retention_end_type", "retention_ends_at"],
 			as_dict=True,
 		)
 		if not row:
 			continue
+		if grant.status == "Limited":
+			if row.retain_when_limited != 1 or not _valid_end(row.retention_end_type, row.retention_ends_at, now):
+				continue
+		else:
+			if not _valid_end(grant.personal_end_type, grant.ends_at, now):
+				continue
+			if grant.ignore_course_end not in (0, 1, False, True):
+				continue
+			if not grant.ignore_course_end and not _valid_end(grant.course_end_type, grant.course_ends_at, now):
+				continue
 		if row.manual_open == 1:
 			return True
 		rule = row

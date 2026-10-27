@@ -49,7 +49,8 @@ class GrantDoctypeTests(unittest.TestCase):
         values = {"course": "course-a", "status": "Active", "frozen_at": None, "starts_at": "2026-10-27 10:00:00",
                   "ends_at": "2026-10-28 10:00:00", "personal_end_type": "At",
                   "course_ends_at": None, "course_end_type": "Unknown",
-                  "lessons": [types.SimpleNamespace(lesson="lesson-a", opening_type="Inherit", opens_at=None, delay_days=0)]}
+                  "lessons": [types.SimpleNamespace(lesson="lesson-a", opening_type="Inherit", opens_at=None, delay_days=0,
+                                                    retain_when_limited=0, retention_end_type="Unknown", retention_ends_at=None)]}
         values.update(changes)
         for key, value in values.items():
             setattr(doc, key, value)
@@ -59,7 +60,8 @@ class GrantDoctypeTests(unittest.TestCase):
         self.grant().validate()
         for lessons in (["lesson-b"], ["missing"], ["lesson-a", "lesson-a"]):
             with self.subTest(lessons=lessons), self.assertRaises(ValueError):
-                self.grant(lessons=[types.SimpleNamespace(lesson=x, opening_type="Inherit", opens_at=None, delay_days=0) for x in lessons]).validate()
+                self.grant(lessons=[types.SimpleNamespace(lesson=x, opening_type="Inherit", opens_at=None, delay_days=0,
+                                  retain_when_limited=0, retention_end_type="Unknown", retention_ends_at=None) for x in lessons]).validate()
 
     def test_end_before_start_is_rejected(self):
         for changes in ({"ends_at": "2026-10-27 10:00:00"},):
