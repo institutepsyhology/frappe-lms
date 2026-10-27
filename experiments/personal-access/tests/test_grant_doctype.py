@@ -18,6 +18,7 @@ class GrantDoctypeTests(unittest.TestCase):
     def setUp(self):
         self.courses = {"lesson-a": "course-a", "lesson-b": "course-b"}
         frappe = types.ModuleType("frappe")
+        frappe.conf = {}
         frappe._ = lambda value: value
         frappe.throw = lambda value: (_ for _ in ()).throw(ValueError(value))
         frappe.db = types.SimpleNamespace(get_value=lambda doctype, name, field: self.courses.get(name))
@@ -25,11 +26,18 @@ class GrantDoctypeTests(unittest.TestCase):
         document = types.ModuleType("frappe.model.document")
         document.Document = type("Document", (), {})
         utils = types.ModuleType("frappe.utils")
-        utils.get_datetime = lambda value: datetime.fromisoformat(value)
+        utils.get_datetime = lambda value: value if isinstance(value, datetime) else datetime.fromisoformat(value)
+        utils.now_datetime = datetime.now
         self.modules = patch.dict(sys.modules, {"frappe": frappe, "frappe.model": model,
                                                "frappe.model.document": document, "frappe.utils": utils})
         self.modules.start()
         self.addCleanup(self.modules.stop)
+        access_spec = importlib.util.spec_from_file_location("lms.lms.individual_access", ROOT / "lms/lms/individual_access.py")
+        access = importlib.util.module_from_spec(access_spec)
+        access_spec.loader.exec_module(access)
+        self.access_patch = patch.dict(sys.modules, {"lms.lms.individual_access": access})
+        self.access_patch.start()
+        self.addCleanup(self.access_patch.stop)
         path = DOCTYPE / "lms_access_grant" / "lms_access_grant.py"
         spec = importlib.util.spec_from_file_location("test_access_grant_controller", path)
         module = importlib.util.module_from_spec(spec)
@@ -41,7 +49,7 @@ class GrantDoctypeTests(unittest.TestCase):
         values = {"course": "course-a", "starts_at": "2026-10-27 10:00:00",
                   "ends_at": "2026-10-28 10:00:00", "personal_end_type": "At",
                   "course_ends_at": None, "course_end_type": "Unknown",
-                  "lessons": [types.SimpleNamespace(lesson="lesson-a")]}
+                  "lessons": [types.SimpleNamespace(lesson="lesson-a", opening_type="Inherit", opens_at=None, delay_days=0)]}
         values.update(changes)
         for key, value in values.items():
             setattr(doc, key, value)
@@ -51,7 +59,7 @@ class GrantDoctypeTests(unittest.TestCase):
         self.grant().validate()
         for lessons in (["lesson-b"], ["missing"], ["lesson-a", "lesson-a"]):
             with self.subTest(lessons=lessons), self.assertRaises(ValueError):
-                self.grant(lessons=[types.SimpleNamespace(lesson=x) for x in lessons]).validate()
+                self.grant(lessons=[types.SimpleNamespace(lesson=x, opening_type="Inherit", opens_at=None, delay_days=0) for x in lessons]).validate()
 
     def test_end_before_start_is_rejected(self):
         for changes in ({"ends_at": "2026-10-27 10:00:00"},):

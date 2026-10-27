@@ -17,6 +17,7 @@ class GrantReaderTests(unittest.TestCase):
     def setUp(self):
         self.grants = [self.grant()]
         self.lesson = self.row()
+        self.default_rule = None
         self.course = "course-a"
         db = types.SimpleNamespace(get_value=self.get_value, get_all=self.get_all)
         frappe = types.ModuleType("frappe")
@@ -46,7 +47,7 @@ class GrantReaderTests(unittest.TestCase):
 
     @staticmethod
     def row(**changes):
-        value = dict(opens_at=NOW, prerequisite_state="Clear", manual_open=0)
+        value = dict(opening_type="At", opens_at=NOW, delay_days=0, prerequisite_state="Clear", manual_open=0)
         value.update(changes)
         return types.SimpleNamespace(**value)
 
@@ -55,6 +56,10 @@ class GrantReaderTests(unittest.TestCase):
             return self.course if key == "lesson-a" else None
         if doctype == "LMS Access Grant Lesson":
             return self.lesson if key["parent"] == "grant-a" and key["lesson"] == "lesson-a" else None
+        if doctype == "LMS Access Policy":
+            return "policy-a" if self.default_rule else None
+        if doctype == "LMS Access Policy Lesson":
+            return self.default_rule if key["parent"] == "policy-a" and key["lesson"] == "lesson-a" else None
         raise AssertionError(doctype)
 
     def get_all(self, doctype, filters, fields):
@@ -145,6 +150,22 @@ class GrantReaderTests(unittest.TestCase):
         self.assertTrue(self.module.assignment_in_lesson("assignment-a", blocks))
         self.assertFalse(self.module.assignment_in_lesson("assignment-b", blocks))
         self.assertFalse(self.module.assignment_in_lesson("assignment", blocks))
+
+    def test_course_schedule_uses_each_student_start_and_allows_personal_override(self):
+        self.default_rule = self.row(opening_type="After Start", opens_at=None, delay_days=2)
+        self.lesson = self.row(opening_type="Inherit", opens_at=None)
+        self.grants = [self.grant(starts_at=NOW - timedelta(days=1))]
+        self.assertFalse(self.check())
+        self.grants = [self.grant(starts_at=NOW - timedelta(days=2))]
+        self.assertTrue(self.check())
+        self.lesson = self.row(opening_type="After Start", opens_at=None, delay_days=3)
+        self.assertFalse(self.check())
+        self.lesson.manual_open = 1
+        self.assertTrue(self.check())
+
+    def test_missing_default_schedule_remains_closed(self):
+        self.lesson = self.row(opening_type="Inherit", opens_at=None)
+        self.assertFalse(self.check())
 
 
 if __name__ == "__main__":

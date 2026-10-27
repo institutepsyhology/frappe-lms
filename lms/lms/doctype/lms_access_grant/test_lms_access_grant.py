@@ -31,7 +31,7 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 			"doctype": "LMS Access Grant", "member": cls.student.email, "course": cls.course.name,
 			"status": "Active", "starts_at": add_to_date(now_datetime(), days=-1),
 			"personal_end_type": "Unlimited", "course_end_type": "Unlimited",
-			"lessons": [{"lesson": cls.lesson.name, "opens_at": add_to_date(now_datetime(), days=-1),
+			"lessons": [{"lesson": cls.lesson.name, "opening_type": "At", "opens_at": add_to_date(now_datetime(), days=-1),
 				"prerequisite_state": "Clear"}],
 		}).insert(ignore_permissions=True)
 
@@ -115,3 +115,23 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 			self.assertNotIn(self.course.name, protected_courses())
 		with patch.dict(frappe.conf, {"individual_access_release_enabled": True}):
 			self.assertIn(self.course.name, protected_courses())
+
+	def test_inherited_schedule_counts_from_personal_start_and_allows_override(self):
+		frappe.get_doc({"doctype": "LMS Access Policy", "course": self.course.name, "enabled": 1,
+			"lessons": [{"lesson": self.lesson.name, "opening_type": "After Start", "delay_days": 2}]}).insert(
+			ignore_permissions=True
+		)
+		frappe.db.set_value("LMS Access Grant Lesson", self.grant.lessons[0].name,
+			{"opening_type": "Inherit", "opens_at": None, "delay_days": 0})
+		frappe.db.set_value("LMS Access Grant", self.grant.name, "starts_at", add_to_date(now_datetime(), days=-1))
+		frappe.set_user(self.student.email)
+		self.assertFalse(can_access_lesson(self.lesson.name))
+		frappe.set_user("Administrator")
+		frappe.db.set_value("LMS Access Grant", self.grant.name, "starts_at", add_to_date(now_datetime(), days=-3))
+		frappe.set_user(self.student.email)
+		self.assertTrue(can_access_lesson(self.lesson.name))
+		frappe.set_user("Administrator")
+		frappe.db.set_value("LMS Access Grant Lesson", self.grant.lessons[0].name,
+			{"opening_type": "After Start", "delay_days": 5})
+		frappe.set_user(self.student.email)
+		self.assertFalse(can_access_lesson(self.lesson.name))

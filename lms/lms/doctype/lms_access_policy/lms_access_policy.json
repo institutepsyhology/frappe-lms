@@ -6,10 +6,11 @@
  "autoname": "hash",
  "track_changes": 1,
  "description": "Per-course opt-in. Effective only when the server release switch is enabled after integration checks.",
- "field_order": ["course", "enabled"],
+ "field_order": ["course", "enabled", "lessons"],
  "fields": [
   {"fieldname": "course", "fieldtype": "Link", "label": "Course", "options": "LMS Course", "reqd": 1, "unique": 1, "in_list_view": 1},
-  {"fieldname": "enabled", "fieldtype": "Check", "label": "Enable Individual Access", "default": "0", "in_list_view": 1}
+  {"fieldname": "enabled", "fieldtype": "Check", "label": "Enable Individual Access", "default": "0", "in_list_view": 1},
+  {"fieldname": "lessons", "fieldtype": "Table", "label": "Default Lesson Schedule", "options": "LMS Access Policy Lesson"}
  ],
  "permissions": [{"role": "System Manager", "read": 1, "write": 1, "create": 1}]
 }

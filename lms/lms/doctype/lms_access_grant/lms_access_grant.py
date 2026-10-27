@@ -13,11 +13,6 @@ class LMSAccessGrant(Document):
 				frappe.throw(_("Choose a valid end type and provide a date only for a fixed end."))
 		if self.starts_at and self.ends_at and get_datetime(self.ends_at) <= get_datetime(self.starts_at):
 			frappe.throw(_("The access end must be later than the start."))
-		seen = set()
-		for row in self.lessons or []:
-			if row.lesson in seen:
-				frappe.throw(_("A lesson cannot appear twice in the same access grant."))
-			seen.add(row.lesson)
-			course = frappe.db.get_value("Course Lesson", row.lesson, "course")
-			if not course or course != self.course:
-				frappe.throw(_("Every lesson must belong to the selected course."))
+		from lms.lms.individual_access import validate_schedule_rows
+
+		validate_schedule_rows(self.course, self.lessons, inherit_allowed=True)

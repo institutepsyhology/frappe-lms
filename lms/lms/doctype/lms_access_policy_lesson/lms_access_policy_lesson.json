@@ -1,0 +1,15 @@
+{
+ "doctype": "DocType",
+ "name": "LMS Access Policy Lesson",
+ "module": "LMS",
+ "istable": 1,
+ "editable_grid": 1,
+ "field_order": ["lesson", "opening_type", "opens_at", "delay_days"],
+ "fields": [
+  {"fieldname": "lesson", "fieldtype": "Link", "label": "Lesson", "options": "Course Lesson", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "opening_type", "fieldtype": "Select", "label": "Opening Rule", "options": "Unknown\nAt\nAfter Start", "default": "Unknown", "reqd": 1, "in_list_view": 1},
+  {"fieldname": "opens_at", "fieldtype": "Datetime", "label": "Opens At"},
+  {"fieldname": "delay_days", "fieldtype": "Int", "label": "Days After Start", "default": "0", "non_negative": 1}
+ ],
+ "permissions": []
+}

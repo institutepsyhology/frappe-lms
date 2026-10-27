@@ -6,6 +6,8 @@ Times are stored and compared in the site's configured time zone, as Frappe
 Datetime fields and now_datetime() use the same site clock.
 """
 
+from datetime import timedelta
+
 import frappe
 from frappe.utils import get_datetime, now_datetime
 
@@ -53,6 +55,37 @@ def assignment_in_lesson(assignment, blocks):
 	)
 
 
+def schedule_opening(rule, starts_at):
+	"""Resolve known opening rules; unknown or inconsistent values fail closed."""
+	if not rule:
+		return None
+	if rule.opening_type == "At":
+		return get_datetime(rule.opens_at) if rule.opens_at and not rule.delay_days else None
+	if rule.opening_type == "After Start":
+		if rule.opens_at or not starts_at or type(rule.delay_days) is not int or rule.delay_days < 0:
+			return None
+		return get_datetime(starts_at) + timedelta(days=rule.delay_days)
+	return None
+
+
+def validate_schedule_rows(course, rows, *, inherit_allowed):
+	"""Reject unrelated, duplicate or contradictory lesson schedules."""
+	seen = set()
+	for row in rows or []:
+		if not row.lesson or row.lesson in seen:
+			frappe.throw("Each lesson must appear at most once in a schedule.")
+		seen.add(row.lesson)
+		if frappe.db.get_value("Course Lesson", row.lesson, "course") != course:
+			frappe.throw("Every lesson must belong to the selected course.")
+		kind = row.opening_type
+		valid_types = {"Unknown", "At", "After Start"} | ({"Inherit"} if inherit_allowed else set())
+		if kind not in valid_types or (kind == "At") != bool(row.opens_at):
+			frappe.throw("The opening rule and opening date do not match.")
+		days = row.delay_days or 0
+		if type(days) is not int or days < 0 or (kind != "After Start" and days != 0):
+			frappe.throw("The opening delay must be a non-negative number of days for a relative rule.")
+
+
 def _valid_end(kind, value, now):
 	if kind == "Unlimited":
 		return not value
@@ -94,13 +127,22 @@ def grant_allows_lesson(*, user, lesson, now=None):
 		row = frappe.db.get_value(
 			"LMS Access Grant Lesson",
 			{"parent": grant.name, "parenttype": "LMS Access Grant", "parentfield": "lessons", "lesson": lesson},
-			["opens_at", "prerequisite_state", "manual_open"],
+			["opening_type", "opens_at", "delay_days", "prerequisite_state", "manual_open"],
 			as_dict=True,
 		)
 		if not row:
 			continue
 		if row.manual_open == 1:
 			return True
-		if row.opens_at and now >= get_datetime(row.opens_at) and row.prerequisite_state == "Clear":
+		rule = row
+		if row.opening_type == "Inherit":
+			policy = frappe.db.get_value("LMS Access Policy", {"course": course, "enabled": 1}, "name")
+			rule = frappe.db.get_value(
+				"LMS Access Policy Lesson",
+				{"parent": policy, "parenttype": "LMS Access Policy", "parentfield": "lessons", "lesson": lesson},
+				["opening_type", "opens_at", "delay_days"], as_dict=True,
+			) if policy else None
+		opening = schedule_opening(rule, grant.starts_at)
+		if opening and now >= opening and row.prerequisite_state == "Clear":
 			return True
 	return False
