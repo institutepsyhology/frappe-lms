@@ -39,6 +39,37 @@ for site in %r:
 print('ACCESS_RELEASE_STATE:'+json.dumps(result))
 ''' % (SITES,)
 
+BACKUP = r'''
+import gzip, hashlib, json, os, sys
+from pathlib import Path
+import frappe
+from frappe.utils.backups import BackupGenerator
+site, stamp = sys.argv[1:]
+frappe.init(site=site); frappe.connect()
+try:
+ if frappe.db.get_single_value('System Settings', 'encrypt_backup'):
+  raise RuntimeError('encrypted backup requires separate verification')
+ base = Path('/home/frappe/frappe-bench/sites') / site / 'private' / 'backups'
+ target = base / ('access-inactive-' + stamp)
+ target.mkdir(mode=0o700)
+ c = frappe.conf
+ backup = BackupGenerator(c.db_name, c.db_user, c.db_password, db_socket=c.db_socket,
+  db_host=c.db_host, db_port=c.db_port, db_type=c.db_type, backup_path=str(target), ignore_conf=True)
+ backup.get_backup(ignore_files=True, force=True)
+ path = Path(backup.backup_path_db)
+ config = Path(backup.backup_path_conf)
+ if path.parent != target or config.parent != target or not path.is_file() or not config.is_file():
+  raise RuntimeError('backup files missing')
+ digest=hashlib.sha256()
+ with path.open('rb') as data:
+  for chunk in iter(lambda: data.read(1048576), b''): digest.update(chunk)
+ with gzip.open(path,'rb') as data:
+  while data.read(1048576): pass
+ print('SAFE_BACKUP:'+json.dumps({'site':site,'bytes':path.stat().st_size,'sha256':digest.hexdigest()}))
+finally:
+ frappe.destroy()
+'''
+
 
 def command(args, timeout=120):
     result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
@@ -90,12 +121,17 @@ def main():
         if not re.fullmatch(r"sha256:[0-9a-f]{64}", image) or image == OLD:
             raise RuntimeError("candidate image is invalid")
         report["image"] = image
+        backup_results = []
         for site in SITES:
-            path = f"/home/frappe/frappe-bench/sites/{site}/private/backups/access-pre-{stamp}.sql.gz"
-            command(["docker", "exec", "-u", "frappe", "-w", "/home/frappe/frappe-bench/sites", BACKEND,
-                     "bench", "--site", site, "backup", "--backup-path-db", path], timeout=300)
-            command(["docker", "exec", "-u", "frappe", BACKEND, "gzip", "-t", path], timeout=120)
+            result = subprocess.run(["docker", "exec", "-i", "-u", "frappe", "-w", "/home/frappe/frappe-bench/sites",
+                BACKEND, "/home/frappe/frappe-bench/env/bin/python", "-c", BACKUP, site, stamp],
+                capture_output=True, text=True, timeout=300)
+            lines = [line.removeprefix("SAFE_BACKUP:") for line in result.stdout.splitlines() if line.startswith("SAFE_BACKUP:")]
+            if result.returncode or len(lines) != 1:
+                raise RuntimeError("fresh backup failed for " + site)
+            backup_results.append(json.loads(lines[0]))
         report["database_backups_verified"] = True
+        report["database_backups"] = backup_results
         networks = json.loads(command(["docker", "inspect", BACKEND, "--format", "{{json .NetworkSettings.Networks}}"] ))
         if len(networks) != 1:
             raise RuntimeError("unexpected application network")
