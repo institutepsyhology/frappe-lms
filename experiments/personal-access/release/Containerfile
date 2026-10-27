@@ -1,9 +1,10 @@
 # Built offline from the verified production image. Only access source is overlaid.
-FROM company-lms:individual-access-disabled-20261027
+FROM company-lms:individual-access-disabled-r2-20261027
 ARG SOURCE_COMMIT
 USER frappe
 WORKDIR /home/frappe/frappe-bench/apps/lms
 COPY --chown=frappe:0 lms/hooks.py lms/hooks.py
+COPY --chown=frappe:0 lms/locale/ru.po lms/locale/ru.po
 COPY --chown=frappe:0 lms/lms/access_actions.py lms/lms/access_actions.py
 COPY --chown=frappe:0 lms/lms/individual_access.py lms/lms/individual_access.py
 COPY --chown=frappe:0 lms/lms/permissions.py lms/lms/permissions.py
@@ -16,6 +17,7 @@ COPY --chown=frappe:0 lms/lms/doctype/lms_access_policy/ lms/lms/doctype/lms_acc
 COPY --chown=frappe:0 lms/lms/doctype/lms_access_policy_lesson/ lms/lms/doctype/lms_access_policy_lesson/
 COPY --chown=frappe:0 lms/tests/test_docperm_snapshot.py lms/tests/test_docperm_snapshot.py
 RUN /home/frappe/frappe-bench/env/bin/python -m compileall -q lms/lms/individual_access.py lms/lms/access_actions.py lms/lms/permissions.py lms/lms/utils.py
+RUN /home/frappe/frappe-bench/env/bin/python -c "from pathlib import Path; from babel.messages.pofile import read_po; from babel.messages.mofile import write_mo; p=Path('/home/frappe/frappe-bench/assets/locale/ru/LC_MESSAGES/lms.mo'); p.parent.mkdir(parents=True,exist_ok=True); catalog=read_po(open('lms/locale/ru.po',encoding='utf-8'),locale='ru'); write_mo(open(p,'wb'),catalog,use_fuzzy=False)"
 LABEL org.opencontainers.image.source="https://github.com/institutepsyhology/frappe-lms"
 LABEL org.opencontainers.image.revision=$SOURCE_COMMIT
 WORKDIR /home/frappe/frappe-bench

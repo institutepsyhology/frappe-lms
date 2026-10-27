@@ -11792,3 +11792,154 @@ msgstr "Обычная"
 msgid "Captions"
 msgstr "Субтитры"
 
+
+msgid "LMS Access Policy"
+msgstr "Настройки доступа к курсу"
+
+msgid "LMS Access Grant"
+msgstr "Доступ ученика к курсу"
+
+msgid "Enable Individual Access"
+msgstr "Включить индивидуальный доступ"
+
+msgid "Default Personal End Type"
+msgstr "Срок доступа по умолчанию"
+
+msgid "Default Personal End At"
+msgstr "Дата окончания доступа по умолчанию"
+
+msgid "Default Access Days"
+msgstr "Срок доступа в днях"
+
+msgid "Global Course End Type"
+msgstr "Общий срок окончания курса"
+
+msgid "Global Course End At"
+msgstr "Общая дата окончания курса"
+
+msgid "Completed Lesson Retention"
+msgstr "Доступ к пройденным урокам после окончания курса"
+
+msgid "Retained Access Days"
+msgstr "Срок сохранённого доступа в днях"
+
+msgid "Default Lesson Schedule"
+msgstr "Общее расписание уроков"
+
+msgid "Opening Rule"
+msgstr "Правило открытия"
+
+msgid "Opens At"
+msgstr "Дата и время открытия"
+
+msgid "Days After Start"
+msgstr "Дней после начала курса"
+
+msgid "Prerequisite"
+msgstr "Условие открытия"
+
+msgid "Prerequisite Lesson"
+msgstr "Предыдущий урок"
+
+msgid "Prerequisite Assignment"
+msgstr "Домашнее задание"
+
+msgid "Personal End Type"
+msgstr "Личный срок доступа"
+
+msgid "Personal End"
+msgstr "Личная дата окончания"
+
+msgid "Personal Access Days"
+msgstr "Личный срок в днях"
+
+msgid "Course End Type"
+msgstr "Общий срок окончания"
+
+msgid "Course End"
+msgstr "Общая дата окончания"
+
+msgid "Ignore Course End"
+msgstr "Не учитывать общую дату окончания курса"
+
+msgid "Personal Retained Access Days"
+msgstr "Личный срок сохранения доступа в днях"
+
+msgid "Assigned Lessons"
+msgstr "Назначенные уроки"
+
+msgid "Frozen At"
+msgstr "Дата и время заморозки"
+
+msgid "Prerequisite State"
+msgstr "Состояние условия открытия"
+
+msgid "Manual Early Opening"
+msgstr "Открыть урок досрочно вручную"
+
+msgid "Retain When Course Is Closed"
+msgstr "Оставить доступ после закрытия курса"
+
+msgid "Retained Access End Type"
+msgstr "Срок сохранённого доступа"
+
+msgid "Retained Access Ends At"
+msgstr "Дата окончания сохранённого доступа"
+
+msgid "Unknown"
+msgstr "Не задано"
+
+msgid "Unlimited"
+msgstr "Бессрочно"
+
+msgid "At"
+msgstr "По дате"
+
+msgid "After Start"
+msgstr "Через дни после начала"
+
+msgid "Inherit"
+msgstr "Как в настройках курса"
+
+msgid "Lesson Complete"
+msgstr "Урок пройден"
+
+msgid "Assignment Submitted"
+msgstr "Задание отправлено"
+
+msgid "Assignment Passed"
+msgstr "Задание одобрено"
+
+msgid "Limited"
+msgstr "Ограничен"
+
+msgid "Revoked"
+msgstr "Отозван"
+
+msgid "Frozen"
+msgstr "Заморожен"
+
+msgid "LMS Access Policy Lesson"
+msgstr "Расписание урока курса"
+
+msgid "LMS Access Grant Lesson"
+msgstr "Личный доступ к уроку"
+
+msgid "Draft"
+msgstr "Черновик"
+
+msgid "Active"
+msgstr "Активен"
+
+msgid "Blocked"
+msgstr "Заблокировано"
+
+msgid "Satisfied"
+msgstr "Условие выполнено"
+
+msgid "None"
+msgstr "Нет"
+
+msgid "Days"
+msgstr "На несколько дней"
+

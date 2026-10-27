@@ -7,6 +7,12 @@ from frappe.utils import get_datetime
 class LMSAccessGrant(Document):
 	"""Administrative record only; does not yet enforce lesson permissions."""
 
+	def before_validate(self):
+		# Preserve compatibility with grants saved before this label was clarified.
+		for row in self.lessons or []:
+			if row.prerequisite_state == "Clear":
+				row.prerequisite_state = "Satisfied"
+
 	def validate(self):
 		if self.status == "Frozen" and not self.frozen_at:
 			frappe.throw(_("A frozen access grant must have a freeze time."))

@@ -273,7 +273,7 @@ def grant_allows_lesson(*, user, lesson, now=None, require_manual=False):
 		rule = policy_rule if row.opening_type == "Inherit" else row
 		opening = schedule_opening(rule, grant.starts_at)
 		ready = (prerequisite_satisfied(policy_rule, member=user, course=course)
-			if row.prerequisite_state == "Inherit" else row.prerequisite_state == "Clear")
+			if row.prerequisite_state == "Inherit" else row.prerequisite_state in ("Clear", "Satisfied"))
 		if opening and now >= opening and ready:
 			return True
 	return False
