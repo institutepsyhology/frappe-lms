@@ -317,7 +317,7 @@ def _protected_assignment_placements(assignment):
 def _protected_quiz_placements(quiz):
 	from lms.lms.individual_access import protected_courses, quiz_in_lesson
 	from lms.lms.utils import get_editorjs_blocks
-	from lms.md import find_macros
+	from lms.lms.md import find_macros
 
 	courses = protected_courses()
 	if not courses:
