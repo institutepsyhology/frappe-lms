@@ -99,12 +99,20 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		from lms.lms.access_actions import revoke_grant
 
 		progress = self._create_progress(self.student.email, self.course.name, self.lesson.name)
+		assignment = frappe.get_doc({"doctype": "LMS Assignment", "title": "Preserved homework",
+			"type": "Text", "question": "Test question"}).insert(ignore_permissions=True)
+		frappe.db.set_value("Course Lesson", self.lesson.name, "content",
+			json.dumps({"blocks": [{"type": "assignment", "data": {"assignment": assignment.name}}]}))
+		submission = frappe.get_doc({"doctype": "LMS Assignment Submission", "assignment": assignment.name,
+			"lesson": self.lesson.name, "member": self.student.email, "type": "Text", "answer": "Test answer"})
+		submission.insert(ignore_permissions=True)
 		frappe.set_user(self.other.email)
 		with self.assertRaises(frappe.PermissionError):
 			revoke_grant(self.grant.name)
 		frappe.set_user("Administrator")
 		self.assertEqual(revoke_grant(self.grant.name)["status"], "Revoked")
 		self.assertTrue(frappe.db.exists("LMS Course Progress", progress.name))
+		self.assertTrue(frappe.db.exists("LMS Assignment Submission", submission.name))
 		self.assertTrue(frappe.db.exists("LMS Enrollment", {"member": self.student.email, "course": self.course.name}))
 		frappe.set_user(self.student.email)
 		self.assertFalse(can_access_lesson(self.lesson.name))
