@@ -47,6 +47,22 @@ def get_course_access_overview(course):
 
 
 @frappe.whitelist(methods=["POST"])
+def create_course_access_policy(course):
+	"""Create a disabled, unconfigured policy without changing student access."""
+	frappe.only_for("System Manager")
+	frappe.has_permission("LMS Access Policy", "create", throw=True)
+	if not isinstance(course, str) or not frappe.db.get_value("LMS Course", course, "name", for_update=True):
+		frappe.throw(_("Course not found."), frappe.ValidationError)
+	if frappe.db.exists("LMS Access Policy", {"course": course}):
+		frappe.throw(_("The course already has an access policy."), frappe.ValidationError)
+	lessons = frappe.get_all("Course Lesson", filters={"course": course}, pluck="name")
+	policy = frappe.get_doc({"doctype": "LMS Access Policy", "course": course, "enabled": 0,
+		"lessons": [{"lesson": lesson, "opening_type": "Unknown", "prerequisite_type": "Unknown"}
+			for lesson in lessons]}).insert()
+	return {"name": policy.name, "enabled": False, "lesson_count": len(policy.lessons)}
+
+
+@frappe.whitelist(methods=["POST"])
 def create_grant_for_enrolled_student(course, member, starts_at, lessons):
 	"""Create one inherited access grant for an already enrolled student.
 

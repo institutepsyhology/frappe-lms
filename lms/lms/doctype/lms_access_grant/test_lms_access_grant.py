@@ -71,6 +71,22 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		with self.assertRaises(frappe.PermissionError):
 			get_course_access_overview(self.course.name)
 
+	def test_create_course_policy_stays_disabled_and_rejects_duplicates(self):
+		from lms.lms.access_actions import create_course_access_policy
+
+		frappe.set_user(self.student.email)
+		with self.assertRaises(frappe.PermissionError):
+			create_course_access_policy(self.course.name)
+		frappe.set_user("Administrator")
+		result = create_course_access_policy(self.course.name)
+		policy = frappe.get_doc("LMS Access Policy", result["name"])
+		self.assertFalse(policy.enabled)
+		self.assertEqual(policy.default_personal_end_type, "Unknown")
+		self.assertEqual(policy.lessons[0].lesson, self.lesson.name)
+		self.assertEqual(policy.lessons[0].opening_type, "Unknown")
+		with self.assertRaises(frappe.ValidationError):
+			create_course_access_policy(self.course.name)
+
 	def test_admin_creates_inherited_grant_for_enrolled_student(self):
 		from lms.lms.access_actions import create_grant_for_enrolled_student
 

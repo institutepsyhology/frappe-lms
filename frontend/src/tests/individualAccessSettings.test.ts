@@ -50,4 +50,14 @@ describe('individual access settings', () => {
 			course: 'course-1', member: 'new@example.invalid', starts_at: '2026-10-28T10:30', lessons: ['lesson-1'],
 		})
 	})
+
+	it('creates an unconfigured course policy on request', async () => {
+		callMock.mockResolvedValueOnce({ release_enabled: false, policy_enabled: false, policy_exists: false,
+			grants: [], truncated: false, lessons: [], lessons_truncated: false })
+		const wrapper = render(true)
+		await flushPromises()
+		await wrapper.findAll('button').find((item) => item.text() === 'Создать настройки доступа')!.trigger('click')
+		await flushPromises()
+		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.create_course_access_policy', { course: 'course-1' })
+	})
 })

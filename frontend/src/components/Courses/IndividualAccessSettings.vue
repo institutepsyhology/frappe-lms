@@ -10,7 +10,10 @@
 			<p v-else-if="!overview.policy_enabled" class="text-amber-700">
 				Правила этого курса пока выключены.
 			</p>
-			<p v-if="!overview.policy_exists">Настройки доступа для курса ещё не созданы.</p>
+			<div v-if="!overview.policy_exists" class="space-y-2">
+				<p>Настройки доступа для курса ещё не созданы.</p>
+				<button class="underline" :disabled="busy" @click="createPolicy">Создать настройки доступа</button>
+			</div>
 			<details v-if="overview.policy_exists" class="border rounded p-3">
 				<summary class="cursor-pointer">Добавить персональную карточку</summary>
 				<div class="space-y-2 mt-3">
@@ -119,6 +122,17 @@ async function createGrant() {
 		await load()
 	} catch {
 		toast.error('Не удалось создать карточку. Проверьте запись ученика на курс и существующие карточки.')
+	} finally {
+		busy.value = false
+	}
+}
+async function createPolicy() {
+	busy.value = true
+	try {
+		await call('lms.lms.access_actions.create_course_access_policy', { course: props.course })
+		await load()
+	} catch {
+		toast.error('Не удалось создать настройки доступа.')
 	} finally {
 		busy.value = false
 	}
