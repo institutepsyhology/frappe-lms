@@ -105,9 +105,9 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 			self.assertEqual(course_lesson.serve_resource(file_doc.file_url), "allowed")
 
 	def test_explicit_course_opt_in_requires_server_release_switch(self):
+		self.policy.stop()
 		from lms.lms.individual_access import protected_courses
 
-		self.policy.stop()
 		frappe.get_doc({"doctype": "LMS Access Policy", "course": self.course.name, "enabled": 1}).insert(
 			ignore_permissions=True
 		)
