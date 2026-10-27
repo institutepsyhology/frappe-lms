@@ -65,6 +65,7 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 
 		result = get_course_access_overview(self.course.name)
 		self.assertIn(self.grant.name, [grant.name for grant in result["grants"]])
+		self.assertIn(self.lesson.name, [lesson.name for lesson in result["lessons"]])
 		self.assertFalse(result["policy_exists"])
 		frappe.set_user(self.student.email)
 		with self.assertRaises(frappe.PermissionError):
@@ -75,7 +76,7 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 
 		frappe.get_doc({"doctype": "LMS Access Policy", "course": self.course.name}).insert(ignore_permissions=True)
 		start = now_datetime().replace(microsecond=0)
-		result = create_grant_for_enrolled_student(self.course.name, self.other.email, str(start),
+		result = create_grant_for_enrolled_student(self.course.name, self.other.email, start.isoformat(),
 			json.dumps([self.lesson.name]))
 		grant = frappe.get_doc("LMS Access Grant", result["name"])
 		self.assertEqual((grant.member, grant.status, grant.personal_end_type), (self.other.email, "Active", "Inherit"))
@@ -83,6 +84,10 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		self.assertEqual((grant.lessons[0].lesson, grant.lessons[0].opening_type), (self.lesson.name, "Inherit"))
 		with self.assertRaises(frappe.ValidationError):
 			create_grant_for_enrolled_student(self.course.name, self.other.email, str(start), [self.lesson.name])
+		frappe.db.set_value("LMS Access Grant", grant.name, "status", "Revoked")
+		reissued = create_grant_for_enrolled_student(self.course.name, self.other.email, str(start), [self.lesson.name])
+		self.assertNotEqual(reissued["name"], grant.name)
+		self.assertEqual(frappe.db.get_value("LMS Access Grant", grant.name, "status"), "Revoked")
 
 	def test_create_grant_rejects_unauthorized_and_unenrolled(self):
 		from lms.lms.access_actions import create_grant_for_enrolled_student

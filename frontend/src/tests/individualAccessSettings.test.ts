@@ -9,7 +9,8 @@ describe('individual access settings', () => {
 	beforeEach(() => {
 		callMock.mockReset()
 		callMock.mockResolvedValue({ release_enabled: false, policy_enabled: false, policy_exists: true,
-			grants: [{ name: 'grant-1', member: 'student@example.invalid', status: 'Frozen' }], truncated: false })
+			grants: [{ name: 'grant-1', member: 'student@example.invalid', status: 'Frozen' }], truncated: false,
+			lessons: [{name: 'lesson-1', title: 'Урок 1'}], lessons_truncated: false })
 	})
 	const render = (manager: boolean) => mount(IndividualAccessSettings, {
 		props: { course: 'course-1' },
@@ -35,5 +36,18 @@ describe('individual access settings', () => {
 		await flushPromises()
 		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.resume_grant',
 			{ name: 'grant-1', extend_personal_end: '0' })
+	})
+
+	it('creates a grant with an explicit start and selected lesson', async () => {
+		const wrapper = render(true)
+		await flushPromises()
+		await wrapper.find('input[type=email]').setValue('new@example.invalid')
+		await wrapper.find('input[type=datetime-local]').setValue('2026-10-28T10:30')
+		await wrapper.find('input[type=checkbox]').setValue(true)
+		await wrapper.findAll('button').find((item) => item.text() === 'Создать карточку')!.trigger('click')
+		await flushPromises()
+		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.create_grant_for_enrolled_student', {
+			course: 'course-1', member: 'new@example.invalid', starts_at: '2026-10-28T10:30', lessons: ['lesson-1'],
+		})
 	})
 })

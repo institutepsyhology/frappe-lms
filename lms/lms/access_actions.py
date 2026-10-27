@@ -32,12 +32,16 @@ def get_course_access_overview(course):
 	policy = frappe.db.get_value("LMS Access Policy", {"course": course}, ["name", "enabled"], as_dict=True)
 	grants = frappe.get_all("LMS Access Grant", filters={"course": course},
 		fields=["name", "member", "status", "starts_at", "ends_at"], order_by="modified desc", limit_page_length=201)
+	lessons = frappe.get_all("Course Lesson", filters={"course": course},
+		fields=["name", "title"], order_by="name asc", limit_page_length=501)
 	return {
 		"release_enabled": frappe.conf.get("individual_access_release_enabled") is True,
 		"policy_enabled": bool(policy and policy.enabled),
 		"policy_exists": bool(policy),
 		"grants": grants[:200],
 		"truncated": len(grants) > 200,
+		"lessons": lessons[:500],
+		"lessons_truncated": len(lessons) > 500,
 	}
 
 
@@ -66,7 +70,7 @@ def create_grant_for_enrolled_student(course, member, starts_at, lessons):
 		frappe.throw(_("The student must already be enrolled in the course."), frappe.ValidationError)
 	if not frappe.db.exists("LMS Access Policy", {"course": course}):
 		frappe.throw(_("Set up the course access policy first."), frappe.ValidationError)
-	if frappe.db.exists("LMS Access Grant", {"course": course, "member": member}):
+	if frappe.db.exists("LMS Access Grant", {"course": course, "member": member, "status": ("!=", "Revoked")}):
 		frappe.throw(_("This student already has an access grant for the course."), frappe.ValidationError)
 	grant = frappe.get_doc({
 		"doctype": "LMS Access Grant", "course": course, "member": member,

@@ -11,6 +11,25 @@
 				Правила этого курса пока выключены.
 			</p>
 			<p v-if="!overview.policy_exists">Настройки доступа для курса ещё не созданы.</p>
+			<details v-if="overview.policy_exists" class="border rounded p-3">
+				<summary class="cursor-pointer">Добавить персональную карточку</summary>
+				<div class="space-y-2 mt-3">
+					<p>Новая карточка не удаляет прежний прогресс и домашние задания.</p>
+					<label class="block">Адрес ученика, уже записанного на курс
+						<input v-model.trim="newMember" type="email" class="border rounded w-full p-1" />
+					</label>
+					<label class="block">Начало курса по времени сайта
+						<input v-model="newStart" type="datetime-local" class="border rounded w-full p-1" />
+					</label>
+					<p>Выберите уроки:</p>
+					<label v-for="lesson in overview.lessons" :key="lesson.name" class="flex gap-2">
+						<input v-model="newLessons" type="checkbox" :value="lesson.name" />
+						<span>{{ lesson.title || lesson.name }}</span>
+					</label>
+					<p v-if="overview.lessons_truncated">Показаны первые 500 уроков.</p>
+					<button class="underline" :disabled="busy || !newMember || !newStart || !newLessons.length" @click="createGrant">Создать карточку</button>
+				</div>
+			</details>
 			<p v-if="!overview.grants.length">Персональных карточек пока нет.</p>
 			<div v-for="grant in overview.grants" :key="grant.name" class="border rounded p-3 space-y-2">
 				<div class="font-medium break-all">{{ grant.member }}</div>
@@ -41,7 +60,7 @@ import { inject, reactive, ref, watch } from 'vue'
 import type { SessionUser } from '@/types'
 
 type Grant = { name: string; member: string; status: string; starts_at?: string; ends_at?: string }
-type Overview = { release_enabled: boolean; policy_enabled: boolean; policy_exists: boolean; grants: Grant[]; truncated: boolean }
+type Overview = { release_enabled: boolean; policy_enabled: boolean; policy_exists: boolean; grants: Grant[]; truncated: boolean; lessons: {name: string; title: string}[]; lessons_truncated: boolean }
 const props = defineProps<{ course: string }>()
 const user = inject<SessionUser>('$user')
 const overview = ref<Overview | null>(null)
@@ -49,6 +68,9 @@ const loading = ref(false)
 const error = ref(false)
 const busy = ref(false)
 const resumeChoice = reactive<Record<string, string>>({})
+const newMember = ref('')
+const newStart = ref('')
+const newLessons = ref<string[]>([])
 const labels: Record<string, string> = { Draft: 'Черновик', Active: 'Действует', Frozen: 'Заморожен', Limited: 'Ограничен', Revoked: 'Закрыт' }
 
 async function load() {
@@ -83,6 +105,23 @@ function resume(grant: Grant) {
 }
 function revoke(grant: Grant) {
 	if (window.confirm('Закрыть эту карточку? Прогресс и домашние задания сохранятся. Другие карточки ученика не изменятся.')) action('revoke_grant', grant)
+}
+async function createGrant() {
+	if (!newMember.value || !newStart.value || !newLessons.value.length) return
+	busy.value = true
+	try {
+		await call('lms.lms.access_actions.create_grant_for_enrolled_student', {
+			course: props.course, member: newMember.value, starts_at: newStart.value, lessons: newLessons.value,
+		})
+		newMember.value = ''
+		newStart.value = ''
+		newLessons.value = []
+		await load()
+	} catch {
+		toast.error('Не удалось создать карточку. Проверьте запись ученика на курс и существующие карточки.')
+	} finally {
+		busy.value = false
+	}
 }
 watch(() => [props.course, user?.data?.is_system_manager], load, { immediate: true })
 </script>
