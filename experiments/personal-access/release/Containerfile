@@ -1,5 +1,5 @@
 # Built offline from the verified production image. Only access source is overlaid.
-FROM sha256:d7ee1478951488710ff2c577f2e5c3d199a241a84836272e2896abbe1cf5ae99
+FROM company-lms:video-choice-2.64.0-20261026-r2
 ARG SOURCE_COMMIT
 USER frappe
 WORKDIR /home/frappe/frappe-bench/apps/lms

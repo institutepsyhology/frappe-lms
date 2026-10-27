@@ -19,6 +19,7 @@ import time
 ROOT = Path(__file__).resolve().parent
 BASE = Path("/opt/company-lms")
 OLD = "sha256:d7ee1478951488710ff2c577f2e5c3d199a241a84836272e2896abbe1cf5ae99"
+BASE_TAG = "company-lms:video-choice-2.64.0-20261026-r2"
 TAG = "company-lms:individual-access-disabled-20261027"
 SITES = ("my-lk.mastervision.su", "my-lk.iomp.ru", "my-lk.mv-centr.ru")
 BACKEND = "company-lms-backend-1"
@@ -81,7 +82,7 @@ def main():
               "migrated_sites": [], "release_enabled": False, "ok": False}
     switched = False
     try:
-        if command(["docker", "image", "inspect", OLD, "--format", "{{.Id}}"] ) != OLD:
+        if command(["docker", "image", "inspect", BASE_TAG, "--format", "{{.Id}}"] ) != OLD:
             raise RuntimeError("base image is unavailable")
         command(["docker", "build", "--network=none", "--pull=false", "--build-arg", "SOURCE_COMMIT=" + commit,
                  "--tag", TAG, "-f", str(ROOT / "experiments/personal-access/release/Containerfile"), str(ROOT)], timeout=600)
