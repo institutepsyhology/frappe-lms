@@ -2,7 +2,7 @@
 
 import frappe
 from frappe import _
-from frappe.utils import get_datetime, now_datetime
+from frappe.utils import get_datetime, get_system_timezone, now_datetime
 
 
 def _admin_grant(name):
@@ -38,6 +38,7 @@ def get_course_access_overview(course):
 		"release_enabled": frappe.conf.get("individual_access_release_enabled") is True,
 		"policy_enabled": bool(policy and policy.enabled),
 		"policy_exists": bool(policy),
+		"timezone": get_system_timezone(),
 		"grants": grants[:200],
 		"truncated": len(grants) > 200,
 		"lessons": lessons[:500],

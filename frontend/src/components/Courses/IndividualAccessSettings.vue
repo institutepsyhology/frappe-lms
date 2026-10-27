@@ -18,7 +18,7 @@
 					<label class="block">Адрес ученика, уже записанного на курс
 						<input v-model.trim="newMember" type="email" class="border rounded w-full p-1" />
 					</label>
-					<label class="block">Начало курса по времени сайта
+					<label class="block">Начало курса по времени сайта ({{ overview.timezone }})
 						<input v-model="newStart" type="datetime-local" class="border rounded w-full p-1" />
 					</label>
 					<p>Выберите уроки:</p>
@@ -60,7 +60,7 @@ import { inject, reactive, ref, watch } from 'vue'
 import type { SessionUser } from '@/types'
 
 type Grant = { name: string; member: string; status: string; starts_at?: string; ends_at?: string }
-type Overview = { release_enabled: boolean; policy_enabled: boolean; policy_exists: boolean; grants: Grant[]; truncated: boolean; lessons: {name: string; title: string}[]; lessons_truncated: boolean }
+type Overview = { release_enabled: boolean; policy_enabled: boolean; policy_exists: boolean; timezone: string; grants: Grant[]; truncated: boolean; lessons: {name: string; title: string}[]; lessons_truncated: boolean }
 const props = defineProps<{ course: string }>()
 const user = inject<SessionUser>('$user')
 const overview = ref<Overview | null>(null)
