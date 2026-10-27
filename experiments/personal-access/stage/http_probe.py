@@ -68,7 +68,8 @@ def main():
 		"lessons": [{"lesson": lesson.name, "opening_type": "At", "opens_at": add_to_date(now_datetime(), days=-1),
 			"prerequisite_state": "Clear"}]}).insert(ignore_permissions=True)
 	frappe.set_user(teacher.email)
-	file_doc = save_file("http-stage-" + tag + ".txt", b"isolated-stage-media", "Course Lesson", lesson.name, is_private=1)
+	media_bytes = ("isolated-stage-media-" + tag).encode()
+	file_doc = save_file("http-stage-" + tag + ".txt", media_bytes, "Course Lesson", lesson.name, is_private=1)
 	file_doc.db_set("attached_to_field", "content")
 	frappe.set_user("Administrator")
 	frappe.db.commit()
@@ -108,7 +109,7 @@ def main():
 		path = "/api/method/lms.lms.doctype.course_lesson.course_lesson.serve_resource?" + urllib.parse.urlencode({"file_url": file_doc.file_url})
 		allowed_status, allowed_body = call(clients[0], path)
 		denied_status, _ = call(clients[1], path)
-		checks["allowed_private_file"] = allowed_status == 200 and allowed_body == b"isolated-stage-media"
+		checks["allowed_private_file"] = allowed_status == 200 and allowed_body == media_bytes
 		checks["denied_private_file"] = denied_status in (401, 403)
 		path = "/api/resource/Course%20Lesson/" + urllib.parse.quote(lesson.name, safe="")
 		status, _ = call(clients[1], path)
