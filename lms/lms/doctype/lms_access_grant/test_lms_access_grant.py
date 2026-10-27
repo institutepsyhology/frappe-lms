@@ -60,6 +60,31 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		with self.assertRaises(frappe.PermissionError):
 			course_lesson._save_progress(self.lesson.name, self.course.name)
 
+	def test_admin_creates_inherited_grant_for_enrolled_student(self):
+		from lms.lms.access_actions import create_grant_for_enrolled_student
+
+		frappe.get_doc({"doctype": "LMS Access Policy", "course": self.course.name}).insert(ignore_permissions=True)
+		start = now_datetime().replace(microsecond=0)
+		result = create_grant_for_enrolled_student(self.course.name, self.other.email, str(start),
+			json.dumps([self.lesson.name]))
+		grant = frappe.get_doc("LMS Access Grant", result["name"])
+		self.assertEqual((grant.member, grant.status, grant.personal_end_type), (self.other.email, "Active", "Inherit"))
+		self.assertEqual(grant.starts_at, start)
+		self.assertEqual((grant.lessons[0].lesson, grant.lessons[0].opening_type), (self.lesson.name, "Inherit"))
+		with self.assertRaises(frappe.ValidationError):
+			create_grant_for_enrolled_student(self.course.name, self.other.email, str(start), [self.lesson.name])
+
+	def test_create_grant_rejects_unauthorized_and_unenrolled(self):
+		from lms.lms.access_actions import create_grant_for_enrolled_student
+
+		start = str(now_datetime())
+		frappe.set_user(self.other.email)
+		with self.assertRaises(frappe.PermissionError):
+			create_grant_for_enrolled_student(self.course.name, self.other.email, start, [self.lesson.name])
+		frappe.set_user("Administrator")
+		with self.assertRaises(frappe.ValidationError):
+			create_grant_for_enrolled_student(self.course.name, self.teacher.email, start, [self.lesson.name])
+
 	def test_personal_early_open_and_frozen_access(self):
 		frappe.db.set_value("LMS Access Grant Lesson", self.grant.lessons[0].name,
 			{"opens_at": add_to_date(now_datetime(), days=2), "manual_open": 1})

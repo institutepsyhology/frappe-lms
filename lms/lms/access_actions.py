@@ -23,6 +23,43 @@ def _explicit_choice(value):
 
 
 @frappe.whitelist(methods=["POST"])
+def create_grant_for_enrolled_student(course, member, starts_at, lessons):
+	"""Create one inherited access grant for an already enrolled student.
+
+	Enrollment and email delivery are deliberately outside this action. Existing
+	grants are never changed: an administrator must inspect them first.
+	"""
+	frappe.only_for("System Manager")
+	frappe.has_permission("LMS Access Grant", "create", throw=True)
+	if not all(isinstance(value, str) and value.strip() for value in (course, member, starts_at)):
+		frappe.throw(_("Course, student and start time are required."), frappe.ValidationError)
+	if isinstance(lessons, str):
+		lessons = frappe.parse_json(lessons)
+	if not isinstance(lessons, list) or not lessons or any(not isinstance(x, str) or not x for x in lessons):
+		frappe.throw(_("Select at least one lesson."), frappe.ValidationError)
+	if len(set(lessons)) != len(lessons):
+		frappe.throw(_("The lesson list contains duplicates."), frappe.ValidationError)
+	starts_at = get_datetime(starts_at)
+	# Serialize concurrent requests for this course, including duplicate checks.
+	if not frappe.db.get_value("LMS Course", course, "name", for_update=True):
+		frappe.throw(_("Course not found."), frappe.ValidationError)
+	if not frappe.db.exists("LMS Enrollment", {"course": course, "member": member}):
+		frappe.throw(_("The student must already be enrolled in the course."), frappe.ValidationError)
+	if not frappe.db.exists("LMS Access Policy", {"course": course}):
+		frappe.throw(_("Set up the course access policy first."), frappe.ValidationError)
+	if frappe.db.exists("LMS Access Grant", {"course": course, "member": member}):
+		frappe.throw(_("This student already has an access grant for the course."), frappe.ValidationError)
+	grant = frappe.get_doc({
+		"doctype": "LMS Access Grant", "course": course, "member": member,
+		"starts_at": starts_at, "status": "Active", "personal_end_type": "Inherit",
+		"course_end_type": "Inherit", "completed_retention_type": "Inherit",
+		"lessons": [{"lesson": lesson, "opening_type": "Inherit", "prerequisite_state": "Inherit"}
+			for lesson in lessons],
+	}).insert()
+	return {"name": grant.name, "status": grant.status, "lesson_count": len(grant.lessons)}
+
+
+@frappe.whitelist(methods=["POST"])
 def freeze_grant(name):
 	"""Freeze one active grant without changing homework, progress or dates."""
 	grant = _admin_grant(name)
