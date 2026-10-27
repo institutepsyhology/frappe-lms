@@ -60,6 +60,18 @@ def create_grant_for_enrolled_student(course, member, starts_at, lessons):
 
 
 @frappe.whitelist(methods=["POST"])
+def revoke_grant(name):
+	"""Close one grant while preserving all enrollment, progress and homework."""
+	grant = _admin_grant(name)
+	if grant.status not in ("Active", "Frozen", "Limited"):
+		frappe.throw(_("Only active, frozen or limited access can be closed."), frappe.ValidationError)
+	grant.status = "Revoked"
+	grant.frozen_at = None
+	grant.save()
+	return {"name": grant.name, "status": grant.status}
+
+
+@frappe.whitelist(methods=["POST"])
 def freeze_grant(name):
 	"""Freeze one active grant without changing homework, progress or dates."""
 	grant = _admin_grant(name)
