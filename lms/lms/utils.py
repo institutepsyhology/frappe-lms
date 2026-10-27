@@ -2466,6 +2466,12 @@ def can_access_topic(doctype: str, docname: str) -> bool:
 	is_student = False
 	if doctype == "Course Lesson":
 		course = frappe.db.get_value("Course Lesson", docname, "course")
+		from lms.lms.individual_access import policy_applies
+
+		if policy_applies(course):
+			from lms.lms.permissions import can_access_lesson
+
+			return can_access_lesson(docname)
 		is_student = frappe.db.exists("LMS Enrollment", {"course": course, "member": frappe.session.user})
 		if not is_student and not can_modify_course(course):
 			return False
@@ -3353,6 +3359,15 @@ def validate_discussion_reply(doc: Document, method: str):
 def validate_course_access(lesson: str):
 	if not frappe.db.exists("Course Lesson", lesson):
 		frappe.throw(_("The lesson does not exist."))
+	course = frappe.db.get_value("Course Lesson", lesson, "course")
+	from lms.lms.individual_access import policy_applies
+
+	if policy_applies(course):
+		from lms.lms.permissions import can_access_lesson
+
+		if not can_access_lesson(lesson):
+			frappe.throw(_("You do not have access to this lesson."), frappe.PermissionError)
+		return
 
 	if has_moderator_role():
 		return
@@ -3360,7 +3375,6 @@ def validate_course_access(lesson: str):
 	if has_course_instructor_role():
 		return
 
-	course = frappe.db.get_value("Course Lesson", lesson, "course")
 	enrollment_exists = frappe.db.exists("LMS Enrollment", {"member": frappe.session.user, "course": course})
 	if not enrollment_exists:
 		frappe.throw(_("You do not have access to this course."))

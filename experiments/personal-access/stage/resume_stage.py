@@ -39,6 +39,9 @@ def main():
     run(prefix + ["new-site", SITE, "--db-host", "db", "--db-root-password", db_password,
                   "--mariadb-user-host-login-scope", "%", "--admin-password", admin_password,
                   "--install-app", "payments", "--install-app", "lms"], timeout=600)
+    run(prefix + ["--site", SITE, "set-config", "redis_cache", "redis://redis-cache:6379"])
+    run(prefix + ["--site", SITE, "set-config", "redis_queue", "redis://redis-queue:6379"])
+    run(prefix + ["--site", SITE, "set-config", "allow_tests", "True", "--parse"])
     report = {"site": SITE, "installed": True, "production_volumes_mounted": False}
     (STAGE / "second-site.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps(report))

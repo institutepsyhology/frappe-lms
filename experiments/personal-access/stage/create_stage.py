@@ -82,6 +82,9 @@ def main():
     run(*prefix, "new-site", SITE, "--db-host", "db", "--db-root-password", db_password,
         "--mariadb-user-host-login-scope", "%", "--admin-password", admin_password,
         "--install-app", "payments", "--install-app", "lms", timeout=600)
+    run(*prefix, "--site", SITE, "set-config", "redis_cache", "redis://redis-cache:6379")
+    run(*prefix, "--site", SITE, "set-config", "redis_queue", "redis://redis-queue:6379")
+    run(*prefix, "--site", SITE, "set-config", "allow_tests", "True", "--parse")
     report = {"site": SITE, "source_commit": commit, "image": IMAGE, "network": NETWORK,
               "internal_network": True, "production_volumes_mounted": False, "installed": True}
     (STAGE / "stage.json").write_text(json.dumps(report, indent=2), encoding="utf-8")

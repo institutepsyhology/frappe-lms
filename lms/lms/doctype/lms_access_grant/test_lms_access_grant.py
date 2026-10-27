@@ -49,7 +49,12 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		frappe.set_user(self.other.email)
 		self.assertFalse(can_access_lesson(self.lesson.name))
 		self.assertFalse(frappe.has_permission("Course Lesson", "read", self.lesson.name))
-		self.assertNotIn(self.lesson.name, frappe.get_list("Course Lesson", pluck="name"))
+		# The stock LMS Student role has no direct Course Lesson list permission.
+		with self.assertRaises(frappe.PermissionError):
+			frappe.get_list("Course Lesson", pluck="name")
+		condition = course_lesson.get_permission_query_conditions(self.other.email)
+		names = frappe.db.sql("select name from `tabCourse Lesson` where " + condition, pluck=True)
+		self.assertNotIn(self.lesson.name, names)
 		with self.assertRaises(frappe.PermissionError):
 			course_lesson._save_progress(self.lesson.name, self.course.name)
 
