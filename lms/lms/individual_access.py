@@ -11,8 +11,10 @@ from frappe.utils import get_datetime, now_datetime
 
 
 def protected_courses():
-	"""Release barrier: return no courses until integration is verified."""
-	return ()
+	"""The server switch and a course-specific record must both be enabled."""
+	if frappe.conf.get("individual_access_release_enabled") is not True:
+		return ()
+	return tuple(frappe.db.get_all("LMS Access Policy", filters={"enabled": 1}, pluck="course"))
 
 
 def policy_applies(course):

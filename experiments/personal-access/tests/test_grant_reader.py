@@ -21,6 +21,8 @@ class GrantReaderTests(unittest.TestCase):
         db = types.SimpleNamespace(get_value=self.get_value, get_all=self.get_all)
         frappe = types.ModuleType("frappe")
         frappe.db = db
+        frappe.conf = {}
+        self.frappe = frappe
         utils = types.ModuleType("frappe.utils")
         utils.get_datetime = lambda value: value if isinstance(value, datetime) else datetime.fromisoformat(value)
         utils.now_datetime = lambda: NOW
@@ -106,6 +108,14 @@ class GrantReaderTests(unittest.TestCase):
             course="course-a", lesson="lesson-a", user="student-a", enrolled=True))
         self.assertFalse(self.module.restrict_member_lesson(
             course="course-a", lesson="lesson-a", user="student-a", enrolled=False))
+
+    def test_only_explicit_server_switch_reads_per_course_policy(self):
+        self.frappe.conf["individual_access_release_enabled"] = "true"
+        self.assertFalse(self.module.policy_applies("course-a"))
+        self.frappe.conf["individual_access_release_enabled"] = True
+        self.frappe.db.get_all = lambda doctype, **kwargs: ["course-a"] if doctype == "LMS Access Policy" else []
+        self.assertTrue(self.module.policy_applies("course-a"))
+        self.assertFalse(self.module.policy_applies("course-b"))
 
     def test_policy_when_simulated_narrows_membership_and_never_creates_it(self):
         with patch.object(self.module, "policy_applies", return_value=True):
