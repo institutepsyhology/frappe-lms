@@ -81,6 +81,51 @@ def schedule_opening(rule, starts_at):
 	return None
 
 
+def prerequisite_satisfied(rule, *, member, course):
+	"""Check the current member's prior progress or an actual lesson assignment."""
+	if not rule or rule.prerequisite_type == "Unknown":
+		return False
+	if rule.prerequisite_type == "None":
+		return not rule.prerequisite_lesson and not rule.prerequisite_assignment
+	prior = rule.prerequisite_lesson
+	if not prior or frappe.db.get_value("Course Lesson", prior, "course") != course:
+		return False
+	if rule.prerequisite_type == "Lesson Complete":
+		return not rule.prerequisite_assignment and bool(frappe.db.exists(
+			"LMS Course Progress", {"member": member, "course": course, "lesson": prior, "status": "Complete"}
+		))
+	if rule.prerequisite_type not in ("Assignment Submitted", "Assignment Passed") or not rule.prerequisite_assignment:
+		return False
+	from lms.lms.utils import get_editorjs_blocks
+
+	content = frappe.db.get_value("Course Lesson", prior, "content")
+	if not assignment_in_lesson(rule.prerequisite_assignment, get_editorjs_blocks(content)):
+		return False
+	filters = {"member": member, "lesson": prior, "assignment": rule.prerequisite_assignment}
+	if rule.prerequisite_type == "Assignment Passed":
+		filters["status"] = "Pass"
+	return bool(frappe.db.exists("LMS Assignment Submission", filters))
+
+
+def validate_prerequisite(course, row):
+	kind, prior, assignment = row.prerequisite_type, row.prerequisite_lesson, row.prerequisite_assignment
+	if kind in ("Unknown", "None"):
+		if prior or assignment:
+			frappe.throw("This prerequisite does not accept a lesson or assignment.")
+		return
+	if kind not in ("Lesson Complete", "Assignment Submitted", "Assignment Passed"):
+		frappe.throw("Unknown prerequisite rule.")
+	if not prior or prior == row.lesson or frappe.db.get_value("Course Lesson", prior, "course") != course:
+		frappe.throw("Choose another lesson from the same course as the prerequisite.")
+	if (kind in ("Assignment Submitted", "Assignment Passed")) != bool(assignment):
+		frappe.throw("Choose an assignment only for an assignment prerequisite.")
+	if assignment:
+		from lms.lms.utils import get_editorjs_blocks
+
+		if not assignment_in_lesson(assignment, get_editorjs_blocks(frappe.db.get_value("Course Lesson", prior, "content"))):
+			frappe.throw("The prerequisite assignment must be present in the selected lesson.")
+
+
 def validate_schedule_rows(course, rows, *, inherit_allowed):
 	"""Reject unrelated, duplicate or contradictory lesson schedules."""
 	seen = set()
@@ -217,15 +262,18 @@ def grant_allows_lesson(*, user, lesson, now=None, require_manual=False):
 			return True
 		if require_manual:
 			continue
-		rule = row
-		if row.opening_type == "Inherit":
+		policy_rule = None
+		if row.opening_type == "Inherit" or row.prerequisite_state == "Inherit":
 			policy = frappe.db.get_value("LMS Access Policy", {"course": course, "enabled": 1}, "name")
-			rule = frappe.db.get_value(
+			policy_rule = frappe.db.get_value(
 				"LMS Access Policy Lesson",
 				{"parent": policy, "parenttype": "LMS Access Policy", "parentfield": "lessons", "lesson": lesson},
-				["opening_type", "opens_at", "delay_days"], as_dict=True,
+				["opening_type", "opens_at", "delay_days", "prerequisite_type", "prerequisite_lesson", "prerequisite_assignment"], as_dict=True,
 			) if policy else None
+		rule = policy_rule if row.opening_type == "Inherit" else row
 		opening = schedule_opening(rule, grant.starts_at)
-		if opening and now >= opening and row.prerequisite_state == "Clear":
+		ready = (prerequisite_satisfied(policy_rule, member=user, course=course)
+			if row.prerequisite_state == "Inherit" else row.prerequisite_state == "Clear")
+		if opening and now >= opening and ready:
 			return True
 	return False

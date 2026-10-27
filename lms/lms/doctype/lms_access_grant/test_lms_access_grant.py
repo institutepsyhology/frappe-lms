@@ -243,3 +243,31 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		self.assertFalse(payload.get("no_preview"))
 		frappe.set_user(self.other.email)
 		self.assertFalse(can_access_lesson(second.name))
+
+	def test_next_lesson_waits_for_this_students_assignment_approval(self):
+		second = self._create_lesson("Assignment gated lesson", self.chapter.name, self.course.name)
+		assignment = frappe.get_doc({"doctype": "LMS Assignment", "title": "Required assignment",
+			"type": "Text", "question": "Test question"}).insert(ignore_permissions=True)
+		content = json.dumps({"blocks": [{"type": "assignment", "data": {"assignment": assignment.name}}]})
+		frappe.db.set_value("Course Lesson", self.lesson.name, "content", content)
+		frappe.get_doc({"doctype": "LMS Access Policy", "course": self.course.name, "enabled": 1,
+			"lessons": [{"lesson": second.name, "opening_type": "After Start", "delay_days": 0,
+				"prerequisite_type": "Assignment Passed", "prerequisite_lesson": self.lesson.name,
+				"prerequisite_assignment": assignment.name}]}).insert(ignore_permissions=True)
+		grant = frappe.get_doc("LMS Access Grant", self.grant.name)
+		grant.append("lessons", {"lesson": second.name, "opening_type": "Inherit", "prerequisite_state": "Inherit"})
+		grant.save(ignore_permissions=True)
+		frappe.set_user(self.student.email)
+		self.assertFalse(can_access_lesson(second.name))
+		frappe.set_user("Administrator")
+		submission = frappe.get_doc({"doctype": "LMS Assignment Submission", "assignment": assignment.name,
+			"lesson": self.lesson.name, "member": self.student.email, "type": "Text", "answer": "Test answer"})
+		submission.insert(ignore_permissions=True)
+		frappe.set_user(self.student.email)
+		self.assertFalse(can_access_lesson(second.name))
+		frappe.set_user("Administrator")
+		frappe.db.set_value("LMS Assignment Submission", submission.name, "status", "Pass")
+		frappe.set_user(self.student.email)
+		self.assertTrue(can_access_lesson(second.name))
+		frappe.set_user(self.other.email)
+		self.assertFalse(can_access_lesson(second.name))

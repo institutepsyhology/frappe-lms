@@ -20,9 +20,9 @@ class GrantReaderTests(unittest.TestCase):
         self.default_rule = None
         self.default_end = None
         self.completed = False
+        self.assignment_status = None
         self.course = "course-a"
-        db = types.SimpleNamespace(get_value=self.get_value, get_all=self.get_all,
-                                   exists=lambda doctype, filters: self.completed if doctype == "LMS Course Progress" else False)
+        db = types.SimpleNamespace(get_value=self.get_value, get_all=self.get_all, exists=self.exists)
         frappe = types.ModuleType("frappe")
         frappe.db = db
         frappe.conf = {}
@@ -58,6 +58,8 @@ class GrantReaderTests(unittest.TestCase):
 
     def get_value(self, doctype, key, field, **kwargs):
         if doctype == "Course Lesson":
+            if key == "prior-a":
+                return "course-a" if field == "course" else "prior-content"
             return self.course if key == "lesson-a" else None
         if doctype == "LMS Access Grant Lesson":
             return self.lesson if key["parent"] == "grant-a" and key["lesson"] == "lesson-a" else None
@@ -68,6 +70,15 @@ class GrantReaderTests(unittest.TestCase):
         if doctype == "LMS Access Policy Lesson":
             return self.default_rule if key["parent"] == "policy-a" and key["lesson"] == "lesson-a" else None
         raise AssertionError(doctype)
+
+    def exists(self, doctype, filters):
+        if filters.get("member") != "student-a":
+            return False
+        if doctype == "LMS Course Progress":
+            return self.completed
+        if doctype == "LMS Assignment Submission":
+            return bool(self.assignment_status and ("status" not in filters or filters["status"] == self.assignment_status))
+        return False
 
     def get_all(self, doctype, filters, fields):
         self.assertEqual(doctype, "LMS Access Grant")
@@ -234,6 +245,30 @@ class GrantReaderTests(unittest.TestCase):
         self.assertFalse(self.check())
         self.grants = [self.grant(personal_end_type="Unknown", completed_retention_type="Unlimited")]
         self.assertFalse(self.check())
+
+    def test_inherited_lesson_prerequisite_uses_current_students_progress(self):
+        self.default_rule = self.row(opening_type="At", prerequisite_type="Lesson Complete",
+                                     prerequisite_lesson="prior-a", prerequisite_assignment=None)
+        self.lesson = self.row(opening_type="Inherit", opens_at=None, prerequisite_state="Inherit")
+        self.assertFalse(self.check())
+        self.completed = True
+        self.assertTrue(self.check())
+        self.assertFalse(self.check(user="student-b"))
+
+    def test_inherited_assignment_prerequisite_distinguishes_submission_and_pass(self):
+        utils = types.ModuleType("lms.lms.utils")
+        utils.get_editorjs_blocks = lambda content: [{"type": "assignment", "data": {"assignment": "task-a"}}]
+        self.default_rule = self.row(opening_type="At", prerequisite_type="Assignment Passed",
+                                     prerequisite_lesson="prior-a", prerequisite_assignment="task-a")
+        self.lesson = self.row(opening_type="Inherit", opens_at=None, prerequisite_state="Inherit")
+        with patch.dict(sys.modules, {"lms.lms.utils": utils}):
+            self.assignment_status = "Not Graded"
+            self.assertFalse(self.check())
+            self.default_rule.prerequisite_type = "Assignment Submitted"
+            self.assertTrue(self.check())
+            self.default_rule.prerequisite_type = "Assignment Passed"
+            self.assignment_status = "Pass"
+            self.assertTrue(self.check())
 
 
 if __name__ == "__main__":
