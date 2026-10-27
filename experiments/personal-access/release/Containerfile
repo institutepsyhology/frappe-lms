@@ -1,5 +1,5 @@
 # Built offline from the verified production image. Only access source is overlaid.
-FROM company-lms:individual-access-disabled-r2-20261027
+FROM company-lms:individual-access-disabled-r3-20261027
 ARG SOURCE_COMMIT
 USER frappe
 WORKDIR /home/frappe/frappe-bench/apps/lms
