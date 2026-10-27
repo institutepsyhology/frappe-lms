@@ -172,3 +172,32 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		with self.assertRaises(frappe.ValidationError):
 			limit_grant(self.grant.name, ["unknown-lesson"], "Unlimited")
 		self.assertEqual(frappe.db.get_value("LMS Access Grant", self.grant.name, "status"), "Active")
+
+	def test_inherited_duration_and_personal_course_end_exception(self):
+		frappe.get_doc({"doctype": "LMS Access Policy", "course": self.course.name, "enabled": 1,
+			"default_personal_end_type": "After Start", "default_personal_end_days": 2,
+			"global_end_type": "At", "global_end_at": add_to_date(now_datetime(), days=-1)}).insert(
+			ignore_permissions=True
+		)
+		frappe.db.set_value("LMS Access Grant", self.grant.name,
+			{"personal_end_type": "Inherit", "course_end_type": "Inherit", "ignore_course_end": 0})
+		frappe.set_user(self.student.email)
+		self.assertFalse(can_access_lesson(self.lesson.name))
+		frappe.set_user("Administrator")
+		frappe.db.set_value("LMS Access Grant", self.grant.name, "ignore_course_end", 1)
+		frappe.set_user(self.student.email)
+		self.assertTrue(can_access_lesson(self.lesson.name))
+
+	def test_resume_extends_inherited_duration_without_moving_course_end(self):
+		from lms.lms.access_actions import freeze_grant, resume_grant
+
+		frappe.get_doc({"doctype": "LMS Access Policy", "course": self.course.name, "enabled": 1,
+			"default_personal_end_type": "After Start", "default_personal_end_days": 5}).insert(ignore_permissions=True)
+		frappe.db.set_value("LMS Access Grant", self.grant.name, "personal_end_type", "Inherit")
+		freeze_grant(self.grant.name)
+		frappe.db.set_value("LMS Access Grant", self.grant.name, "frozen_at", add_to_date(now_datetime(), days=-2))
+		resume_grant(self.grant.name, 1)
+		grant = frappe.get_doc("LMS Access Grant", self.grant.name)
+		self.assertEqual(grant.personal_end_type, "At")
+		self.assertGreater(grant.ends_at, add_to_date(now_datetime(), days=5))
+		self.assertEqual(grant.course_end_type, "Unlimited")

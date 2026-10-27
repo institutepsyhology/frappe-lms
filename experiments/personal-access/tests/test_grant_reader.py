@@ -18,6 +18,7 @@ class GrantReaderTests(unittest.TestCase):
         self.grants = [self.grant()]
         self.lesson = self.row()
         self.default_rule = None
+        self.default_end = None
         self.course = "course-a"
         db = types.SimpleNamespace(get_value=self.get_value, get_all=self.get_all)
         frappe = types.ModuleType("frappe")
@@ -40,7 +41,7 @@ class GrantReaderTests(unittest.TestCase):
     @staticmethod
     def grant(**changes):
         value = dict(name="grant-a", member="student-a", course="course-a", status="Active",
-                     starts_at=NOW - timedelta(days=1), personal_end_type="Unlimited", ends_at=None,
+                     starts_at=NOW - timedelta(days=1), personal_end_type="Unlimited", ends_at=None, personal_end_days=0,
                      course_end_type="Unlimited", course_ends_at=None, ignore_course_end=0)
         value.update(changes)
         return types.SimpleNamespace(**value)
@@ -58,6 +59,8 @@ class GrantReaderTests(unittest.TestCase):
         if doctype == "LMS Access Grant Lesson":
             return self.lesson if key["parent"] == "grant-a" and key["lesson"] == "lesson-a" else None
         if doctype == "LMS Access Policy":
+            if isinstance(field, list):
+                return self.default_end
             return "policy-a" if self.default_rule else None
         if doctype == "LMS Access Policy Lesson":
             return self.default_rule if key["parent"] == "policy-a" and key["lesson"] == "lesson-a" else None
@@ -168,6 +171,25 @@ class GrantReaderTests(unittest.TestCase):
 
     def test_missing_default_schedule_remains_closed(self):
         self.lesson = self.row(opening_type="Inherit", opens_at=None)
+        self.assertFalse(self.check())
+
+    def test_personal_duration_is_measured_from_individual_start(self):
+        self.grants = [self.grant(personal_end_type="After Start", personal_end_days=2,
+                                  starts_at=NOW - timedelta(days=1))]
+        self.assertTrue(self.check())
+        self.grants = [self.grant(personal_end_type="After Start", personal_end_days=2,
+                                  starts_at=NOW - timedelta(days=2))]
+        self.assertFalse(self.check())
+
+    def test_inherited_duration_and_global_end_can_be_personally_overridden(self):
+        self.default_end = types.SimpleNamespace(default_personal_end_type="After Start",
+            default_personal_end_at=None, default_personal_end_days=2,
+            global_end_type="At", global_end_at=NOW)
+        self.grants = [self.grant(personal_end_type="Inherit", course_end_type="Inherit")]
+        self.assertFalse(self.check())
+        self.grants = [self.grant(personal_end_type="Inherit", course_end_type="Inherit", ignore_course_end=1)]
+        self.assertTrue(self.check())
+        self.grants = [self.grant(personal_end_type="After Start", personal_end_days=0)]
         self.assertFalse(self.check())
 
     def test_closed_course_keeps_only_explicit_lessons_for_the_selected_student(self):

@@ -10,9 +10,11 @@ class LMSAccessGrant(Document):
 	def validate(self):
 		if self.status == "Frozen" and not self.frozen_at:
 			frappe.throw(_("A frozen access grant must have a freeze time."))
-		for end_type, value in ((self.personal_end_type, self.ends_at), (self.course_end_type, self.course_ends_at)):
-			if end_type not in ("Unknown", "Unlimited", "At") or (end_type == "At") != bool(value):
-				frappe.throw(_("Choose a valid end type and provide a date only for a fixed end."))
+		from lms.lms.individual_access import validate_end_rule
+
+		validate_end_rule(self.personal_end_type, self.ends_at, self.personal_end_days,
+			inherit_allowed=True, duration_allowed=True)
+		validate_end_rule(self.course_end_type, self.course_ends_at, inherit_allowed=True)
 		if self.starts_at and self.ends_at and get_datetime(self.ends_at) <= get_datetime(self.starts_at):
 			frappe.throw(_("The access end must be later than the start."))
 		from lms.lms.individual_access import validate_schedule_rows

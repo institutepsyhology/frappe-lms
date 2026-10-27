@@ -49,12 +49,22 @@ def resume_grant(name, extend_personal_end):
 	elapsed = now - get_datetime(grant.frozen_at)
 	if elapsed.total_seconds() < 0:
 		frappe.throw(_("The freeze time is in the future."), frappe.ValidationError)
-	if extend and grant.personal_end_type == "Unknown":
-		frappe.throw(_("The personal end is unknown and cannot be extended."), frappe.ValidationError)
-	if extend and grant.personal_end_type == "At":
-		if not grant.ends_at:
-			frappe.throw(_("The personal end date is missing."), frappe.ValidationError)
-		grant.ends_at = get_datetime(grant.ends_at) + elapsed
+	if extend:
+		from lms.lms.individual_access import resolve_end
+
+		kind, value, days = grant.personal_end_type, grant.ends_at, grant.personal_end_days
+		if kind == "Inherit":
+			policy = frappe.db.get_value("LMS Access Policy", {"course": grant.course, "enabled": 1},
+				["default_personal_end_type", "default_personal_end_at", "default_personal_end_days"], as_dict=True)
+			kind, value, days = ((policy.default_personal_end_type, policy.default_personal_end_at,
+				policy.default_personal_end_days) if policy else ("Unknown", None, 0))
+		kind, value = resolve_end(kind, value, days, grant.starts_at)
+		if kind == "Unknown" or (kind == "At" and not value):
+			frappe.throw(_("The personal end is unknown and cannot be extended."), frappe.ValidationError)
+		if kind == "At":
+			grant.personal_end_type = "At"
+			grant.personal_end_days = 0
+			grant.ends_at = get_datetime(value) + elapsed
 	grant.status = "Active"
 	grant.frozen_at = None
 	grant.save()

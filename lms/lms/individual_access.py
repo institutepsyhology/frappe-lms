@@ -86,6 +86,28 @@ def validate_schedule_rows(course, rows, *, inherit_allowed):
 			frappe.throw("The opening delay must be a non-negative number of days for a relative rule.")
 
 
+def validate_end_rule(kind, value, days=0, *, inherit_allowed=False, duration_allowed=False):
+	types = {"Unknown", "Unlimited", "At"}
+	if inherit_allowed:
+		types.add("Inherit")
+	if duration_allowed:
+		types.add("After Start")
+	days = days or 0
+	if (kind not in types or (kind == "At") != bool(value) or type(days) is not int
+			or (kind == "After Start" and days <= 0) or (kind != "After Start" and days != 0)):
+		frappe.throw("The access end rule, date and duration do not match.")
+
+
+def resolve_end(kind, value, days, starts_at):
+	if kind == "After Start":
+		if value or not starts_at or type(days) is not int or days <= 0:
+			return "Unknown", None
+		return "At", get_datetime(starts_at) + timedelta(days=days)
+	if kind in ("Unknown", "Unlimited", "At") and not days:
+		return kind, value
+	return "Unknown", None
+
+
 def _valid_end(kind, value, now):
 	if kind == "Unlimited":
 		return not value
@@ -112,7 +134,7 @@ def grant_allows_lesson(*, user, lesson, now=None):
 	grants = frappe.db.get_all(
 		"LMS Access Grant",
 		filters={"member": user, "course": course, "status": ("in", ["Active", "Limited"])},
-		fields=["name", "status", "starts_at", "personal_end_type", "ends_at", "course_end_type",
+		fields=["name", "status", "starts_at", "personal_end_type", "ends_at", "personal_end_days", "course_end_type",
 			"course_ends_at", "ignore_course_end"],
 	)
 	for grant in grants:
@@ -131,11 +153,28 @@ def grant_allows_lesson(*, user, lesson, now=None):
 			if row.retain_when_limited != 1 or not _valid_end(row.retention_end_type, row.retention_ends_at, now):
 				continue
 		else:
-			if not _valid_end(grant.personal_end_type, grant.ends_at, now):
+			policy = None
+			if grant.personal_end_type == "Inherit" or grant.course_end_type == "Inherit":
+				policy = frappe.db.get_value(
+					"LMS Access Policy", {"course": course, "enabled": 1},
+					["default_personal_end_type", "default_personal_end_at", "default_personal_end_days",
+						"global_end_type", "global_end_at"], as_dict=True,
+				)
+			personal_type, personal_at, personal_days = grant.personal_end_type, grant.ends_at, grant.personal_end_days
+			if personal_type == "Inherit":
+				personal_type, personal_at, personal_days = (
+					(policy.default_personal_end_type, policy.default_personal_end_at, policy.default_personal_end_days)
+					if policy else ("Unknown", None, 0)
+				)
+			personal_type, personal_at = resolve_end(personal_type, personal_at, personal_days, grant.starts_at)
+			if not _valid_end(personal_type, personal_at, now):
 				continue
 			if grant.ignore_course_end not in (0, 1, False, True):
 				continue
-			if not grant.ignore_course_end and not _valid_end(grant.course_end_type, grant.course_ends_at, now):
+			course_type, course_at = grant.course_end_type, grant.course_ends_at
+			if course_type == "Inherit":
+				course_type, course_at = (policy.global_end_type, policy.global_end_at) if policy else ("Unknown", None)
+			if not grant.ignore_course_end and not _valid_end(course_type, course_at, now):
 				continue
 		if row.manual_open == 1:
 			return True
