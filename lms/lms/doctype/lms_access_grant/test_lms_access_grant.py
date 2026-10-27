@@ -60,6 +60,16 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		with self.assertRaises(frappe.PermissionError):
 			course_lesson._save_progress(self.lesson.name, self.course.name)
 
+	def test_course_access_overview_is_limited_to_administrator(self):
+		from lms.lms.access_actions import get_course_access_overview
+
+		result = get_course_access_overview(self.course.name)
+		self.assertIn(self.grant.name, [grant.name for grant in result["grants"]])
+		self.assertFalse(result["policy_exists"])
+		frappe.set_user(self.student.email)
+		with self.assertRaises(frappe.PermissionError):
+			get_course_access_overview(self.course.name)
+
 	def test_admin_creates_inherited_grant_for_enrolled_student(self):
 		from lms.lms.access_actions import create_grant_for_enrolled_student
 

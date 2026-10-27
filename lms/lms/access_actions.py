@@ -22,6 +22,25 @@ def _explicit_choice(value):
 	frappe.throw(_("Choose explicitly whether to extend the personal end date."), frappe.ValidationError)
 
 
+@frappe.whitelist()
+def get_course_access_overview(course):
+	"""Return access status and grants for the administrator's course screen."""
+	frappe.only_for("System Manager")
+	frappe.has_permission("LMS Access Grant", "read", throw=True)
+	if not isinstance(course, str) or not frappe.db.exists("LMS Course", course):
+		frappe.throw(_("Course not found."), frappe.ValidationError)
+	policy = frappe.db.get_value("LMS Access Policy", {"course": course}, ["name", "enabled"], as_dict=True)
+	grants = frappe.get_all("LMS Access Grant", filters={"course": course},
+		fields=["name", "member", "status", "starts_at", "ends_at"], order_by="modified desc", limit_page_length=201)
+	return {
+		"release_enabled": frappe.conf.get("individual_access_release_enabled") is True,
+		"policy_enabled": bool(policy and policy.enabled),
+		"policy_exists": bool(policy),
+		"grants": grants[:200],
+		"truncated": len(grants) > 200,
+	}
+
+
 @frappe.whitelist(methods=["POST"])
 def create_grant_for_enrolled_student(course, member, starts_at, lessons):
 	"""Create one inherited access grant for an already enrolled student.
