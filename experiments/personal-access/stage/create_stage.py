@@ -73,14 +73,15 @@ def main():
     run("docker", "exec", "-u", "frappe", APP, "tar", "-xf", "/tmp/access-source.tar",
         "-C", "/home/frappe/frappe-bench/apps/lms")
     deadline = time.monotonic() + 90
-    while subprocess.run(["docker", "exec", DB, "mariadb-admin", "ping", "--silent"],
+    while subprocess.run(["docker", "exec", DB, "mariadb", "-uroot", "-p" + db_password, "-e", "SELECT 1"],
                          capture_output=True).returncode:
         if time.monotonic() >= deadline:
             raise RuntimeError("isolated database did not start")
         time.sleep(2)
     prefix = ["docker", "exec", "-u", "frappe", "-w", "/home/frappe/frappe-bench/sites", APP, "bench"]
     run(*prefix, "new-site", SITE, "--db-host", "db", "--db-root-password", db_password,
-        "--admin-password", admin_password, "--install-app", "payments", "--install-app", "lms", timeout=600)
+        "--mariadb-user-host-login-scope", "%", "--admin-password", admin_password,
+        "--install-app", "payments", "--install-app", "lms", timeout=600)
     report = {"site": SITE, "source_commit": commit, "image": IMAGE, "network": NETWORK,
               "internal_network": True, "production_volumes_mounted": False, "installed": True}
     (STAGE / "stage.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
