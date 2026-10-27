@@ -18,9 +18,9 @@ import time
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = Path("/opt/company-lms")
-OLD = "sha256:36b0ca10c02e647140264380df9119c248de8273da83a97a494ab5bccebecd06"
-BASE_TAG = "company-lms:individual-access-disabled-r7-20261028"
-TAG = "company-lms:individual-access-disabled-r8-20261028"
+OLD = "sha256:b5e4dbdb119909f32cf38b630134e93bd5cb43e994d7e66564abeea63640cb8f"
+BASE_TAG = "company-lms:individual-access-disabled-r8-20261028"
+TAG = "company-lms:individual-access-disabled-r9-20261028"
 SITES = ("my-lk.mastervision.su", "my-lk.iomp.ru", "my-lk.mv-centr.ru")
 BACKEND = "company-lms-backend-1"
 
