@@ -8,6 +8,8 @@ class LMSAccessGrant(Document):
 	"""Administrative record only; does not yet enforce lesson permissions."""
 
 	def validate(self):
+		if self.status == "Frozen" and not self.frozen_at:
+			frappe.throw(_("A frozen access grant must have a freeze time."))
 		for end_type, value in ((self.personal_end_type, self.ends_at), (self.course_end_type, self.course_ends_at)):
 			if end_type not in ("Unknown", "Unlimited", "At") or (end_type == "At") != bool(value):
 				frappe.throw(_("Choose a valid end type and provide a date only for a fixed end."))

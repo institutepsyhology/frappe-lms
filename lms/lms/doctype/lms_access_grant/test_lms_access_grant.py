@@ -135,3 +135,22 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 			{"opening_type": "After Start", "delay_days": 5})
 		frappe.set_user(self.student.email)
 		self.assertFalse(can_access_lesson(self.lesson.name))
+
+	def test_freeze_resume_requires_admin_and_preserves_course_end(self):
+		from lms.lms.access_actions import freeze_grant, resume_grant
+
+		frappe.set_user(self.other.email)
+		with self.assertRaises(frappe.PermissionError):
+			freeze_grant(self.grant.name)
+		frappe.set_user("Administrator")
+		end = add_to_date(now_datetime(), days=10)
+		frappe.db.set_value("LMS Access Grant", self.grant.name, {"personal_end_type": "At", "ends_at": end})
+		freeze_grant(self.grant.name)
+		frappe.db.set_value("LMS Access Grant", self.grant.name, "frozen_at", add_to_date(now_datetime(), days=-2))
+		with self.assertRaises(frappe.ValidationError):
+			resume_grant(self.grant.name, "unknown")
+		resume_grant(self.grant.name, 1)
+		grant = frappe.get_doc("LMS Access Grant", self.grant.name)
+		self.assertEqual(grant.status, "Active")
+		self.assertGreater(grant.ends_at, add_to_date(end, days=1))
+		self.assertEqual(grant.course_end_type, "Unlimited")

@@ -46,7 +46,7 @@ class GrantDoctypeTests(unittest.TestCase):
 
     def grant(self, **changes):
         doc = self.cls()
-        values = {"course": "course-a", "starts_at": "2026-10-27 10:00:00",
+        values = {"course": "course-a", "status": "Active", "frozen_at": None, "starts_at": "2026-10-27 10:00:00",
                   "ends_at": "2026-10-28 10:00:00", "personal_end_type": "At",
                   "course_ends_at": None, "course_end_type": "Unknown",
                   "lessons": [types.SimpleNamespace(lesson="lesson-a", opening_type="Inherit", opens_at=None, delay_days=0)]}
