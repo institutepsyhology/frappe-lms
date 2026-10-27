@@ -87,6 +87,26 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		with self.assertRaises(frappe.ValidationError):
 			create_course_access_policy(self.course.name)
 
+	def test_course_defaults_require_admin_and_remain_disabled(self):
+		from lms.lms.access_actions import create_course_access_policy, update_course_access_defaults
+
+		policy_name = create_course_access_policy(self.course.name)["name"]
+		values = {"default_personal_end_type": "After Start", "default_personal_end_at": None,
+			"default_personal_end_days": 30, "global_end_type": "Unlimited", "global_end_at": None,
+			"completed_retention_type": "Days", "completed_retention_days": 14}
+		frappe.set_user(self.student.email)
+		with self.assertRaises(frappe.PermissionError):
+			update_course_access_defaults(self.course.name, values)
+		frappe.set_user("Administrator")
+		update_course_access_defaults(self.course.name, values)
+		policy = frappe.get_doc("LMS Access Policy", policy_name)
+		self.assertEqual(policy.default_personal_end_days, 30)
+		self.assertEqual(policy.completed_retention_days, 14)
+		self.assertFalse(policy.enabled)
+		values["default_personal_end_days"] = 0
+		with self.assertRaises(frappe.ValidationError):
+			update_course_access_defaults(self.course.name, values)
+
 	def test_admin_creates_inherited_grant_for_enrolled_student(self):
 		from lms.lms.access_actions import create_grant_for_enrolled_student
 

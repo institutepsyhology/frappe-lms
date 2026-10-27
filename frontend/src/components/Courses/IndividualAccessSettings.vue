@@ -14,6 +14,40 @@
 				<p>Настройки доступа для курса ещё не созданы.</p>
 				<button class="underline" :disabled="busy" @click="createPolicy">Создать настройки доступа</button>
 			</div>
+			<details v-if="overview.policy && !overview.policy_enabled" class="border rounded p-3">
+				<summary class="cursor-pointer">Общие сроки курса</summary>
+				<div class="space-y-2 mt-3">
+					<label class="block">Персональный срок по умолчанию
+						<select v-model="defaults.default_personal_end_type" class="border rounded w-full p-1">
+							<option value="Unknown">Не задан</option><option value="Unlimited">Без ограничения</option>
+							<option value="After Start">Количество дней от начала</option><option value="At">До даты</option>
+						</select>
+					</label>
+					<label v-if="defaults.default_personal_end_type === 'After Start'" class="block">Дней
+						<input v-model.number="defaults.default_personal_end_days" type="number" min="1" class="border rounded w-full p-1" />
+					</label>
+					<label v-if="defaults.default_personal_end_type === 'At'" class="block">Дата и время ({{ overview.timezone }})
+						<input v-model="defaults.default_personal_end_at" type="datetime-local" step="1" class="border rounded w-full p-1" />
+					</label>
+					<label class="block">Общее окончание курса
+						<select v-model="defaults.global_end_type" class="border rounded w-full p-1">
+							<option value="Unknown">Не задано</option><option value="Unlimited">Без ограничения</option><option value="At">До даты</option>
+						</select>
+					</label>
+					<label v-if="defaults.global_end_type === 'At'" class="block">Дата и время ({{ overview.timezone }})
+						<input v-model="defaults.global_end_at" type="datetime-local" step="1" class="border rounded w-full p-1" />
+					</label>
+					<label class="block">Доступ к завершённым урокам после окончания
+						<select v-model="defaults.completed_retention_type" class="border rounded w-full p-1">
+							<option value="None">Не сохранять</option><option value="Unlimited">Без ограничения</option><option value="Days">На количество дней</option>
+						</select>
+					</label>
+					<label v-if="defaults.completed_retention_type === 'Days'" class="block">Дней
+						<input v-model.number="defaults.completed_retention_days" type="number" min="1" class="border rounded w-full p-1" />
+					</label>
+					<button class="underline" :disabled="busy" @click="saveDefaults">Сохранить общие сроки</button>
+				</div>
+			</details>
 			<details v-if="overview.policy_exists" class="border rounded p-3">
 				<summary class="cursor-pointer">Добавить персональную карточку</summary>
 				<div class="space-y-2 mt-3">
@@ -63,7 +97,8 @@ import { inject, reactive, ref, watch } from 'vue'
 import type { SessionUser } from '@/types'
 
 type Grant = { name: string; member: string; status: string; starts_at?: string; ends_at?: string }
-type Overview = { release_enabled: boolean; policy_enabled: boolean; policy_exists: boolean; timezone: string; grants: Grant[]; truncated: boolean; lessons: {name: string; title: string}[]; lessons_truncated: boolean }
+type Defaults = { default_personal_end_type: string; default_personal_end_at: string | null; default_personal_end_days: number; global_end_type: string; global_end_at: string | null; completed_retention_type: string; completed_retention_days: number }
+type Overview = { release_enabled: boolean; policy_enabled: boolean; policy_exists: boolean; policy?: Defaults | null; timezone: string; grants: Grant[]; truncated: boolean; lessons: {name: string; title: string}[]; lessons_truncated: boolean }
 const props = defineProps<{ course: string }>()
 const user = inject<SessionUser>('$user')
 const overview = ref<Overview | null>(null)
@@ -74,6 +109,9 @@ const resumeChoice = reactive<Record<string, string>>({})
 const newMember = ref('')
 const newStart = ref('')
 const newLessons = ref<string[]>([])
+const defaults = reactive<Defaults>({ default_personal_end_type: 'Unknown', default_personal_end_at: null,
+	default_personal_end_days: 0, global_end_type: 'Unknown', global_end_at: null,
+	completed_retention_type: 'None', completed_retention_days: 0 })
 const labels: Record<string, string> = { Draft: 'Черновик', Active: 'Действует', Frozen: 'Заморожен', Limited: 'Ограничен', Revoked: 'Закрыт' }
 
 async function load() {
@@ -82,6 +120,11 @@ async function load() {
 	error.value = false
 	try {
 		overview.value = await call('lms.lms.access_actions.get_course_access_overview', { course: props.course })
+		if (overview.value?.policy) {
+			Object.assign(defaults, overview.value.policy)
+			defaults.default_personal_end_at = defaults.default_personal_end_at?.replace(' ', 'T') || null
+			defaults.global_end_at = defaults.global_end_at?.replace(' ', 'T') || null
+		}
 	} catch {
 		error.value = true
 	} finally {
@@ -133,6 +176,25 @@ async function createPolicy() {
 		await load()
 	} catch {
 		toast.error('Не удалось создать настройки доступа.')
+	} finally {
+		busy.value = false
+	}
+}
+async function saveDefaults() {
+	busy.value = true
+	try {
+		await call('lms.lms.access_actions.update_course_access_defaults', { course: props.course, defaults: {
+			default_personal_end_type: defaults.default_personal_end_type,
+			default_personal_end_at: defaults.default_personal_end_type === 'At' ? defaults.default_personal_end_at : null,
+			default_personal_end_days: defaults.default_personal_end_type === 'After Start' ? defaults.default_personal_end_days : 0,
+			global_end_type: defaults.global_end_type,
+			global_end_at: defaults.global_end_type === 'At' ? defaults.global_end_at : null,
+			completed_retention_type: defaults.completed_retention_type,
+			completed_retention_days: defaults.completed_retention_type === 'Days' ? defaults.completed_retention_days : 0,
+		} })
+		await load()
+	} catch {
+		toast.error('Не удалось сохранить сроки. Проверьте даты и количество дней.')
 	} finally {
 		busy.value = false
 	}

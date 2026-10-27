@@ -29,7 +29,9 @@ def get_course_access_overview(course):
 	frappe.has_permission("LMS Access Grant", "read", throw=True)
 	if not isinstance(course, str) or not frappe.db.exists("LMS Course", course):
 		frappe.throw(_("Course not found."), frappe.ValidationError)
-	policy = frappe.db.get_value("LMS Access Policy", {"course": course}, ["name", "enabled"], as_dict=True)
+	policy = frappe.db.get_value("LMS Access Policy", {"course": course}, ["name", "enabled",
+		"default_personal_end_type", "default_personal_end_at", "default_personal_end_days",
+		"global_end_type", "global_end_at", "completed_retention_type", "completed_retention_days"], as_dict=True)
 	grants = frappe.get_all("LMS Access Grant", filters={"course": course},
 		fields=["name", "member", "status", "starts_at", "ends_at"], order_by="modified desc", limit_page_length=201)
 	lessons = frappe.get_all("Course Lesson", filters={"course": course},
@@ -38,6 +40,7 @@ def get_course_access_overview(course):
 		"release_enabled": frappe.conf.get("individual_access_release_enabled") is True,
 		"policy_enabled": bool(policy and policy.enabled),
 		"policy_exists": bool(policy),
+		"policy": policy,
 		"timezone": get_system_timezone(),
 		"grants": grants[:200],
 		"truncated": len(grants) > 200,
@@ -60,6 +63,30 @@ def create_course_access_policy(course):
 		"lessons": [{"lesson": lesson, "opening_type": "Unknown", "prerequisite_type": "Unknown"}
 			for lesson in lessons]}).insert()
 	return {"name": policy.name, "enabled": False, "lesson_count": len(policy.lessons)}
+
+
+@frappe.whitelist(methods=["POST"])
+def update_course_access_defaults(course, defaults):
+	"""Save explicit course-wide defaults only while the policy is disabled."""
+	frappe.only_for("System Manager")
+	if isinstance(defaults, str):
+		defaults = frappe.parse_json(defaults)
+	fields = {"default_personal_end_type", "default_personal_end_at", "default_personal_end_days",
+		"global_end_type", "global_end_at", "completed_retention_type", "completed_retention_days"}
+	if not isinstance(defaults, dict) or set(defaults) != fields:
+		frappe.throw(_("Provide all course access defaults explicitly."), frappe.ValidationError)
+	if not isinstance(course, str) or not frappe.db.get_value("LMS Course", course, "name", for_update=True):
+		frappe.throw(_("Course not found."), frappe.ValidationError)
+	name = frappe.db.get_value("LMS Access Policy", {"course": course}, "name", for_update=True)
+	if not name:
+		frappe.throw(_("Set up the course access policy first."), frappe.ValidationError)
+	policy = frappe.get_doc("LMS Access Policy", name, for_update=True)
+	policy.check_permission("write")
+	if policy.enabled:
+		frappe.throw(_("Disable the policy before editing its defaults."), frappe.ValidationError)
+	policy.update(defaults)
+	policy.save()
+	return {"name": policy.name, "enabled": False}
 
 
 @frappe.whitelist(methods=["POST"])

@@ -60,4 +60,21 @@ describe('individual access settings', () => {
 		await flushPromises()
 		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.create_course_access_policy', { course: 'course-1' })
 	})
+
+	it('saves explicit defaults without enabling the policy', async () => {
+		callMock.mockResolvedValueOnce({ release_enabled: false, policy_enabled: false, policy_exists: true,
+			policy: { default_personal_end_type: 'After Start', default_personal_end_at: null,
+				default_personal_end_days: 30, global_end_type: 'Unlimited', global_end_at: null,
+				completed_retention_type: 'Days', completed_retention_days: 14 },
+			grants: [], truncated: false, lessons: [], lessons_truncated: false, timezone: 'Europe/Moscow' })
+		const wrapper = render(true)
+		await flushPromises()
+		await wrapper.findAll('button').find((item) => item.text() === 'Сохранить общие сроки')!.trigger('click')
+		await flushPromises()
+		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.update_course_access_defaults', {
+			course: 'course-1', defaults: { default_personal_end_type: 'After Start', default_personal_end_at: null,
+				default_personal_end_days: 30, global_end_type: 'Unlimited', global_end_at: null,
+				completed_retention_type: 'Days', completed_retention_days: 14 },
+		})
+	})
 })
