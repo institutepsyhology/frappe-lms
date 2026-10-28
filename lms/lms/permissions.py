@@ -557,7 +557,7 @@ def _lock_state(course: str) -> tuple[set, list, set]:
 
 	if policy_applies(course):
 		locked = {name for name in locked if not (
-			grant_allows_lesson(user=frappe.session.user, lesson=name, require_manual=True)
+			grant_allows_lesson(user=frappe.session.user, lesson=name, require_schedule_override=True)
 			or grant_allows_lesson(user=frappe.session.user, lesson=name, require_retained=True)
 		)}
 	return locked, names, completed

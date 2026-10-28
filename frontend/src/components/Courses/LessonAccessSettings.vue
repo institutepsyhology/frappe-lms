@@ -17,6 +17,13 @@
 			<label v-if="rule.opening_type === 'At'" class="block">Дата и время ({{ overview.timezone }})
 				<input v-model="rule.opens_at" type="datetime-local" step="1" class="block w-full rounded border p-2" />
 			</label>
+			<label class="block">Не раньше даты ({{ overview.timezone }})
+				<input v-model="rule.not_before_at" type="datetime-local" step="1" class="block w-full rounded border p-2" />
+			</label>
+			<label class="block">Окончание доступа к уроку ({{ overview.timezone }})
+				<input v-model="rule.lesson_ends_at" type="datetime-local" step="1" class="block w-full rounded border p-2" />
+			</label>
+			<label class="flex gap-2"><input v-model="rule.always_open" type="checkbox" /> Открыть вне расписания и условий предыдущих уроков</label>
 			<label class="block">Дополнительное условие
 				<select v-model="rule.prerequisite_type" class="block w-full rounded border p-2">
 					<option value="Unknown">Не задано</option><option value="None">Без условия</option><option value="Lesson Complete">Завершён другой урок</option><option value="Assignment Submitted">Отправлено задание</option><option value="Assignment Passed">Задание принято</option>
@@ -37,14 +44,14 @@
 import { call, toast } from 'frappe-ui'
 import { inject, reactive, ref, watch } from 'vue'
 import type { SessionUser } from '@/types'
-type Rule = { opening_type: string; opens_at: string | null; delay_days: number; prerequisite_type: string; prerequisite_lesson: string | null; prerequisite_assignment: string | null }
+type Rule = { opening_type: string; opens_at: string | null; delay_days: number; not_before_at: string | null; lesson_ends_at: string | null; always_open: boolean; prerequisite_type: string; prerequisite_lesson: string | null; prerequisite_assignment: string | null }
 type Overview = { release_enabled: boolean; policy_enabled: boolean; policy_exists: boolean; timezone: string; lessons: {name: string; title: string}[]; lessons_truncated: boolean; schedule: (Rule & {lesson: string})[] }
 const props = defineProps<{ course: string; lesson?: string }>()
 const user = inject<SessionUser>('$user')
 const overview = ref<Overview | null>(null)
 const loading = ref(false), busy = ref(false), assignmentsLoading = ref(false)
 const assignments = ref<{name: string; title: string}[]>([])
-const rule = reactive<Rule>({ opening_type: 'Unknown', opens_at: null, delay_days: 0, prerequisite_type: 'Unknown', prerequisite_lesson: null, prerequisite_assignment: null })
+const rule = reactive<Rule>({ opening_type: 'Unknown', opens_at: null, delay_days: 0, not_before_at: null, lesson_ends_at: null, always_open: false, prerequisite_type: 'Unknown', prerequisite_lesson: null, prerequisite_assignment: null })
 let generation = 0
 async function load() {
 	const request = ++generation
@@ -54,8 +61,11 @@ async function load() {
 		const result: Overview = await call('lms.lms.access_actions.get_course_access_overview', { course: props.course })
 		if (request !== generation) return
 		overview.value = result
-		Object.assign(rule, { opening_type: 'Unknown', opens_at: null, delay_days: 0, prerequisite_type: 'Unknown', prerequisite_lesson: null, prerequisite_assignment: null }, result.schedule?.find(item => item.lesson === props.lesson) || {})
+		Object.assign(rule, { opening_type: 'Unknown', opens_at: null, delay_days: 0, not_before_at: null, lesson_ends_at: null, always_open: false, prerequisite_type: 'Unknown', prerequisite_lesson: null, prerequisite_assignment: null }, result.schedule?.find(item => item.lesson === props.lesson) || {})
 		rule.opens_at = rule.opens_at?.replace(' ', 'T') || null
+		rule.not_before_at = rule.not_before_at?.replace(' ', 'T') || null
+		rule.lesson_ends_at = rule.lesson_ends_at?.replace(' ', 'T') || null
+		rule.always_open = Boolean(rule.always_open)
 	} catch { if (request === generation) overview.value = null }
 	finally { if (request === generation) loading.value = false }
 }
@@ -78,7 +88,7 @@ async function save() {
 	try {
 		await call('lms.lms.access_actions.update_course_lesson_rule', { course: props.course, lesson: props.lesson, rule: {
 			opening_type: rule.opening_type, opens_at: rule.opening_type === 'At' ? rule.opens_at : null,
-			delay_days: rule.opening_type === 'After Start' ? rule.delay_days : 0, prerequisite_type: rule.prerequisite_type,
+			delay_days: rule.opening_type === 'After Start' ? rule.delay_days : 0, not_before_at: rule.not_before_at || null, lesson_ends_at: rule.lesson_ends_at || null, always_open: rule.always_open, prerequisite_type: rule.prerequisite_type,
 			prerequisite_lesson: ['Unknown', 'None'].includes(rule.prerequisite_type) ? null : rule.prerequisite_lesson,
 			prerequisite_assignment: ['Assignment Submitted', 'Assignment Passed'].includes(rule.prerequisite_type) ? rule.prerequisite_assignment : null,
 		} })

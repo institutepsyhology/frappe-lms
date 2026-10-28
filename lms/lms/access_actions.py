@@ -43,7 +43,7 @@ def get_course_access_overview(course):
 		fields=["name", "title"], order_by="name asc", limit_page_length=501)
 	schedule = frappe.get_all("LMS Access Policy Lesson", filters={"parent": policy.name,
 		"parenttype": "LMS Access Policy", "parentfield": "lessons"},
-		fields=["lesson", "opening_type", "opens_at", "delay_days", "prerequisite_type",
+		fields=["lesson", "opening_type", "opens_at", "delay_days", "not_before_at", "lesson_ends_at", "always_open", "prerequisite_type",
 			"prerequisite_lesson", "prerequisite_assignment"], limit_page_length=0) if policy else []
 	return {
 		"release_enabled": frappe.conf.get("individual_access_release_enabled") is True,
@@ -156,8 +156,15 @@ def update_course_lesson_rule(course, lesson, rule):
 	if isinstance(rule, str):
 		rule = frappe.parse_json(rule)
 	fields = {"opening_type", "opens_at", "delay_days", "prerequisite_type", "prerequisite_lesson", "prerequisite_assignment"}
-	if not isinstance(rule, dict) or set(rule) != fields:
+	optional = {"not_before_at", "lesson_ends_at", "always_open"}
+	if not isinstance(rule, dict) or not fields.issubset(rule) or set(rule) - fields - optional:
 		frappe.throw(_("Provide the complete lesson access rule."), frappe.ValidationError)
+	if set(rule) & optional and not optional.issubset(rule):
+		frappe.throw(_("Provide all optional lesson limits together."), frappe.ValidationError)
+	if optional.issubset(rule):
+		rule["always_open"] = int(_explicit_choice(rule["always_open"], "Choose whether to open outside the schedule."))
+		if rule["not_before_at"] and rule["lesson_ends_at"] and get_datetime(rule["not_before_at"]) >= get_datetime(rule["lesson_ends_at"]):
+			frappe.throw(_("Lesson end must be after its earliest start."), frappe.ValidationError)
 	if not isinstance(course, str) or not frappe.db.get_value("LMS Course", course, "name", for_update=True):
 		frappe.throw(_("Course not found."), frappe.ValidationError)
 	name = frappe.db.get_value("LMS Access Policy", {"course": course}, "name", for_update=True)

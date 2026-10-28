@@ -60,6 +60,30 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		with self.assertRaises(frappe.PermissionError):
 			course_lesson._save_progress(self.lesson.name, self.course.name)
 
+	def test_lesson_date_limits_and_open_outside_schedule(self):
+		from lms.lms.access_actions import create_course_access_policy, update_course_lesson_rule
+		from lms.lms.individual_access import grant_allows_lesson
+
+		name = create_course_access_policy(self.course.name)["name"]
+		policy = frappe.get_doc("LMS Access Policy", name)
+		policy.default_personal_end_type = "Unlimited"
+		policy.global_end_type = "Unlimited"
+		policy.enabled = 1
+		policy.save()
+		common = {"opening_type": "After Start", "opens_at": None, "delay_days": 50,
+			"prerequisite_type": "None", "prerequisite_lesson": None, "prerequisite_assignment": None,
+			"not_before_at": add_to_date(now_datetime(), days=1), "lesson_ends_at": None, "always_open": 1}
+		update_course_lesson_rule(self.course.name, self.lesson.name, common)
+		self.assertFalse(grant_allows_lesson(user=self.student.email, lesson=self.lesson.name))
+		common["not_before_at"] = add_to_date(now_datetime(), days=-1)
+		update_course_lesson_rule(self.course.name, self.lesson.name, common)
+		self.assertTrue(grant_allows_lesson(user=self.student.email, lesson=self.lesson.name))
+		self.assertTrue(grant_allows_lesson(user=self.student.email, lesson=self.lesson.name, require_schedule_override=True))
+		self.assertFalse(grant_allows_lesson(user=self.student.email, lesson=self.lesson.name, require_manual=True))
+		common["lesson_ends_at"] = add_to_date(now_datetime(), hours=-1)
+		update_course_lesson_rule(self.course.name, self.lesson.name, common)
+		self.assertFalse(grant_allows_lesson(user=self.student.email, lesson=self.lesson.name))
+
 	def test_draft_publication_requires_an_explicit_audience_and_protects_existing_students(self):
 		from lms.lms.api import create_lesson
 		from lms.lms.doctype.course_lesson.course_lesson import publish_lesson

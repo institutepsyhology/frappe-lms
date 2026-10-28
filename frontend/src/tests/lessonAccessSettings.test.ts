@@ -20,7 +20,7 @@ describe('access settings in a lesson', () => {
 		await wrapper.find('button').trigger('click')
 		await flushPromises()
 		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.update_course_lesson_rule', { course: 'course', lesson: 'one', rule: {
-			opening_type: 'After Start', opens_at: null, delay_days: 5, prerequisite_type: 'None', prerequisite_lesson: null, prerequisite_assignment: null,
+			opening_type: 'After Start', opens_at: null, delay_days: 5, not_before_at: null, lesson_ends_at: null, always_open: false, prerequisite_type: 'None', prerequisite_lesson: null, prerequisite_assignment: null,
 		} })
 	})
 	it('hides settings from users without the administrator role', async () => {

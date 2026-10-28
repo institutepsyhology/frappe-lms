@@ -4,12 +4,15 @@
  "module": "LMS",
  "istable": 1,
  "editable_grid": 1,
- "field_order": ["lesson", "opening_type", "opens_at", "delay_days", "prerequisite_type", "prerequisite_lesson", "prerequisite_assignment"],
+ "field_order": ["lesson", "opening_type", "opens_at", "delay_days", "not_before_at", "lesson_ends_at", "always_open", "prerequisite_type", "prerequisite_lesson", "prerequisite_assignment"],
  "fields": [
   {"fieldname": "lesson", "fieldtype": "Link", "label": "Lesson", "options": "Course Lesson", "reqd": 1, "in_list_view": 1},
   {"fieldname": "opening_type", "fieldtype": "Select", "label": "Opening Rule", "options": "Unknown\nAt\nAfter Start", "default": "Unknown", "reqd": 1, "in_list_view": 1},
   {"fieldname": "opens_at", "fieldtype": "Datetime", "label": "Opens At"},
   {"fieldname": "delay_days", "fieldtype": "Int", "label": "Days After Start", "default": "0", "non_negative": 1},
+  {"fieldname": "not_before_at", "fieldtype": "Datetime", "label": "Not Before"},
+  {"fieldname": "lesson_ends_at", "fieldtype": "Datetime", "label": "Lesson End"},
+  {"fieldname": "always_open", "fieldtype": "Check", "label": "Open Outside Schedule", "default": "0"},
   {"fieldname": "prerequisite_type", "fieldtype": "Select", "label": "Prerequisite", "options": "Unknown\nNone\nLesson Complete\nAssignment Submitted\nAssignment Passed", "default": "Unknown", "reqd": 1},
   {"fieldname": "prerequisite_lesson", "fieldtype": "Link", "label": "Prerequisite Lesson", "options": "Course Lesson"},
   {"fieldname": "prerequisite_assignment", "fieldtype": "Link", "label": "Prerequisite Assignment", "options": "LMS Assignment"}

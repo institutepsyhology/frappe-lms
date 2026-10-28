@@ -181,7 +181,7 @@ def _valid_end(kind, value, now):
 	return now < get_datetime(value)
 
 
-def grant_allows_lesson(*, user, lesson, now=None, require_manual=False, require_retained=False):
+def grant_allows_lesson(*, user, lesson, now=None, require_manual=False, require_retained=False, require_schedule_override=False):
 	"""Check a persisted matching grant, failing closed on incomplete records.
 
 	Unknown conditions fail closed; subscription integration is not implemented.
@@ -194,6 +194,10 @@ def grant_allows_lesson(*, user, lesson, now=None, require_manual=False, require
 	if not course:
 		return False
 	now = get_datetime(now if now is not None else now_datetime())
+	policy_name = frappe.db.get_value("LMS Access Policy", {"course": course, "enabled": 1}, "name")
+	common_rule = frappe.db.get_value("LMS Access Policy Lesson", {"parent": policy_name,
+		"parenttype": "LMS Access Policy", "parentfield": "lessons", "lesson": lesson},
+		["not_before_at", "lesson_ends_at", "always_open"], as_dict=True) if policy_name else None
 	grants = frappe.db.get_all(
 		"LMS Access Grant",
 		filters={"member": user, "course": course, "status": ("in", ["Active", "Limited"])},
@@ -275,9 +279,16 @@ def grant_allows_lesson(*, user, lesson, now=None, require_manual=False, require
 			continue
 		if require_retained:
 			continue
+		if common_rule:
+			if common_rule.not_before_at and now < get_datetime(common_rule.not_before_at):
+				continue
+			if common_rule.lesson_ends_at and now >= get_datetime(common_rule.lesson_ends_at):
+				continue
+			if common_rule.always_open and not require_manual:
+				return True
 		if row.manual_open == 1:
 			return True
-		if require_manual:
+		if require_manual or require_schedule_override:
 			continue
 		policy_rule = None
 		if row.opening_type == "Inherit" or row.prerequisite_state == "Inherit":
