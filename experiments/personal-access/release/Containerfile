@@ -1,41 +1,11 @@
-# Built offline from the verified production image. Only access source is overlaid.
 FROM company-lms:lesson-html-buttons-r20-20261028
 ARG SOURCE_COMMIT
 USER frappe
 WORKDIR /home/frappe/frappe-bench/apps/lms
-COPY --chown=frappe:0 lms/hooks.py lms/hooks.py
-COPY --chown=frappe:0 lms/locale/ru.po lms/locale/ru.po
-COPY --chown=frappe:0 lms/lms/access_actions.py lms/lms/access_actions.py
-COPY --chown=frappe:0 lms/lms/individual_access.py lms/lms/individual_access.py
-COPY --chown=frappe:0 lms/lms/visit_tracking.py lms/lms/visit_tracking.py
-COPY --chown=frappe:0 lms/lms/permissions.py lms/lms/permissions.py
-COPY --chown=frappe:0 lms/lms/utils.py lms/lms/utils.py
-COPY --chown=frappe:0 lms/lms/doctype/course_lesson/course_lesson.py lms/lms/doctype/course_lesson/course_lesson.py
-COPY --chown=frappe:0 lms/lms/doctype/course_chapter/course_chapter.py lms/lms/doctype/course_chapter/course_chapter.py
-COPY --chown=frappe:0 lms/lms/doctype/lms_assignment_submission/lms_assignment_submission.py lms/lms/doctype/lms_assignment_submission/lms_assignment_submission.py
-COPY --chown=frappe:0 lms/lms/doctype/lms_access_grant/ lms/lms/doctype/lms_access_grant/
-COPY --chown=frappe:0 lms/lms/doctype/lms_access_grant_lesson/ lms/lms/doctype/lms_access_grant_lesson/
-COPY --chown=frappe:0 lms/lms/doctype/lms_access_policy/ lms/lms/doctype/lms_access_policy/
-COPY --chown=frappe:0 lms/lms/doctype/lms_access_policy_lesson/ lms/lms/doctype/lms_access_policy_lesson/
-COPY --chown=frappe:0 lms/lms/doctype/lms_lesson_visit/ lms/lms/doctype/lms_lesson_visit/
-COPY --chown=frappe:0 lms/tests/test_docperm_snapshot.py lms/tests/test_docperm_snapshot.py
-COPY --chown=frappe:0 frontend/src/pages/Courses/CoursePublishSettings.vue frontend/src/pages/Courses/CoursePublishSettings.vue
-COPY --chown=frappe:0 frontend/src/components/Courses/IndividualAccessSettings.vue frontend/src/components/Courses/IndividualAccessSettings.vue
-COPY --chown=frappe:0 frontend/src/tests/individualAccessSettings.test.ts frontend/src/tests/individualAccessSettings.test.ts
-COPY --chown=frappe:0 frontend/src/pages/Lesson.vue frontend/src/pages/Lesson.vue
-COPY --chown=frappe:0 frontend/src/pages/SCORMChapter.vue frontend/src/pages/SCORMChapter.vue
-COPY --chown=frappe:0 frontend/src/tests/lessonLocking.test.ts frontend/src/tests/lessonLocking.test.ts
-COPY --chown=frappe:0 frontend/src/tests/scormChapterLocking.test.ts frontend/src/tests/scormChapterLocking.test.ts
-COPY --chown=frappe:0 frontend/src/utils/index.js frontend/src/utils/index.js
-COPY --chown=frappe:0 frontend/src/utils/customLessonBlocks.ts frontend/src/utils/customLessonBlocks.ts
-COPY --chown=frappe:0 frontend/src/tests/customLessonBlocks.test.ts frontend/src/tests/customLessonBlocks.test.ts
 COPY --chown=frappe:0 frontend/src/pages/LessonForm.vue frontend/src/pages/LessonForm.vue
 COPY --chown=frappe:0 frontend/src/components/Courses/LessonAccessSettings.vue frontend/src/components/Courses/LessonAccessSettings.vue
 COPY --chown=frappe:0 frontend/src/tests/lessonAccessSettings.test.ts frontend/src/tests/lessonAccessSettings.test.ts
-RUN cd frontend && node node_modules/vitest/vitest.mjs run src/tests/lessonAccessSettings.test.ts src/tests/customLessonBlocks.test.ts src/tests/individualAccessSettings.test.ts src/tests/videoChoice.test.ts src/tests/lessonLocking.test.ts src/tests/scormChapterLocking.test.ts --maxWorkers=2
-RUN cd frontend && NODE_OPTIONS=--max-old-space-size=4096 yarn build
-RUN /home/frappe/frappe-bench/env/bin/python -m compileall -q lms/lms/individual_access.py lms/lms/visit_tracking.py lms/lms/access_actions.py lms/lms/permissions.py lms/lms/utils.py
-RUN /home/frappe/frappe-bench/env/bin/python -c "from pathlib import Path; from babel.messages.pofile import read_po; from babel.messages.mofile import write_mo; p=Path('/home/frappe/frappe-bench/assets/locale/ru/LC_MESSAGES/lms.mo'); p.parent.mkdir(parents=True,exist_ok=True); catalog=read_po(open('lms/locale/ru.po',encoding='utf-8'),locale='ru'); write_mo(open(p,'wb'),catalog,use_fuzzy=False)"
+RUN cd frontend && node node_modules/vitest/vitest.mjs run src/tests/lessonAccessSettings.test.ts src/tests/customLessonBlocks.test.ts src/tests/individualAccessSettings.test.ts src/tests/videoChoice.test.ts src/tests/lessonLocking.test.ts src/tests/scormChapterLocking.test.ts --maxWorkers=2 && NODE_OPTIONS=--max-old-space-size=4096 yarn build
 LABEL org.opencontainers.image.source="https://github.com/institutepsyhology/frappe-lms"
 LABEL org.opencontainers.image.revision=$SOURCE_COMMIT
 WORKDIR /home/frappe/frappe-bench
