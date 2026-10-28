@@ -9,6 +9,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { call } from 'frappe-ui'
 
 const pushMock = vi.hoisted(() => vi.fn())
 const replaceMock = vi.hoisted(() => vi.fn())
@@ -202,6 +203,7 @@ beforeEach(() => {
 	replaceMock.mockReset()
 	socketOnMock.mockReset()
 	socketOffMock.mockReset()
+	vi.mocked(call).mockClear()
 })
 
 afterEach(() => {
@@ -209,6 +211,18 @@ afterEach(() => {
 })
 
 describe('Lesson.vue Next affordance follows canGoNext', () => {
+	it('records a visit only when the server permits tracking', async () => {
+		wrapper = await mountLesson()
+		findResource('lms.lms.utils.get_lesson').data = { ...baseLesson, track_personal_visit: true }
+		await flushPromises()
+		expect(call).toHaveBeenCalledWith('lms.lms.visit_tracking.record_lesson_visit', { course: 'COURSE-1', lesson: 'L1' })
+	})
+	it('does not record a locked lesson', async () => {
+		wrapper = await mountLesson()
+		findResource('lms.lms.utils.get_lesson').data = { ...baseLesson, locked: 1, track_personal_visit: true }
+		await flushPromises()
+		expect(call).not.toHaveBeenCalledWith('lms.lms.visit_tracking.record_lesson_visit', expect.anything())
+	})
 	it('hides the Next button when the following lesson is locked', async () => {
 		wrapper = await mountLesson()
 		findResource('lms.lms.utils.get_course_outline').data = [

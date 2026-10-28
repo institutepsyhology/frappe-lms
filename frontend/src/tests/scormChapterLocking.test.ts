@@ -5,6 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { call } from 'frappe-ui'
 
 const replaceMock = vi.hoisted(() => vi.fn())
 const reloadMock = vi.hoisted(() => vi.fn())
@@ -172,6 +173,7 @@ beforeEach(() => {
 	replaceMock.mockReset()
 	reloadMock.mockReset()
 	toastError.mockReset()
+	vi.mocked(call).mockClear()
 	failing.clear()
 	Object.defineProperty(window, 'location', {
 		configurable: true,
@@ -185,6 +187,16 @@ afterEach(() => {
 })
 
 describe('SCORMChapter.vue plays what the server says it may play', () => {
+	it('records a visit only for an authorized playable package', async () => {
+		wrapper = await mountChapter()
+		await answerPlayback(playbackAnswer({ track_personal_visit: true }))
+		expect(call).toHaveBeenCalledWith('lms.lms.visit_tracking.record_lesson_visit', { course: 'COURSE-1', lesson: 'L-SCORM' })
+	})
+	it('does not record a locked package', async () => {
+		wrapper = await mountChapter()
+		await answerPlayback(playbackAnswer({ locked: 1, launch_file: null, track_personal_visit: true }))
+		expect(call).not.toHaveBeenCalledWith('lms.lms.visit_tracking.record_lesson_visit', expect.anything())
+	})
 	it('never reads the chapter doc, which no longer carries the launch file', async () => {
 		wrapper = await mountChapter()
 		await answerPlayback(playbackAnswer())
