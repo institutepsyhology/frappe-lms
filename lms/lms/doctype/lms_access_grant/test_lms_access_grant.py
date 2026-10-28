@@ -60,6 +60,37 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		with self.assertRaises(frappe.PermissionError):
 			course_lesson._save_progress(self.lesson.name, self.course.name)
 
+	def test_visit_retention_requires_an_authorized_record_before_expiry(self):
+		from lms.lms.individual_access import grant_allows_lesson
+		from lms.lms.visit_tracking import record_lesson_visit
+
+		expiry = add_to_date(now_datetime(), minutes=2)
+		frappe.db.set_value("LMS Access Grant", self.grant.name,
+			{"personal_end_type": "At", "ends_at": expiry, "visited_retention_type": "Days", "visited_retention_days": 2})
+		frappe.set_user(self.other.email)
+		with self.assertRaises(frappe.PermissionError):
+			record_lesson_visit(self.course.name, self.lesson.name)
+		frappe.set_user(self.student.email)
+		self.assertTrue(record_lesson_visit(self.course.name, self.lesson.name)["recorded"])
+		self.assertTrue(record_lesson_visit(self.course.name, self.lesson.name)["recorded"])
+		self.assertEqual(frappe.db.count("LMS Lesson Visit", {"member": self.student.email, "lesson": self.lesson.name}), 1)
+		self.assertFalse(frappe.has_permission("LMS Lesson Visit", "read"))
+		self.assertTrue(grant_allows_lesson(user=self.student.email, lesson=self.lesson.name, now=add_to_date(expiry, minutes=1)))
+		self.assertFalse(grant_allows_lesson(user=self.student.email, lesson=self.lesson.name, now=add_to_date(expiry, days=2)))
+
+	def test_only_admin_can_set_personal_visited_retention(self):
+		from lms.lms.access_actions import update_grant_visited_retention
+
+		frappe.set_user(self.other.email)
+		with self.assertRaises(frappe.PermissionError):
+			update_grant_visited_retention(self.grant.name, "Unlimited", 0)
+		frappe.set_user("Administrator")
+		update_grant_visited_retention(self.grant.name, "Days", 10)
+		grant = frappe.get_doc("LMS Access Grant", self.grant.name)
+		self.assertEqual((grant.visited_retention_type, grant.visited_retention_days), ("Days", 10))
+		with self.assertRaises(frappe.ValidationError):
+			update_grant_visited_retention(self.grant.name, "Days", 0)
+
 	def test_course_access_overview_is_limited_to_administrator(self):
 		from lms.lms.access_actions import get_course_access_overview
 

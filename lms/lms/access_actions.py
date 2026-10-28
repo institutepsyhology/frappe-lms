@@ -31,10 +31,11 @@ def get_course_access_overview(course):
 		frappe.throw(_("Course not found."), frappe.ValidationError)
 	policy = frappe.db.get_value("LMS Access Policy", {"course": course}, ["name", "enabled",
 		"default_personal_end_type", "default_personal_end_at", "default_personal_end_days",
-		"global_end_type", "global_end_at", "completed_retention_type", "completed_retention_days"], as_dict=True)
+		"global_end_type", "global_end_at", "completed_retention_type", "completed_retention_days",
+		"visited_retention_type", "visited_retention_days"], as_dict=True)
 	grants = frappe.get_all("LMS Access Grant", filters={"course": course},
 		fields=["name", "member", "status", "starts_at", "personal_end_type", "ends_at",
-			"personal_end_days", "ignore_course_end"], order_by="modified desc", limit_page_length=201)
+			"personal_end_days", "ignore_course_end", "visited_retention_type", "visited_retention_days"], order_by="modified desc", limit_page_length=201)
 	lessons = frappe.get_all("Course Lesson", filters={"course": course},
 		fields=["name", "title"], order_by="name asc", limit_page_length=501)
 	schedule = frappe.get_all("LMS Access Policy Lesson", filters={"parent": policy.name,
@@ -79,7 +80,8 @@ def update_course_access_defaults(course, defaults):
 		defaults = frappe.parse_json(defaults)
 	fields = {"default_personal_end_type", "default_personal_end_at", "default_personal_end_days",
 		"global_end_type", "global_end_at", "completed_retention_type", "completed_retention_days"}
-	if not isinstance(defaults, dict) or set(defaults) != fields:
+	visit_fields = {"visited_retention_type", "visited_retention_days"}
+	if not isinstance(defaults, dict) or set(defaults) not in (fields, fields | visit_fields):
 		frappe.throw(_("Provide all course access defaults explicitly."), frappe.ValidationError)
 	if not isinstance(course, str) or not frappe.db.get_value("LMS Course", course, "name", for_update=True):
 		frappe.throw(_("Course not found."), frappe.ValidationError)
@@ -93,6 +95,18 @@ def update_course_access_defaults(course, defaults):
 	policy.update(defaults)
 	policy.save()
 	return {"name": policy.name, "enabled": False}
+
+
+@frappe.whitelist(methods=["POST"])
+def update_grant_visited_retention(name, retention_type, retention_days):
+	"""Set retention of previously visited lessons for one grant."""
+	grant = _admin_grant(name)
+	if grant.status not in ("Draft", "Active", "Frozen", "Limited"):
+		frappe.throw(_("A closed access grant cannot be edited."), frappe.ValidationError)
+	grant.visited_retention_type = retention_type
+	grant.visited_retention_days = retention_days
+	grant.save()
+	return {"name": grant.name, "status": grant.status}
 
 
 @frappe.whitelist(methods=["POST"])

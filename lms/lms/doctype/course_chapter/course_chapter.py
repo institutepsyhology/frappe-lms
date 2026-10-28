@@ -76,6 +76,7 @@ def _scorm_playback_payload(row: frappe._dict, lesson: str | None, access: frapp
 			row.name,
 		)
 	playable = access.can_access and not access.locked
+	from lms.lms.individual_access import policy_applies
 	return {
 		"chapter": row.name,
 		"course": row.course,
@@ -85,4 +86,5 @@ def _scorm_playback_payload(row: frappe._dict, lesson: str | None, access: frapp
 		"locked": 1 if access.locked else 0,
 		"can_access": 1 if access.can_access else 0,
 		"launch_file": row.launch_file if playable else None,
+		"track_personal_visit": bool(playable and lesson and policy_applies(row.course)),
 	}

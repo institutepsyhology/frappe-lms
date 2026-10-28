@@ -6,7 +6,7 @@
  "autoname": "hash",
  "track_changes": 1,
  "description": "Per-course opt-in. Effective only when the server release switch is enabled after integration checks.",
- "field_order": ["course", "enabled", "default_personal_end_type", "default_personal_end_at", "default_personal_end_days", "global_end_type", "global_end_at", "completed_retention_type", "completed_retention_days", "lessons"],
+ "field_order": ["course", "enabled", "default_personal_end_type", "default_personal_end_at", "default_personal_end_days", "global_end_type", "global_end_at", "completed_retention_type", "completed_retention_days", "visited_retention_type", "visited_retention_days", "lessons"],
  "fields": [
   {"fieldname": "course", "fieldtype": "Link", "label": "Course", "options": "LMS Course", "reqd": 1, "unique": 1, "in_list_view": 1},
   {"fieldname": "enabled", "fieldtype": "Check", "label": "Enable Individual Access", "default": "0", "in_list_view": 1},
@@ -17,6 +17,8 @@
   {"fieldname": "global_end_at", "fieldtype": "Datetime", "label": "Global Course End At"},
   {"fieldname": "completed_retention_type", "fieldtype": "Select", "label": "Completed Lesson Retention", "options": "None\nUnlimited\nDays", "default": "None", "reqd": 1},
   {"fieldname": "completed_retention_days", "fieldtype": "Int", "label": "Retained Access Days", "default": "0", "non_negative": 1},
+  {"fieldname": "visited_retention_type", "fieldtype": "Select", "label": "Visited Lesson Retention", "options": "None\nUnlimited\nDays", "default": "None", "reqd": 1},
+  {"fieldname": "visited_retention_days", "fieldtype": "Int", "label": "Visited Lesson Retention Days", "default": "0", "non_negative": 1},
   {"fieldname": "lessons", "fieldtype": "Table", "label": "Default Lesson Schedule", "options": "LMS Access Policy Lesson"}
  ],
  "permissions": [{"role": "System Manager", "read": 1, "write": 1, "create": 1}]

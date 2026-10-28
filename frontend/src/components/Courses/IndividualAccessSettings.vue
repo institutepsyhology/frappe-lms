@@ -45,6 +45,15 @@
 					<label v-if="defaults.completed_retention_type === 'Days'" class="block">Дней
 						<input v-model.number="defaults.completed_retention_days" type="number" min="1" class="border rounded w-full p-1" />
 					</label>
+					<label class="block">Доступ к ранее открытым урокам после окончания
+						<select v-model="defaults.visited_retention_type" class="border rounded w-full p-1">
+							<option value="None">Не сохранять</option><option value="Unlimited">Без ограничения</option><option value="Days">На количество дней</option>
+						</select>
+					</label>
+					<label v-if="defaults.visited_retention_type === 'Days'" class="block">Дней
+						<input v-model.number="defaults.visited_retention_days" type="number" min="1" class="border rounded w-full p-1" />
+					</label>
+					<p>Учитываются открытия, записанные после включения индивидуального доступа. Для предыдущих посещений нужна отдельная история.</p>
 					<button class="underline" :disabled="busy" @click="saveDefaults">Сохранить общие сроки</button>
 				</div>
 			</details>
@@ -170,6 +179,15 @@
 						</label>
 						<label class="flex gap-2"><input v-model="grantTiming[grant.name].ignore_course_end" type="checkbox" /> Не учитывать общее окончание курса</label>
 						<button class="underline" :disabled="busy || !grantTiming[grant.name].starts_at" @click="saveGrantTiming(grant)">Сохранить персональные сроки</button>
+						<label class="block">Ранее открытые уроки после окончания
+							<select v-model="grantVisits[grant.name].kind" class="border rounded w-full p-1">
+								<option value="Inherit">Как у курса</option><option value="None">Не сохранять</option><option value="Unlimited">Без ограничения</option><option value="Days">На количество дней</option>
+							</select>
+						</label>
+						<label v-if="grantVisits[grant.name].kind === 'Days'" class="block">Дней
+							<input v-model.number="grantVisits[grant.name].days" type="number" min="1" class="border rounded w-full p-1" />
+						</label>
+						<button class="underline" :disabled="busy" @click="saveGrantVisits(grant)">Сохранить доступ к открытым урокам</button>
 					</div>
 				</details>
 				<div class="flex flex-wrap gap-2">
@@ -195,10 +213,10 @@ import { call, toast } from 'frappe-ui'
 import { inject, reactive, ref, watch } from 'vue'
 import type { SessionUser } from '@/types'
 
-type Grant = { name: string; member: string; status: string; starts_at?: string; ends_at?: string; personal_end_type?: string; personal_end_days?: number; ignore_course_end?: boolean | number }
+type Grant = { name: string; member: string; status: string; starts_at?: string; ends_at?: string; personal_end_type?: string; personal_end_days?: number; ignore_course_end?: boolean | number; visited_retention_type?: string; visited_retention_days?: number }
 type GrantTiming = { starts_at: string; personal_end_type: string; ends_at: string | null; personal_end_days: number; ignore_course_end: boolean }
 type GrantLesson = { lesson: string; title: string; manual_open: boolean; retain_when_limited: boolean }
-type Defaults = { default_personal_end_type: string; default_personal_end_at: string | null; default_personal_end_days: number; global_end_type: string; global_end_at: string | null; completed_retention_type: string; completed_retention_days: number }
+type Defaults = { default_personal_end_type: string; default_personal_end_at: string | null; default_personal_end_days: number; global_end_type: string; global_end_at: string | null; completed_retention_type: string; completed_retention_days: number; visited_retention_type: string; visited_retention_days: number }
 type LessonRule = { lesson?: string; opening_type: string; opens_at: string | null; delay_days: number; prerequisite_type: string; prerequisite_lesson: string | null; prerequisite_assignment: string | null }
 type Overview = { release_enabled: boolean; policy_enabled: boolean; policy_exists: boolean; policy?: Defaults | null; timezone: string; grants: Grant[]; truncated: boolean; lessons: {name: string; title: string}[]; lessons_truncated: boolean; schedule: LessonRule[] }
 const props = defineProps<{ course: string }>()
@@ -209,6 +227,7 @@ const error = ref(false)
 const busy = ref(false)
 const resumeChoice = reactive<Record<string, string>>({})
 const grantTiming = reactive<Record<string, GrantTiming>>({})
+const grantVisits = reactive<Record<string, {kind: string; days: number}>>({})
 const grantLessons = reactive<Record<string, GrantLesson[]>>({})
 const assignedLessons = reactive<Record<string, string[]>>({})
 const retainedLessons = reactive<Record<string, string[]>>({})
@@ -219,7 +238,7 @@ const newStart = ref('')
 const newLessons = ref<string[]>([])
 const defaults = reactive<Defaults>({ default_personal_end_type: 'Unknown', default_personal_end_at: null,
 	default_personal_end_days: 0, global_end_type: 'Unknown', global_end_at: null,
-	completed_retention_type: 'None', completed_retention_days: 0 })
+	completed_retention_type: 'None', completed_retention_days: 0, visited_retention_type: 'None', visited_retention_days: 0 })
 const selectedLesson = ref('')
 const assignments = ref<{ name: string; title: string }[]>([])
 const assignmentsLoading = ref(false)
@@ -237,6 +256,7 @@ async function load() {
 			grantTiming[grant.name] = { starts_at: grant.starts_at?.replace(' ', 'T') || '',
 				personal_end_type: grant.personal_end_type || 'Unknown', ends_at: grant.ends_at?.replace(' ', 'T') || null,
 				personal_end_days: grant.personal_end_days || 0, ignore_course_end: Boolean(grant.ignore_course_end) }
+			grantVisits[grant.name] = { kind: grant.visited_retention_type || 'Inherit', days: grant.visited_retention_days || 0 }
 		}
 		if (overview.value?.policy) {
 			Object.assign(defaults, overview.value.policy)
@@ -312,6 +332,12 @@ function saveGrantTiming(grant: Grant) {
 		personal_end_days: values.personal_end_type === 'After Start' ? values.personal_end_days : 0,
 		ignore_course_end: values.ignore_course_end ? 1 : 0 })
 }
+function saveGrantVisits(grant: Grant) {
+	const values = grantVisits[grant.name]
+	if (!values) return
+	action('update_grant_visited_retention', grant, { retention_type: values.kind,
+		retention_days: values.kind === 'Days' ? values.days : 0 })
+}
 async function createGrant() {
 	if (!newMember.value || !newStart.value || !newLessons.value.length) return
 	busy.value = true
@@ -351,6 +377,8 @@ async function saveDefaults() {
 			global_end_at: defaults.global_end_type === 'At' ? defaults.global_end_at : null,
 			completed_retention_type: defaults.completed_retention_type,
 			completed_retention_days: defaults.completed_retention_type === 'Days' ? defaults.completed_retention_days : 0,
+			visited_retention_type: defaults.visited_retention_type,
+			visited_retention_days: defaults.visited_retention_type === 'Days' ? defaults.visited_retention_days : 0,
 		} })
 		await load()
 	} catch {

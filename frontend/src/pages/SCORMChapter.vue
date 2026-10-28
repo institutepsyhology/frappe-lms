@@ -82,7 +82,11 @@ const playback = createResource({
 	cache: ['chapter', props.chapterName],
 	onSuccess(data) {
 		if (data?.locked) outline.fetch()
-		else if (data?.launch_file) progress.submit()
+		else if (data?.launch_file) {
+			progress.submit()
+			if (data.track_personal_visit && data.lesson)
+				call('lms.lms.visit_tracking.record_lesson_visit', { course: data.course, lesson: data.lesson }).catch(() => {})
+		}
 	},
 	// `/learn/:chapterName` also matches a lesson URL with no lesson number, so a
 	// mistyped or tampered address resolves to a chapter that does not exist. Without

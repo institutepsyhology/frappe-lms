@@ -184,9 +184,7 @@ def _valid_end(kind, value, now):
 def grant_allows_lesson(*, user, lesson, now=None, require_manual=False, require_retained=False):
 	"""Check a persisted matching grant, failing closed on incomplete records.
 
-	This does not implement access retention, subscriptions, homework-derived
-	conditions or any exception to course closure; those must be designed and
-	tested before the reader can be connected to production routes.
+	Unknown conditions fail closed; subscription integration is not implemented.
 	"""
 	if not isinstance(user, str) or not user or user == "Guest":
 		return False
@@ -200,7 +198,8 @@ def grant_allows_lesson(*, user, lesson, now=None, require_manual=False, require
 		"LMS Access Grant",
 		filters={"member": user, "course": course, "status": ("in", ["Active", "Limited"])},
 		fields=["name", "status", "starts_at", "personal_end_type", "ends_at", "personal_end_days", "course_end_type",
-			"course_ends_at", "ignore_course_end", "completed_retention_type", "completed_retention_days"],
+			"course_ends_at", "ignore_course_end", "completed_retention_type", "completed_retention_days",
+			"visited_retention_type", "visited_retention_days"],
 	)
 	for grant in grants:
 		if not grant.starts_at or now < get_datetime(grant.starts_at):
@@ -222,11 +221,12 @@ def grant_allows_lesson(*, user, lesson, now=None, require_manual=False, require
 		else:
 			policy = None
 			if (grant.personal_end_type == "Inherit" or grant.course_end_type == "Inherit"
-					or grant.completed_retention_type == "Inherit"):
+					or grant.completed_retention_type == "Inherit" or grant.visited_retention_type == "Inherit"):
 				policy = frappe.db.get_value(
 					"LMS Access Policy", {"course": course, "enabled": 1},
 					["default_personal_end_type", "default_personal_end_at", "default_personal_end_days",
-						"global_end_type", "global_end_at", "completed_retention_type", "completed_retention_days"], as_dict=True,
+						"global_end_type", "global_end_at", "completed_retention_type", "completed_retention_days",
+						"visited_retention_type", "visited_retention_days"], as_dict=True,
 				)
 			personal_type, personal_at, personal_days = grant.personal_end_type, grant.ends_at, grant.personal_end_days
 			if personal_type == "Inherit":
@@ -248,17 +248,23 @@ def grant_allows_lesson(*, user, lesson, now=None, require_manual=False, require
 				# A missing/invalid bound is not an expired bound and cannot unlock retention.
 				if any(kind != "At" or not at or now < get_datetime(at) for kind, at in invalid):
 					continue
-				retention, days = grant.completed_retention_type, grant.completed_retention_days
-				if retention == "Inherit":
-					retention, days = ((policy.completed_retention_type, policy.completed_retention_days)
+				closed_at = min(get_datetime(at) for _, at in invalid)
+				def in_window(kind, days):
+					return (kind == "Unlimited" and not days) or (kind == "Days" and type(days) is int
+						and days > 0 and now < closed_at + timedelta(days=days))
+				completed, days = grant.completed_retention_type, grant.completed_retention_days
+				if completed == "Inherit":
+					completed, days = ((policy.completed_retention_type, policy.completed_retention_days)
 						if policy else ("None", 0))
-				if retention == "Days":
-					if type(days) is not int or days <= 0 or now >= min(get_datetime(at) for _, at in invalid) + timedelta(days=days):
-						continue
-				elif retention != "Unlimited" or days:
-					continue
-				if not frappe.db.exists("LMS Course Progress", {"member": user, "course": course,
-						"lesson": lesson, "status": "Complete"}):
+				visited, visit_days = grant.visited_retention_type, grant.visited_retention_days
+				if visited == "Inherit":
+					visited, visit_days = ((policy.visited_retention_type, policy.visited_retention_days)
+						if policy else ("None", 0))
+				completed_ok = in_window(completed, days) and frappe.db.exists("LMS Course Progress",
+					{"member": user, "course": course, "lesson": lesson, "status": "Complete"})
+				visited_ok = in_window(visited, visit_days) and frappe.db.exists("LMS Lesson Visit",
+					{"member": user, "course": course, "lesson": lesson, "creation": ("<=", closed_at)})
+				if not completed_ok and not visited_ok:
 					continue
 				retained = True
 		if retained:

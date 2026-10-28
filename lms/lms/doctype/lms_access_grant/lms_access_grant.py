@@ -8,6 +8,8 @@ class LMSAccessGrant(Document):
 	"""Administrative record only; does not yet enforce lesson permissions."""
 
 	def before_validate(self):
+		if not self.visited_retention_type:
+			self.visited_retention_type = "Inherit"
 		# Preserve compatibility with grants saved before this label was clarified.
 		for row in self.lessons or []:
 			if row.prerequisite_state == "Clear":
@@ -22,6 +24,7 @@ class LMSAccessGrant(Document):
 			inherit_allowed=True, duration_allowed=True)
 		validate_end_rule(self.course_end_type, self.course_ends_at, inherit_allowed=True)
 		validate_retention(self.completed_retention_type, self.completed_retention_days, inherit_allowed=True)
+		validate_retention(self.visited_retention_type, self.visited_retention_days, inherit_allowed=True)
 		if self.starts_at and self.ends_at and get_datetime(self.ends_at) <= get_datetime(self.starts_at):
 			frappe.throw(_("The access end must be later than the start."))
 		from lms.lms.individual_access import validate_schedule_rows

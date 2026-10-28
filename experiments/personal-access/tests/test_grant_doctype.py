@@ -50,6 +50,7 @@ class GrantDoctypeTests(unittest.TestCase):
                   "ends_at": "2026-10-28 10:00:00", "personal_end_type": "At", "personal_end_days": 0,
                   "course_ends_at": None, "course_end_type": "Unknown",
                   "completed_retention_type": "Inherit", "completed_retention_days": 0,
+                  "visited_retention_type": "Inherit", "visited_retention_days": 0,
                   "lessons": [types.SimpleNamespace(lesson="lesson-a", opening_type="Inherit", opens_at=None, delay_days=0,
                                                     retain_when_limited=0, retention_end_type="Unknown", retention_ends_at=None)]}
         values.update(changes)

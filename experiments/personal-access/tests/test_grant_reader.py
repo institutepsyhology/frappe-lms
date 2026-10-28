@@ -20,6 +20,8 @@ class GrantReaderTests(unittest.TestCase):
         self.default_rule = None
         self.default_end = None
         self.completed = False
+        # No visit exists unless a test explicitly supplies one.
+        self.visited = False
         self.assignment_status = None
         self.course = "course-a"
         db = types.SimpleNamespace(get_value=self.get_value, get_all=self.get_all, exists=self.exists)
@@ -45,7 +47,8 @@ class GrantReaderTests(unittest.TestCase):
         value = dict(name="grant-a", member="student-a", course="course-a", status="Active",
                      starts_at=NOW - timedelta(days=1), personal_end_type="Unlimited", ends_at=None, personal_end_days=0,
                      course_end_type="Unlimited", course_ends_at=None, ignore_course_end=0,
-                     completed_retention_type="None", completed_retention_days=0)
+                     completed_retention_type="None", completed_retention_days=0,
+                     visited_retention_type="None", visited_retention_days=0)
         value.update(changes)
         return types.SimpleNamespace(**value)
 
@@ -76,6 +79,8 @@ class GrantReaderTests(unittest.TestCase):
             return False
         if doctype == "LMS Course Progress":
             return self.completed
+        if doctype == "LMS Lesson Visit":
+            return self.visited
         if doctype == "LMS Assignment Submission":
             return bool(self.assignment_status and ("status" not in filters or filters["status"] == self.assignment_status))
         return False
@@ -252,6 +257,16 @@ class GrantReaderTests(unittest.TestCase):
                                   completed_retention_type="Days", completed_retention_days=2)]
         self.assertFalse(self.check())
         self.grants = [self.grant(personal_end_type="Unknown", completed_retention_type="Unlimited")]
+        self.assertFalse(self.check())
+
+    def test_visited_retention_requires_a_record_and_respects_duration(self):
+        self.grants = [self.grant(personal_end_type="At", ends_at=NOW - timedelta(days=1),
+                                  visited_retention_type="Days", visited_retention_days=2)]
+        self.assertFalse(self.check())
+        self.visited = True
+        self.assertTrue(self.check())
+        self.grants = [self.grant(personal_end_type="At", ends_at=NOW - timedelta(days=2),
+                                  visited_retention_type="Days", visited_retention_days=2)]
         self.assertFalse(self.check())
 
     def test_inherited_lesson_prerequisite_uses_current_students_progress(self):

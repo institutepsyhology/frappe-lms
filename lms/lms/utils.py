@@ -1797,6 +1797,9 @@ def get_lesson(course: str, chapter: int, lesson: int) -> dict:
 			"chapter_name": chapter_name,
 		}
 
+	from lms.lms.individual_access import policy_applies
+	lesson_details.track_personal_visit = bool(membership and not is_instructor and policy_applies(course))
+
 	# instructor_content / instructor_notes are instructor-only (permissions.INSTRUCTOR_FIELDS).
 	# Never leak them to students or preview guests, who also pass the gate above.
 	if not is_instructor:

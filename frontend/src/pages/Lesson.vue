@@ -576,6 +576,8 @@ const setupLesson = (data) => {
 	if (data.locked) {
 		return
 	}
+	if (data.track_personal_visit && data.name)
+		call('lms.lms.visit_tracking.record_lesson_visit', { course: props.courseName, lesson: data.name }).catch(() => {})
 	if (data.is_scorm_package) {
 		router.push({
 			name: 'SCORMChapter',

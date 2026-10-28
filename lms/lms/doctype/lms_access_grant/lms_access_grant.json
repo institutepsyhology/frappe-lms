@@ -6,7 +6,7 @@
  "engine": "InnoDB",
  "autoname": "hash",
  "track_changes": 1,
- "field_order": ["member", "course", "status", "frozen_at", "starts_at", "personal_end_type", "ends_at", "personal_end_days", "course_end_type", "course_ends_at", "ignore_course_end", "completed_retention_type", "completed_retention_days", "lessons"],
+ "field_order": ["member", "course", "status", "frozen_at", "starts_at", "personal_end_type", "ends_at", "personal_end_days", "course_end_type", "course_ends_at", "ignore_course_end", "completed_retention_type", "completed_retention_days", "visited_retention_type", "visited_retention_days", "lessons"],
  "fields": [
   {"fieldname": "member", "fieldtype": "Link", "label": "Member", "options": "User", "reqd": 1, "in_list_view": 1, "search_index": 1},
   {"fieldname": "course", "fieldtype": "Link", "label": "Course", "options": "LMS Course", "reqd": 1, "in_list_view": 1, "search_index": 1},
@@ -21,6 +21,8 @@
   {"fieldname": "ignore_course_end", "fieldtype": "Check", "label": "Ignore Course End", "default": "0"},
   {"fieldname": "completed_retention_type", "fieldtype": "Select", "label": "Completed Lesson Retention", "options": "Inherit\nNone\nUnlimited\nDays", "default": "Inherit", "reqd": 1},
   {"fieldname": "completed_retention_days", "fieldtype": "Int", "label": "Personal Retained Access Days", "default": "0", "non_negative": 1},
+  {"fieldname": "visited_retention_type", "fieldtype": "Select", "label": "Visited Lesson Retention", "options": "Inherit\nNone\nUnlimited\nDays", "default": "Inherit", "reqd": 1},
+  {"fieldname": "visited_retention_days", "fieldtype": "Int", "label": "Personal Visited Retention Days", "default": "0", "non_negative": 1},
   {"fieldname": "lessons", "fieldtype": "Table", "label": "Assigned Lessons", "options": "LMS Access Grant Lesson"}
  ],
  "permissions": [

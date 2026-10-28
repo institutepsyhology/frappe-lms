@@ -1,0 +1,15 @@
+{
+ "doctype": "DocType",
+ "name": "LMS Lesson Visit",
+ "module": "LMS",
+ "engine": "InnoDB",
+ "autoname": "field:visit_key",
+ "field_order": ["visit_key", "member", "course", "lesson"],
+ "fields": [
+  {"fieldname": "visit_key", "fieldtype": "Data", "label": "Visit Key", "reqd": 1, "unique": 1, "read_only": 1},
+  {"fieldname": "member", "fieldtype": "Link", "label": "Member", "options": "User", "reqd": 1, "read_only": 1, "search_index": 1},
+  {"fieldname": "course", "fieldtype": "Link", "label": "Course", "options": "LMS Course", "reqd": 1, "read_only": 1, "search_index": 1},
+  {"fieldname": "lesson", "fieldtype": "Link", "label": "Lesson", "options": "Course Lesson", "reqd": 1, "read_only": 1, "search_index": 1}
+ ],
+ "permissions": [{"role": "System Manager", "read": 1}]
+}

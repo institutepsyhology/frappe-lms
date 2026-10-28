@@ -66,7 +66,7 @@ describe('individual access settings', () => {
 		callMock.mockResolvedValueOnce({ release_enabled: false, policy_enabled: false, policy_exists: true,
 			policy: { default_personal_end_type: 'After Start', default_personal_end_at: null,
 				default_personal_end_days: 30, global_end_type: 'Unlimited', global_end_at: null,
-				completed_retention_type: 'Days', completed_retention_days: 14 },
+				completed_retention_type: 'Days', completed_retention_days: 14, visited_retention_type: 'None', visited_retention_days: 0 },
 			grants: [], truncated: false, lessons: [], lessons_truncated: false, timezone: 'Europe/Moscow' })
 		const wrapper = render(true)
 		await flushPromises()
@@ -75,7 +75,7 @@ describe('individual access settings', () => {
 		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.update_course_access_defaults', {
 			course: 'course-1', defaults: { default_personal_end_type: 'After Start', default_personal_end_at: null,
 				default_personal_end_days: 30, global_end_type: 'Unlimited', global_end_at: null,
-				completed_retention_type: 'Days', completed_retention_days: 14 },
+				completed_retention_type: 'Days', completed_retention_days: 14, visited_retention_type: 'None', visited_retention_days: 0 },
 		})
 	})
 
