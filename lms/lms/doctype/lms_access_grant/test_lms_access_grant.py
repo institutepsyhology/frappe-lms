@@ -77,6 +77,9 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		self.assertFalse(frappe.has_permission("LMS Lesson Visit", "read"))
 		self.assertTrue(grant_allows_lesson(user=self.student.email, lesson=self.lesson.name, now=add_to_date(expiry, minutes=1)))
 		self.assertFalse(grant_allows_lesson(user=self.student.email, lesson=self.lesson.name, now=add_to_date(expiry, days=2)))
+		frappe.set_user("Administrator")
+		frappe.db.set_value("LMS Access Grant", self.grant.name, "ends_at", add_to_date(now_datetime(), minutes=-1))
+		self.assertFalse(grant_allows_lesson(user=self.student.email, lesson=self.lesson.name, now=now_datetime()))
 
 	def test_only_admin_can_set_personal_visited_retention(self):
 		from lms.lms.access_actions import update_grant_visited_retention
