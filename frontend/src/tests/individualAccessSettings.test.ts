@@ -139,4 +139,27 @@ describe('individual access settings', () => {
 		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.set_grant_lesson_manual_open',
 			{ name: 'grant-1', lesson: 'lesson-1', enabled: 1 })
 	})
+
+	it('limits one grant to the explicitly selected lessons', async () => {
+		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+		callMock.mockImplementation(async (method: string) => method.endsWith('get_grant_lessons')
+			? [{ lesson: 'lesson-1', title: 'Урок 1', manual_open: false, retain_when_limited: false }]
+			: { release_enabled: false, policy_enabled: false, policy_exists: true,
+				grants: [{ name: 'grant-1', member: 'student@example.invalid', status: 'Active' }], truncated: false,
+				lessons: [{name: 'lesson-1', title: 'Урок 1'}], lessons_truncated: false })
+		const wrapper = render(true)
+		await flushPromises()
+		const details = wrapper.findAll('details').find((item) => item.text().includes('Уроки этого ученика'))!
+		;(details.element as HTMLDetailsElement).open = true
+		await details.trigger('toggle')
+		await flushPromises()
+		await details.find('input[type=checkbox]').setValue(true)
+		await details.find('select').setValue('Unlimited')
+		await details.findAll('button').find((item) => item.text() === 'Ограничить доступ')!.trigger('click')
+		await flushPromises()
+		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.limit_grant', {
+			name: 'grant-1', retained_lessons: ['lesson-1'], retention_end_type: 'Unlimited', retention_ends_at: null,
+		})
+		confirm.mockRestore()
+	})
 })
