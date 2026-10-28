@@ -386,11 +386,19 @@ async function resetRecords(grant: Grant) {
 		await call('lms.lms.access_actions.reset_learning_records', { name: grant.name, choices, token: preview.token })
 		delete resetPreview[grant.name]
 		delete resetChoices[grant.name]
-		restartPreview[grant.name] = await call('lms.lms.access_actions.preview_course_restart', { name: grant.name })
 	} catch {
 		delete resetPreview[grant.name]
 		delete resetChoices[grant.name]
-		toast.error('Очистка не выполнена. Обновите данные и проверьте доступ ученика.')
+		delete restartPreview[grant.name]
+		toast.error('Не удалось подтвердить результат очистки. Проверьте данные перед повтором.')
+		busy.value = false
+		return
+	}
+	try {
+		restartPreview[grant.name] = await call('lms.lms.access_actions.preview_course_restart', { name: grant.name })
+	} catch {
+		delete restartPreview[grant.name]
+		toast.error('Очистка выполнена, но обновить сведения не удалось. Откройте проверку данных заново.')
 	} finally { busy.value = false }
 }
 async function saveAssignedLessons(grant: Grant) {

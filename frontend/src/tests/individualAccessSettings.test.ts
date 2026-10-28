@@ -2,12 +2,13 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import IndividualAccessSettings from '../components/Courses/IndividualAccessSettings.vue'
 
-const { callMock } = vi.hoisted(() => ({ callMock: vi.fn() }))
-vi.mock('frappe-ui', () => ({ call: callMock, toast: { error: vi.fn() } }))
+const { callMock, errorMock } = vi.hoisted(() => ({ callMock: vi.fn(), errorMock: vi.fn() }))
+vi.mock('frappe-ui', () => ({ call: callMock, toast: { error: errorMock } }))
 
 describe('individual access settings', () => {
 	beforeEach(() => {
 		callMock.mockReset()
+		errorMock.mockReset()
 		callMock.mockResolvedValue({ release_enabled: false, policy_enabled: false, policy_exists: true,
 			grants: [{ name: 'grant-1', member: 'student@example.invalid', status: 'Frozen', starts_at: '2026-10-28 10:30:00',
 				personal_end_type: 'Unlimited', personal_end_days: 0, ignore_course_end: 1 }], truncated: false,
@@ -252,6 +253,35 @@ describe('individual access settings', () => {
 		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.reset_learning_records', {
 			name: 'grant-1', token: 'snapshot', choices: { progress: true, homework: false, video: false, visits: false },
 		})
+		confirm.mockRestore()
+	})
+
+	it('reports a failed refresh separately from an already completed reset', async () => {
+		let previews = 0
+		callMock.mockImplementation(async (method: string) => {
+			if (method.endsWith('preview_course_restart')) {
+				if (++previews > 1) throw new Error('refresh failed')
+				return { progress: 1, homework: 0, quiz_submissions: 0, video_progress: 0, visits: 0, other_grants: 0, enrolled: true }
+			}
+			if (method.endsWith('preview_learning_record_reset')) return { counts: { progress: 1, homework: 0, video: 0, visits: 0 }, token: 'snapshot', other_grants: 0 }
+			if (method.endsWith('reset_learning_records')) return { deleted: { progress: 1 } }
+			return { release_enabled: true, policy_enabled: true, policy_exists: true,
+				grants: [{ name: 'grant-1', member: 'student@example.invalid', status: 'Revoked' }], truncated: false,
+				lessons: [], lessons_truncated: false }
+		})
+		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+		const wrapper = render(true)
+		await flushPromises()
+		const details = wrapper.findAll('details').find((item) => item.text().includes('Проверить данные перед перезапуском'))!
+		;(details.element as HTMLDetailsElement).open = true
+		await details.trigger('toggle')
+		await flushPromises()
+		await details.findAll('button').find((item) => item.text() === 'Подготовить выбор данных')!.trigger('click')
+		await flushPromises()
+		await details.find('input[type=checkbox]').setValue(true)
+		await details.findAll('button').find((item) => item.text() === 'Удалить выбранные данные')!.trigger('click')
+		await flushPromises()
+		expect(errorMock).toHaveBeenCalledWith('Очистка выполнена, но обновить сведения не удалось. Откройте проверку данных заново.')
 		confirm.mockRestore()
 	})
 })
