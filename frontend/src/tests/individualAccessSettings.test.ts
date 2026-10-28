@@ -224,4 +224,34 @@ describe('individual access settings', () => {
 		expect(details.text()).toContain('Записей прогресса: 2')
 		expect(details.text()).toContain('Данные не удаляются')
 	})
+
+	it('requires an explicit selection and confirmation for a partial reset', async () => {
+		callMock.mockImplementation(async (method: string) => {
+			if (method.endsWith('preview_course_restart')) return { progress: 1, homework: 1, quiz_submissions: 1, video_progress: 0, visits: 0, other_grants: 0, enrolled: true }
+			if (method.endsWith('preview_learning_record_reset')) return { counts: { progress: 1, homework: 1, video: 0, visits: 0 }, token: 'snapshot', other_grants: 0 }
+			if (method.endsWith('reset_learning_records')) return { deleted: { progress: 1 } }
+			return { release_enabled: true, policy_enabled: true, policy_exists: true,
+				grants: [{ name: 'grant-1', member: 'student@example.invalid', status: 'Revoked' }], truncated: false,
+				lessons: [], lessons_truncated: false }
+		})
+		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+		const wrapper = render(true)
+		await flushPromises()
+		const details = wrapper.findAll('details').find((item) => item.text().includes('Проверить данные перед перезапуском'))!
+		;(details.element as HTMLDetailsElement).open = true
+		await details.trigger('toggle')
+		await flushPromises()
+		await details.findAll('button').find((item) => item.text() === 'Подготовить выбор данных')!.trigger('click')
+		await flushPromises()
+		const reset = details.findAll('button').find((item) => item.text() === 'Удалить выбранные данные')!
+		expect(reset.attributes('disabled')).toBeDefined()
+		await details.find('input[type=checkbox]').setValue(true)
+		await reset.trigger('click')
+		await flushPromises()
+		expect(confirm).toHaveBeenCalledOnce()
+		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.reset_learning_records', {
+			name: 'grant-1', token: 'snapshot', choices: { progress: true, homework: false, video: false, visits: false },
+		})
+		confirm.mockRestore()
+	})
 })

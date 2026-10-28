@@ -299,6 +299,51 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		frappe.set_user(self.student.email)
 		self.assertFalse(can_access_lesson(self.lesson.name))
 
+	def test_partial_record_reset_requires_closed_access_fresh_preview_and_explicit_choices(self):
+		from lms.lms.access_actions import preview_learning_record_reset, reset_learning_records, revoke_grant
+
+		progress = self._create_progress(self.student.email, self.course.name, self.lesson.name)
+		other_progress = self._create_progress(self.other.email, self.course.name, self.lesson.name)
+		assignment = frappe.get_doc({"doctype": "LMS Assignment", "title": "Reset homework",
+			"type": "Text", "question": "Test question"}).insert(ignore_permissions=True)
+		submission = frappe.get_doc({"doctype": "LMS Assignment Submission", "assignment": assignment.name,
+			"lesson": self.lesson.name, "member": self.student.email, "type": "Text", "answer": "Test answer"}).insert(ignore_permissions=True)
+		choices = {"progress": True, "homework": False, "video": False, "visits": False}
+		preview = preview_learning_record_reset(self.grant.name)
+		with self.assertRaises(frappe.ValidationError):
+			reset_learning_records(self.grant.name, choices, preview["token"])
+		revoke_grant(self.grant.name)
+		with self.assertRaises(frappe.ValidationError):
+			reset_learning_records(self.grant.name, choices, preview["token"])
+		preview = preview_learning_record_reset(self.grant.name)
+		with patch("lms.lms.individual_access.protected_courses", return_value=()):
+			with self.assertRaises(frappe.ValidationError):
+				reset_learning_records(self.grant.name, choices, preview["token"])
+		other_grant = frappe.copy_doc(frappe.get_doc("LMS Access Grant", self.grant.name))
+		other_grant.status = "Active"
+		other_grant.insert(ignore_permissions=True)
+		with self.assertRaises(frappe.ValidationError):
+			reset_learning_records(self.grant.name, choices, preview["token"])
+		frappe.delete_doc("LMS Access Grant", other_grant.name, ignore_permissions=True)
+		frappe.set_user(self.other.email)
+		with self.assertRaises(frappe.PermissionError):
+			reset_learning_records(self.grant.name, choices, preview["token"])
+		frappe.set_user("Administrator")
+		with self.assertRaises(frappe.ValidationError):
+			reset_learning_records(self.grant.name, {"progress": True}, preview["token"])
+		result = reset_learning_records(self.grant.name, choices, preview["token"])
+		self.assertEqual(result["deleted"]["progress"], 1)
+		self.assertFalse(frappe.db.exists("LMS Course Progress", progress.name))
+		self.assertTrue(frappe.db.exists("LMS Course Progress", other_progress.name))
+		self.assertTrue(frappe.db.exists("LMS Assignment Submission", submission.name))
+		self.assertTrue(frappe.db.exists("LMS Enrollment", {"member": self.student.email, "course": self.course.name}))
+		with self.assertRaises(frappe.ValidationError):
+			reset_learning_records(self.grant.name, {**choices, "homework": True}, preview["token"])
+		fresh = preview_learning_record_reset(self.grant.name)
+		result = reset_learning_records(self.grant.name, {**choices, "progress": False, "homework": True}, fresh["token"])
+		self.assertEqual(result["deleted"]["homework"], 1)
+		self.assertFalse(frappe.db.exists("LMS Assignment Submission", submission.name))
+
 	def test_admin_can_change_only_one_students_start_and_personal_end(self):
 		from lms.lms.access_actions import update_grant_timing
 

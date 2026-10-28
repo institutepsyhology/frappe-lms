@@ -136,6 +136,19 @@
 						<p>Записей посещения: {{ restartPreview[grant.name].visits }}</p>
 						<p>Других незакрытых карточек: {{ restartPreview[grant.name].other_grants }}</p>
 						<p>Это предварительный подсчёт. Старые записи без связи с уроком или курсом могут требовать отдельной проверки. Данные не удаляются.</p>
+						<div v-if="grant.status === 'Revoked' && overview.release_enabled && overview.policy_enabled" class="border rounded p-2 space-y-2">
+							<p>Частичная очистка: результаты тестов и программных упражнений сохранятся, поэтому это не полный перезапуск курса.</p>
+							<button class="underline" :disabled="busy" @click="loadResetPreview(grant)">Подготовить выбор данных</button>
+							<div v-if="resetPreview[grant.name] && resetChoices[grant.name]" class="space-y-1">
+								<p v-if="resetPreview[grant.name].other_grants">Есть другие незакрытые карточки. Сначала закройте их.</p>
+								<label v-for="item in resetCategories" :key="item.key" class="flex gap-2">
+									<input v-model="resetChoices[grant.name][item.key]" type="checkbox" />
+									<span>Удалить {{ item.label }}: {{ resetPreview[grant.name].counts[item.key] }}</span>
+								</label>
+								<p>Будут удалены только выбранные записи, связанные с уроками этого курса. Старые работы без связи с уроком сохранятся.</p>
+								<button class="underline" :disabled="busy || resetPreview[grant.name].other_grants > 0 || !Object.values(resetChoices[grant.name]).some(Boolean)" @click="resetRecords(grant)">Удалить выбранные данные</button>
+							</div>
+						</div>
 					</div>
 				</details>
 				<details @toggle="loadGrantLessons(grant, $event)">
@@ -251,6 +264,9 @@ type Grant = { name: string; member: string; status: string; starts_at?: string;
 type GrantTiming = { starts_at: string; personal_end_type: string; ends_at: string | null; personal_end_days: number; ignore_course_end: boolean }
 type GrantLesson = { lesson: string; title: string; manual_open: boolean; retain_when_limited: boolean; opening_type: string; opens_at: string | null; delay_days: number; prerequisite_state: string }
 type RestartPreview = { progress: number; homework: number; quiz_submissions: number; video_progress: number; visits: number; other_grants: number; enrolled: boolean }
+type ResetKey = 'progress' | 'homework' | 'video' | 'visits'
+type ResetChoices = Record<ResetKey, boolean>
+type ResetPreview = { counts: Record<ResetKey, number>; token: string; other_grants: number }
 type Defaults = { default_personal_end_type: string; default_personal_end_at: string | null; default_personal_end_days: number; global_end_type: string; global_end_at: string | null; completed_retention_type: string; completed_retention_days: number; visited_retention_type: string; visited_retention_days: number }
 type LessonRule = { lesson?: string; opening_type: string; opens_at: string | null; delay_days: number; prerequisite_type: string; prerequisite_lesson: string | null; prerequisite_assignment: string | null }
 type Overview = { release_enabled: boolean; policy_enabled: boolean; policy_exists: boolean; policy?: Defaults | null; timezone: string; grants: Grant[]; truncated: boolean; lessons: {name: string; title: string}[]; lessons_truncated: boolean; schedule: LessonRule[] }
@@ -264,6 +280,12 @@ const resumeChoice = reactive<Record<string, string>>({})
 const grantTiming = reactive<Record<string, GrantTiming>>({})
 const grantVisits = reactive<Record<string, {kind: string; days: number}>>({})
 const restartPreview = reactive<Record<string, RestartPreview>>({})
+const resetPreview = reactive<Record<string, ResetPreview>>({})
+const resetChoices = reactive<Record<string, ResetChoices>>({})
+const resetCategories: {key: ResetKey; label: string}[] = [
+	{ key: 'progress', label: 'прогресс' }, { key: 'homework', label: 'домашние работы' },
+	{ key: 'video', label: 'просмотры видео' }, { key: 'visits', label: 'посещения' },
+]
 const grantLessons = reactive<Record<string, GrantLesson[]>>({})
 const assignedLessons = reactive<Record<string, string[]>>({})
 const retainedLessons = reactive<Record<string, string[]>>({})
@@ -346,6 +368,30 @@ async function loadRestartPreview(grant: Grant, event: Event) {
 	if (!(event.target as HTMLDetailsElement).open) return
 	try { restartPreview[grant.name] = await call('lms.lms.access_actions.preview_course_restart', { name: grant.name }) }
 	catch { toast.error('Не удалось проверить данные курса.') }
+}
+async function loadResetPreview(grant: Grant) {
+	busy.value = true
+	try {
+		resetPreview[grant.name] = await call('lms.lms.access_actions.preview_learning_record_reset', { name: grant.name })
+		resetChoices[grant.name] = { progress: false, homework: false, video: false, visits: false }
+	} catch { toast.error('Не удалось подготовить данные для очистки.') } finally { busy.value = false }
+}
+async function resetRecords(grant: Grant) {
+	const preview = resetPreview[grant.name]
+	const choices = resetChoices[grant.name]
+	const selected = resetCategories.filter((item) => choices[item.key]).map((item) => `${item.label}: ${preview.counts[item.key]}`).join(', ')
+	if (!selected || !window.confirm(`Удалить выбранные данные ученика ${grant.member}: ${selected}? Результаты тестов и упражнений сохранятся.`)) return
+	busy.value = true
+	try {
+		await call('lms.lms.access_actions.reset_learning_records', { name: grant.name, choices, token: preview.token })
+		delete resetPreview[grant.name]
+		delete resetChoices[grant.name]
+		restartPreview[grant.name] = await call('lms.lms.access_actions.preview_course_restart', { name: grant.name })
+	} catch {
+		delete resetPreview[grant.name]
+		delete resetChoices[grant.name]
+		toast.error('Очистка не выполнена. Обновите данные и проверьте доступ ученика.')
+	} finally { busy.value = false }
 }
 async function saveAssignedLessons(grant: Grant) {
 	if (overview.value?.lessons_truncated || !window.confirm('Изменить список уроков? Прогресс и домашние задания сохранятся.')) return

@@ -1,5 +1,8 @@
 """Explicit administrator actions for personal access grants."""
 
+import hashlib
+import json
+
 import frappe
 from frappe import _
 from frappe.utils import get_datetime, get_system_timezone, now_datetime
@@ -250,6 +253,78 @@ def preview_course_restart(name):
 			"name": ("!=", grant.name), "status": ("in", ["Draft", "Active", "Frozen", "Limited"])}),
 		"enrolled": bool(frappe.db.exists("LMS Enrollment", {"member": grant.member, "course": grant.course})),
 	}
+
+
+def _restart_records(grant):
+	"""Identify only records unambiguously associated with the learner and course."""
+	lessons = frappe.get_all("Course Lesson", filters={"course": grant.course}, pluck="name")
+	queries = {
+		"progress": ("LMS Course Progress", {"member": grant.member, "course": grant.course}),
+		"homework": ("LMS Assignment Submission", {"member": grant.member, "lesson": ("in", lessons)}),
+		"video": ("LMS Video Watch Duration", {"member": grant.member, "lesson": ("in", lessons)}),
+		"visits": ("LMS Lesson Visit", {"member": grant.member, "course": grant.course}),
+	}
+	return {key: {"doctype": doctype, "records": frappe.get_all(doctype, filters=filters,
+		fields=["name", "modified"], order_by="name", limit_page_length=0)
+		if lessons or key not in ("homework", "video") else []}
+		for key, (doctype, filters) in queries.items()}
+
+
+def _restart_token(grant, records):
+	data = {key: [(row.name, str(row.modified)) for row in value["records"]]
+		for key, value in records.items()}
+	return hashlib.sha256(json.dumps({"grant": grant.name, "status": grant.status,
+		"records": data}, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+@frappe.whitelist()
+def preview_learning_record_reset(name):
+	"""Preview a partial reset; shared quiz and exercise results are not included."""
+	grant = _admin_grant(name)
+	records = _restart_records(grant)
+	return {"counts": {key: len(value["records"]) for key, value in records.items()},
+		"token": _restart_token(grant, records), "status": grant.status,
+		"other_grants": frappe.db.count("LMS Access Grant", {"member": grant.member,
+			"course": grant.course, "name": ("!=", grant.name),
+			"status": ("in", ["Draft", "Active", "Frozen", "Limited"])})}
+
+
+@frappe.whitelist(methods=["POST"])
+def reset_learning_records(name, choices, token):
+	"""Delete explicitly selected, course-linked records after a fresh preview.
+
+	The closed grant and enabled policy prevent continuing work during reset. Quiz
+	and programming submissions are intentionally excluded: they can be shared.
+	"""
+	from lms.lms.individual_access import policy_applies
+
+	if isinstance(choices, str):
+		choices = frappe.parse_json(choices)
+	keys = {"progress", "homework", "video", "visits"}
+	if not isinstance(choices, dict) or set(choices) != keys:
+		frappe.throw(_("Choose each record category explicitly."), frappe.ValidationError)
+	selected = {key: _explicit_choice(value, "Choose each record category explicitly.")
+		for key, value in choices.items()}
+	if not any(selected.values()):
+		frappe.throw(_("Select at least one record category."), frappe.ValidationError)
+	grant = _admin_grant(name)
+	frappe.db.get_value("LMS Course", grant.course, "name", for_update=True)
+	if grant.status != "Revoked" or not policy_applies(grant.course):
+		frappe.throw(_("Close this access and enable course access rules before resetting records."), frappe.ValidationError)
+	if frappe.db.exists("LMS Access Grant", {"member": grant.member, "course": grant.course,
+		"name": ("!=", grant.name), "status": ("in", ["Draft", "Active", "Frozen", "Limited"])}):
+		frappe.throw(_("Close the student's other access grants first."), frappe.ValidationError)
+	records = _restart_records(grant)
+	if not isinstance(token, str) or token != _restart_token(grant, records):
+		frappe.throw(_("The records changed. Review them again before resetting."), frappe.ValidationError)
+	deleted = {}
+	for key, value in records.items():
+		deleted[key] = 0
+		if selected[key]:
+			for row in value["records"]:
+				frappe.delete_doc(value["doctype"], row.name)
+				deleted[key] += 1
+	return {"deleted": deleted, "quiz_and_exercise_results_preserved": True}
 
 
 @frappe.whitelist(methods=["POST"])
