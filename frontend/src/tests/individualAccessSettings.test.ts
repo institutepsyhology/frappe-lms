@@ -104,4 +104,21 @@ describe('individual access settings', () => {
 			personal_end_days: 0, ignore_course_end: 1,
 		})
 	})
+
+	it('shows actual assignments for the prerequisite lesson', async () => {
+		callMock.mockImplementation(async (method: string) => method.endsWith('get_lesson_assignments')
+			? [{ name: 'homework-1', title: 'Домашняя работа' }]
+			: { release_enabled: false, policy_enabled: false, policy_exists: true, grants: [], truncated: false,
+				lessons: [{name: 'lesson-1', title: 'Урок 1'}, {name: 'lesson-2', title: 'Урок 2'}], lessons_truncated: false })
+		const wrapper = render(true)
+		await flushPromises()
+		await wrapper.findAll('select').find((item) => item.text().includes('Выберите урок'))!.setValue('lesson-2')
+		await wrapper.findAll('select').find((item) => item.text().includes('Задание принято'))!.setValue('Assignment Passed')
+		const prior = wrapper.findAll('select').find((item) => item.text().includes('Урок 1') && !item.text().includes('Урок 2'))!
+		await prior.setValue('lesson-1')
+		await flushPromises()
+		expect(wrapper.text()).toContain('Домашняя работа')
+		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.get_lesson_assignments',
+			{ course: 'course-1', lesson: 'lesson-1' })
+	})
 })

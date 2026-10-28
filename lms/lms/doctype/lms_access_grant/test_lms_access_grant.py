@@ -213,6 +213,18 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		frappe.set_user(self.student.email)
 		self.assertTrue(frappe.has_permission("LMS Assignment", "read", assignment.name))
 
+	def test_admin_lists_only_assignments_placed_in_selected_lesson(self):
+		from lms.lms.access_actions import get_lesson_assignments
+
+		assignment = frappe.get_doc({"doctype": "LMS Assignment", "title": "Lesson homework",
+			"type": "Text", "question": "Test question"}).insert(ignore_permissions=True)
+		frappe.db.set_value("Course Lesson", self.lesson.name, "content",
+			json.dumps({"blocks": [{"type": "assignment", "data": {"assignment": assignment.name}}]}))
+		self.assertEqual([item.name for item in get_lesson_assignments(self.course.name, self.lesson.name)], [assignment.name])
+		frappe.set_user(self.student.email)
+		with self.assertRaises(frappe.PermissionError):
+			get_lesson_assignments(self.course.name, self.lesson.name)
+
 	def test_lesson_and_outline_hide_content_from_other_student(self):
 		frappe.db.set_value("Course Lesson", self.lesson.name, "youtube", "https://example.invalid/test-video")
 		frappe.set_user(self.other.email)

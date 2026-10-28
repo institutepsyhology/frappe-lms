@@ -123,6 +123,26 @@ def update_course_lesson_rule(course, lesson, rule):
 	return {"name": policy.name, "lesson": lesson, "enabled": False}
 
 
+@frappe.whitelist()
+def get_lesson_assignments(course, lesson):
+	"""List assignments actually placed in a course lesson for administrators."""
+	frappe.only_for("System Manager")
+	frappe.has_permission("LMS Access Policy", "read", throw=True)
+	if frappe.db.get_value("Course Lesson", lesson, "course") != course:
+		frappe.throw(_("The lesson does not belong to this course."), frappe.ValidationError)
+	from lms.lms.utils import get_editorjs_blocks
+
+	content = frappe.db.get_value("Course Lesson", lesson, "content")
+	names = set()
+	for block in get_editorjs_blocks(content):
+		if isinstance(block, dict) and block.get("type") == "assignment" and isinstance(block.get("data"), dict):
+			name = block["data"].get("assignment")
+			if isinstance(name, str) and name:
+				names.add(name)
+	return frappe.get_all("LMS Assignment", filters={"name": ("in", list(names))},
+		fields=["name", "title"], limit_page_length=0) if names else []
+
+
 @frappe.whitelist(methods=["POST"])
 def create_grant_for_enrolled_student(course, member, starts_at, lessons):
 	"""Create one inherited access grant for an already enrolled student.

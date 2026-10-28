@@ -81,8 +81,12 @@
 								<option v-for="lesson in overview.lessons.filter(item => item.name !== selectedLesson)" :key="lesson.name" :value="lesson.name">{{ lesson.title || lesson.name }}</option>
 							</select>
 						</label>
-						<label v-if="['Assignment Submitted', 'Assignment Passed'].includes(lessonRule.prerequisite_type)" class="block">Идентификатор задания в выбранном уроке
-							<input v-model.trim="lessonRule.prerequisite_assignment" class="border rounded w-full p-1" />
+						<label v-if="['Assignment Submitted', 'Assignment Passed'].includes(lessonRule.prerequisite_type)" class="block">Задание в выбранном уроке
+							<select v-model="lessonRule.prerequisite_assignment" class="border rounded w-full p-1" :disabled="assignmentsLoading">
+								<option :value="null">Выберите задание</option>
+								<option v-for="assignment in assignments" :key="assignment.name" :value="assignment.name">{{ assignment.title }}</option>
+							</select>
+							<span v-if="!assignmentsLoading && !assignments.length">В уроке нет доступных заданий.</span>
 						</label>
 						<button class="underline" :disabled="busy" @click="saveLessonRule">Сохранить правило урока</button>
 					</template>
@@ -178,6 +182,8 @@ const defaults = reactive<Defaults>({ default_personal_end_type: 'Unknown', defa
 	default_personal_end_days: 0, global_end_type: 'Unknown', global_end_at: null,
 	completed_retention_type: 'None', completed_retention_days: 0 })
 const selectedLesson = ref('')
+const assignments = ref<{ name: string; title: string }[]>([])
+const assignmentsLoading = ref(false)
 const lessonRule = reactive<LessonRule>({ opening_type: 'Unknown', opens_at: null, delay_days: 0,
 	prerequisite_type: 'Unknown', prerequisite_lesson: null, prerequisite_assignment: null })
 const labels: Record<string, string> = { Draft: 'Черновик', Active: 'Активная карточка', Frozen: 'Замороженная карточка', Limited: 'Ограниченная карточка', Revoked: 'Закрытая карточка' }
@@ -286,6 +292,27 @@ watch(selectedLesson, (name) => {
 	Object.assign(lessonRule, { opening_type: 'Unknown', opens_at: null, delay_days: 0,
 		prerequisite_type: 'Unknown', prerequisite_lesson: null, prerequisite_assignment: null }, saved || {})
 	lessonRule.opens_at = lessonRule.opens_at?.replace(' ', 'T') || null
+})
+let assignmentsRequest = 0
+watch(() => [lessonRule.prerequisite_lesson, lessonRule.prerequisite_type], async ([lesson, kind]) => {
+	const request = ++assignmentsRequest
+	assignments.value = []
+	if (!lesson || !['Assignment Submitted', 'Assignment Passed'].includes(kind || '')) {
+		assignmentsLoading.value = false
+		return
+	}
+	assignmentsLoading.value = true
+	try {
+		const result = await call('lms.lms.access_actions.get_lesson_assignments', { course: props.course, lesson })
+		if (request !== assignmentsRequest) return
+		assignments.value = result
+		if (!result.some((item: { name: string }) => item.name === lessonRule.prerequisite_assignment))
+			lessonRule.prerequisite_assignment = null
+	} catch {
+		if (request === assignmentsRequest) toast.error('Не удалось загрузить задания выбранного урока.')
+	} finally {
+		if (request === assignmentsRequest) assignmentsLoading.value = false
+	}
 })
 async function saveLessonRule() {
 	if (!selectedLesson.value) return
