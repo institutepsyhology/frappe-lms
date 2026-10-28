@@ -222,6 +222,8 @@ def preview_course_restart(name):
 		"progress": frappe.db.count("LMS Course Progress", {"member": grant.member, "course": grant.course}),
 		"homework": homework,
 		"quiz_submissions": frappe.db.count("LMS Quiz Submission", {"member": grant.member, "course": grant.course}),
+		"video_progress": frappe.db.count("LMS Video Watch Duration", {"member": grant.member,
+			"lesson": ("in", lessons)}) if lessons else 0,
 		"visits": frappe.db.count("LMS Lesson Visit", {"member": grant.member, "course": grant.course}),
 		"other_grants": frappe.db.count("LMS Access Grant", {"member": grant.member, "course": grant.course,
 			"name": ("!=", grant.name), "status": ("in", ["Draft", "Active", "Frozen", "Limited"])}),

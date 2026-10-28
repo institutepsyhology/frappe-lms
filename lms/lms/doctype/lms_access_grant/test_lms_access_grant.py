@@ -247,15 +247,19 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		submission = frappe.get_doc({"doctype": "LMS Assignment Submission", "assignment": assignment.name,
 			"lesson": self.lesson.name, "member": self.student.email, "type": "Text", "answer": "Test answer"})
 		submission.insert(ignore_permissions=True)
+		watch = frappe.get_doc({"doctype": "LMS Video Watch Duration", "member": self.student.email,
+			"lesson": self.lesson.name, "source": "test", "watch_time": "10"}).insert(ignore_permissions=True)
 		frappe.set_user(self.other.email)
 		with self.assertRaises(frappe.PermissionError):
 			preview_course_restart(self.grant.name)
 		frappe.set_user("Administrator")
 		preview = preview_course_restart(self.grant.name)
 		self.assertEqual((preview["progress"], preview["homework"]), (1, 1))
+		self.assertEqual(preview["video_progress"], 1)
 		self.assertTrue(preview["enrolled"])
 		self.assertTrue(frappe.db.exists("LMS Course Progress", progress.name))
 		self.assertTrue(frappe.db.exists("LMS Assignment Submission", submission.name))
+		self.assertTrue(frappe.db.exists("LMS Video Watch Duration", watch.name))
 
 	def test_revoke_closes_access_and_preserves_progress_and_enrollment(self):
 		from lms.lms.access_actions import revoke_grant

@@ -132,6 +132,7 @@
 						<p>Записей прогресса: {{ restartPreview[grant.name].progress }}</p>
 						<p>Домашних работ, связанных с уроками курса: {{ restartPreview[grant.name].homework }}</p>
 						<p>Результатов тестов, связанных с курсом: {{ restartPreview[grant.name].quiz_submissions }}</p>
+						<p>Записей просмотра видео: {{ restartPreview[grant.name].video_progress }}</p>
 						<p>Записей посещения: {{ restartPreview[grant.name].visits }}</p>
 						<p>Других незакрытых карточек: {{ restartPreview[grant.name].other_grants }}</p>
 						<p>Это предварительный подсчёт. Старые записи без связи с уроком или курсом могут требовать отдельной проверки. Данные не удаляются.</p>
@@ -227,7 +228,7 @@ import type { SessionUser } from '@/types'
 type Grant = { name: string; member: string; status: string; starts_at?: string; ends_at?: string; personal_end_type?: string; personal_end_days?: number; ignore_course_end?: boolean | number; visited_retention_type?: string; visited_retention_days?: number }
 type GrantTiming = { starts_at: string; personal_end_type: string; ends_at: string | null; personal_end_days: number; ignore_course_end: boolean }
 type GrantLesson = { lesson: string; title: string; manual_open: boolean; retain_when_limited: boolean }
-type RestartPreview = { progress: number; homework: number; quiz_submissions: number; visits: number; other_grants: number; enrolled: boolean }
+type RestartPreview = { progress: number; homework: number; quiz_submissions: number; video_progress: number; visits: number; other_grants: number; enrolled: boolean }
 type Defaults = { default_personal_end_type: string; default_personal_end_at: string | null; default_personal_end_days: number; global_end_type: string; global_end_at: string | null; completed_retention_type: string; completed_retention_days: number; visited_retention_type: string; visited_retention_days: number }
 type LessonRule = { lesson?: string; opening_type: string; opens_at: string | null; delay_days: number; prerequisite_type: string; prerequisite_lesson: string | null; prerequisite_assignment: string | null }
 type Overview = { release_enabled: boolean; policy_enabled: boolean; policy_exists: boolean; policy?: Defaults | null; timezone: string; grants: Grant[]; truncated: boolean; lessons: {name: string; title: string}[]; lessons_truncated: boolean; schedule: LessonRule[] }

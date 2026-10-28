@@ -187,7 +187,7 @@ describe('individual access settings', () => {
 
 	it('shows a read-only restart preview', async () => {
 		callMock.mockImplementation(async (method: string) => method.endsWith('preview_course_restart')
-			? { progress: 2, homework: 1, quiz_submissions: 0, visits: 3, other_grants: 0, enrolled: true }
+			? { progress: 2, homework: 1, quiz_submissions: 0, video_progress: 1, visits: 3, other_grants: 0, enrolled: true }
 			: { release_enabled: false, policy_enabled: false, policy_exists: true,
 				grants: [{ name: 'grant-1', member: 'student@example.invalid', status: 'Active' }], truncated: false,
 				lessons: [], lessons_truncated: false })
