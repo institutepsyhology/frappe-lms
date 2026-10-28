@@ -543,10 +543,12 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		self.assertFalse(can_access_lesson(second.name))
 
 	def test_legacy_prerequisite_value_remains_accessible_and_normalizes_on_save(self):
+		from lms.lms.access_actions import get_grant_lessons
 		frappe.db.set_value("LMS Access Grant Lesson", self.grant.lessons[0].name, "prerequisite_state", "Clear")
 		frappe.set_user(self.student.email)
 		self.assertTrue(can_access_lesson(self.lesson.name))
 		frappe.set_user("Administrator")
+		self.assertEqual(get_grant_lessons(self.grant.name)[0]["prerequisite_state"], "Satisfied")
 		grant = frappe.get_doc("LMS Access Grant", self.grant.name)
 		grant.save(ignore_permissions=True)
 		self.assertEqual(grant.lessons[0].prerequisite_state, "Satisfied")

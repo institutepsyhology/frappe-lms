@@ -168,7 +168,7 @@ def get_grant_lessons(name):
 	return [{"lesson": row.lesson, "title": frappe.db.get_value("Course Lesson", row.lesson, "title"),
 		"manual_open": bool(row.manual_open), "retain_when_limited": bool(row.retain_when_limited),
 		"opening_type": row.opening_type, "opens_at": row.opens_at, "delay_days": row.delay_days,
-		"prerequisite_state": row.prerequisite_state}
+		"prerequisite_state": "Satisfied" if row.prerequisite_state == "Clear" else row.prerequisite_state}
 		for row in grant.lessons]
 
 
