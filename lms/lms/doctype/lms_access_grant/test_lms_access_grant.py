@@ -217,6 +217,22 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		frappe.set_user(self.student.email)
 		self.assertFalse(can_access_lesson(self.lesson.name))
 
+	def test_personal_lesson_rule_applies_only_to_assigned_lesson(self):
+		from lms.lms.access_actions import update_grant_lesson_rule
+
+		rule = {"opening_type": "After Start", "opens_at": None, "delay_days": 3, "prerequisite_state": "Satisfied"}
+		frappe.set_user(self.other.email)
+		with self.assertRaises(frappe.PermissionError):
+			update_grant_lesson_rule(self.grant.name, self.lesson.name, rule)
+		frappe.set_user("Administrator")
+		with self.assertRaises(frappe.ValidationError):
+			update_grant_lesson_rule(self.grant.name, "unknown-lesson", rule)
+		update_grant_lesson_rule(self.grant.name, self.lesson.name, rule)
+		row = frappe.get_doc("LMS Access Grant", self.grant.name).lessons[0]
+		self.assertEqual((row.opening_type, row.delay_days, row.prerequisite_state), ("After Start", 3, "Satisfied"))
+		frappe.set_user(self.student.email)
+		self.assertFalse(can_access_lesson(self.lesson.name))
+
 	def test_admin_changes_assigned_lessons_without_removing_progress(self):
 		from lms.lms.access_actions import set_grant_assigned_lessons
 

@@ -185,6 +185,30 @@ describe('individual access settings', () => {
 		confirm.mockRestore()
 	})
 
+	it('saves a personal rule for one assigned lesson', async () => {
+		callMock.mockImplementation(async (method: string) => method.endsWith('get_grant_lessons')
+			? [{ lesson: 'lesson-1', title: 'Урок 1', manual_open: false, retain_when_limited: false,
+				opening_type: 'Inherit', opens_at: null, delay_days: 0, prerequisite_state: 'Inherit' }]
+			: { release_enabled: false, policy_enabled: false, policy_exists: true,
+				grants: [{ name: 'grant-1', member: 'student@example.invalid', status: 'Active' }], truncated: false,
+				lessons: [{name: 'lesson-1', title: 'Урок 1'}], lessons_truncated: false })
+		const wrapper = render(true)
+		await flushPromises()
+		const details = wrapper.findAll('details').find((item) => item.text().includes('Уроки этого ученика'))!
+		;(details.element as HTMLDetailsElement).open = true
+		await details.trigger('toggle')
+		await flushPromises()
+		const editor = details.findAll('details').find((item) => item.text().includes('Персональное правило этого урока'))!
+		await editor.findAll('select')[0].setValue('After Start')
+		await editor.find('input[type=number]').setValue(4)
+		await editor.find('button').trigger('click')
+		await flushPromises()
+		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.update_grant_lesson_rule', {
+			name: 'grant-1', lesson: 'lesson-1', rule: { opening_type: 'After Start', opens_at: null,
+				delay_days: 4, prerequisite_state: 'Inherit' },
+		})
+	})
+
 	it('shows a read-only restart preview', async () => {
 		callMock.mockImplementation(async (method: string) => method.endsWith('preview_course_restart')
 			? { progress: 2, homework: 1, quiz_submissions: 0, video_progress: 1, visits: 3, other_grants: 0, enrolled: true }

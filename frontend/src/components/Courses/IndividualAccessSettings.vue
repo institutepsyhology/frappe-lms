@@ -160,6 +160,28 @@
 							<button v-if="grant.status !== 'Revoked'" class="underline" :disabled="busy" @click="setManual(grant, row)">
 								{{ row.manual_open ? 'Вернуть расписание' : 'Открыть досрочно' }}
 							</button>
+							<details v-if="['Draft', 'Active', 'Frozen'].includes(grant.status)" class="w-full border rounded p-2">
+								<summary class="cursor-pointer">Персональное правило этого урока</summary>
+								<div class="space-y-2 mt-2">
+									<label class="block">Открытие
+										<select v-model="row.opening_type" class="border rounded w-full p-1">
+											<option value="Inherit">Как у курса</option><option value="Unknown">Не задано</option><option value="After Start">Через дни после начала</option><option value="At">В указанную дату</option>
+										</select>
+									</label>
+									<label v-if="row.opening_type === 'After Start'" class="block">Дней после начала
+										<input v-model.number="row.delay_days" type="number" min="0" class="border rounded w-full p-1" />
+									</label>
+									<label v-if="row.opening_type === 'At'" class="block">Дата и время ({{ overview.timezone }})
+										<input v-model="row.opens_at" type="datetime-local" step="1" class="border rounded w-full p-1" />
+									</label>
+									<label class="block">Условие
+										<select v-model="row.prerequisite_state" class="border rounded w-full p-1">
+											<option value="Inherit">Как у курса</option><option value="Unknown">Не задано</option><option value="Satisfied">Условие выполнено</option><option value="Blocked">Заблокировать</option>
+										</select>
+									</label>
+									<button class="underline" :disabled="busy" @click="savePersonalLesson(grant, row)">Сохранить правило ученика</button>
+								</div>
+							</details>
 						</div>
 						<div v-if="['Active', 'Frozen'].includes(grant.status)" class="space-y-2">
 							<p>Чтобы ограничить доступ, отметьте уроки, которые останутся доступны. Если ничего не отмечено, закроются все уроки этой карточки.</p>
@@ -227,7 +249,7 @@ import type { SessionUser } from '@/types'
 
 type Grant = { name: string; member: string; status: string; starts_at?: string; ends_at?: string; personal_end_type?: string; personal_end_days?: number; ignore_course_end?: boolean | number; visited_retention_type?: string; visited_retention_days?: number }
 type GrantTiming = { starts_at: string; personal_end_type: string; ends_at: string | null; personal_end_days: number; ignore_course_end: boolean }
-type GrantLesson = { lesson: string; title: string; manual_open: boolean; retain_when_limited: boolean }
+type GrantLesson = { lesson: string; title: string; manual_open: boolean; retain_when_limited: boolean; opening_type: string; opens_at: string | null; delay_days: number; prerequisite_state: string }
 type RestartPreview = { progress: number; homework: number; quiz_submissions: number; video_progress: number; visits: number; other_grants: number; enrolled: boolean }
 type Defaults = { default_personal_end_type: string; default_personal_end_at: string | null; default_personal_end_days: number; global_end_type: string; global_end_at: string | null; completed_retention_type: string; completed_retention_days: number; visited_retention_type: string; visited_retention_days: number }
 type LessonRule = { lesson?: string; opening_type: string; opens_at: string | null; delay_days: number; prerequisite_type: string; prerequisite_lesson: string | null; prerequisite_assignment: string | null }
@@ -306,8 +328,19 @@ function revoke(grant: Grant) {
 }
 async function refreshGrantLessons(grant: Grant) {
 	grantLessons[grant.name] = await call('lms.lms.access_actions.get_grant_lessons', { name: grant.name })
+	for (const row of grantLessons[grant.name]) row.opens_at = row.opens_at?.replace(' ', 'T') || null
 	assignedLessons[grant.name] = grantLessons[grant.name].map((row) => row.lesson)
 	retainedLessons[grant.name] = grantLessons[grant.name].filter((row) => row.retain_when_limited).map((row) => row.lesson)
+}
+async function savePersonalLesson(grant: Grant, row: GrantLesson) {
+	busy.value = true
+	try {
+		await call('lms.lms.access_actions.update_grant_lesson_rule', { name: grant.name, lesson: row.lesson, rule: {
+			opening_type: row.opening_type, opens_at: row.opening_type === 'At' ? row.opens_at : null,
+			delay_days: row.opening_type === 'After Start' ? row.delay_days : 0, prerequisite_state: row.prerequisite_state,
+		} })
+		await refreshGrantLessons(grant)
+	} catch { toast.error('Не удалось сохранить правило ученика.') } finally { busy.value = false }
 }
 async function loadRestartPreview(grant: Grant, event: Event) {
 	if (!(event.target as HTMLDetailsElement).open) return

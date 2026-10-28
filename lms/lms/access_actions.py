@@ -166,7 +166,9 @@ def get_grant_lessons(name):
 	grant = frappe.get_doc("LMS Access Grant", name)
 	grant.check_permission("read")
 	return [{"lesson": row.lesson, "title": frappe.db.get_value("Course Lesson", row.lesson, "title"),
-		"manual_open": bool(row.manual_open), "retain_when_limited": bool(row.retain_when_limited)}
+		"manual_open": bool(row.manual_open), "retain_when_limited": bool(row.retain_when_limited),
+		"opening_type": row.opening_type, "opens_at": row.opens_at, "delay_days": row.delay_days,
+		"prerequisite_state": row.prerequisite_state}
 		for row in grant.lessons]
 
 
@@ -183,6 +185,25 @@ def set_grant_lesson_manual_open(name, lesson, enabled):
 	row.manual_open = int(value)
 	grant.save()
 	return {"name": grant.name, "lesson": lesson, "manual_open": value}
+
+
+@frappe.whitelist(methods=["POST"])
+def update_grant_lesson_rule(name, lesson, rule):
+	"""Set a personal opening rule for one lesson already assigned to a grant."""
+	if isinstance(rule, str):
+		rule = frappe.parse_json(rule)
+	fields = {"opening_type", "opens_at", "delay_days", "prerequisite_state"}
+	if not isinstance(rule, dict) or set(rule) != fields:
+		frappe.throw(_("Provide the complete personal lesson rule."), frappe.ValidationError)
+	grant = _admin_grant(name)
+	if grant.status not in ("Draft", "Active", "Frozen"):
+		frappe.throw(_("The lesson rule cannot be changed for this grant."), frappe.ValidationError)
+	row = next((item for item in grant.lessons if item.lesson == lesson), None)
+	if not row:
+		frappe.throw(_("The lesson is not assigned to this grant."), frappe.ValidationError)
+	row.update(rule)
+	grant.save()
+	return {"name": grant.name, "lesson": lesson}
 
 
 @frappe.whitelist(methods=["POST"])
