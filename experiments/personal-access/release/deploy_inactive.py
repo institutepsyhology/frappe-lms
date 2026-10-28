@@ -19,10 +19,10 @@ import time
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = Path("/opt/company-lms")
-OLD = "sha256:92aa306c66ad8a2378f5c170a426a667055c94d9a9e0fdefc65480dc36092c59"
+OLD = "sha256:6c6e865c6c9165c5292c5c83da784d5840284e00b9355b895f4a42962f966018"
 BASE_TAG = "company-lms:lesson-settings-r21-20261028"
 BASE_IMAGE = "sha256:4781e698ca6b3b4ed09bbe9af113664887dd7dc17421127e472f80f23f8ab610"
-TAG = "company-lms:lesson-limits-r25-20261029"
+TAG = "company-lms:lesson-menu-r26-20261029"
 OVERLAY = ("lms/lms/api.py", "lms/lms/permissions.py", "lms/lms/utils.py",
     "lms/lms/doctype/course_lesson/course_lesson.py", "lms/lms/doctype/course_lesson/course_lesson.json",
     "lms/lms/access_actions.py", "lms/lms/individual_access.py",

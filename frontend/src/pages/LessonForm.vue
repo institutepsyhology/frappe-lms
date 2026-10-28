@@ -1,6 +1,15 @@
 <template>
 	<div class="py-6 sm:py-10">
 		<div class="mx-0 space-y-6 px-4 sm:mx-10 sm:px-20">
+			<nav class="flex gap-2 border-b border-outline-gray-2" aria-label="Разделы урока">
+				<button type="button" class="px-4 py-3 font-medium" :class="lessonSection === 'content' ? 'border-b-2 border-ink-gray-9' : 'text-ink-gray-5'" :aria-current="lessonSection === 'content' ? 'page' : undefined" @click="lessonSection = 'content'">Содержание урока</button>
+				<button type="button" class="px-4 py-3 font-medium" :class="lessonSection === 'settings' ? 'border-b-2 border-ink-gray-9' : 'text-ink-gray-5'" :aria-current="lessonSection === 'settings' ? 'page' : undefined" @click="lessonSection = 'settings'">Настройки урока</button>
+			</nav>
+			<div v-show="lessonSection === 'settings'" class="space-y-4">
+				<h2 class="text-xl font-semibold">Настройки урока</h2>
+				<LessonAccessSettings :course="props.courseName" :lesson="lessonDetails.data?.lesson?.name" />
+			</div>
+			<div v-show="lessonSection === 'content'" class="space-y-6">
 			<button
 				v-if="isMobile"
 				type="button"
@@ -80,8 +89,6 @@
 				<button type="button" class="rounded bg-ink-gray-9 px-4 py-2 text-white" :disabled="!publicationAudience || isDirty || publishingLesson" @click="publishLesson">Опубликовать урок</button>
 				<p v-if="isDirty">Дождитесь сохранения изменений перед публикацией.</p>
 			</div>
-			<LessonAccessSettings :course="props.courseName" :lesson="lessonDetails.data?.lesson?.name" />
-
 			<details
 				class="instructor-notes rounded-lg border border-outline-gray-2"
 				@toggle="onInstructorNotesToggle"
@@ -116,6 +123,7 @@
 				:uploadContext="contentUploadContext"
 				@change="markDirty"
 			/>
+			</div>
 		</div>
 	</div>
 </template>
@@ -165,6 +173,7 @@ import {
 
 const { isMobile } = useScreenSize()
 const showLessonDetails = ref(false)
+const lessonSection = ref('content')
 
 const editor = ref(null)
 const instructorEditor = ref(null)

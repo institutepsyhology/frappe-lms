@@ -1,5 +1,5 @@
 <template>
-	<details v-if="user?.data?.is_system_manager && lesson" class="rounded-lg border border-outline-gray-2 p-4">
+	<details open v-if="user?.data?.is_system_manager && lesson" class="rounded-lg border border-outline-gray-2 p-4">
 		<summary class="cursor-pointer font-medium">Настройки доступа к этому уроку</summary>
 		<div v-if="loading" class="mt-3">Загрузка настроек…</div>
 		<div v-else-if="!overview" class="mt-3 text-red-700">Не удалось загрузить настройки доступа.</div>
