@@ -156,7 +156,7 @@ const defaults = reactive<Defaults>({ default_personal_end_type: 'Unknown', defa
 const selectedLesson = ref('')
 const lessonRule = reactive<LessonRule>({ opening_type: 'Unknown', opens_at: null, delay_days: 0,
 	prerequisite_type: 'Unknown', prerequisite_lesson: null, prerequisite_assignment: null })
-const labels: Record<string, string> = { Draft: 'Черновик', Active: 'Действует', Frozen: 'Заморожен', Limited: 'Ограничен', Revoked: 'Закрыт' }
+const labels: Record<string, string> = { Draft: 'Черновик', Active: 'Активная карточка', Frozen: 'Замороженная карточка', Limited: 'Ограниченная карточка', Revoked: 'Закрытая карточка' }
 
 async function load() {
 	if (!props.course || !user?.data?.is_system_manager) return
