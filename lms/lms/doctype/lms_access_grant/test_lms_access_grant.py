@@ -124,8 +124,11 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		from lms.lms.doctype.course_lesson.course_lesson import publish_lesson
 		from lms.lms.utils import get_course_progress
 
-		self._create_progress(self.student.email, self.course.name, self.lesson.name)
+		progress = self._create_progress(self.student.email, self.course.name, self.lesson.name)
+		progress.status = "Complete"
+		progress.save()
 		before = get_course_progress(self.course.name, self.student.email)
+		self.assertEqual(before, 100)
 		name = create_lesson(self.chapter.name)
 		self.assertEqual(get_course_progress(self.course.name, self.student.email), before)
 		with patch("lms.lms.individual_access.protected_courses", return_value=()):
