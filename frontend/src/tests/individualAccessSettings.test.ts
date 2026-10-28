@@ -154,7 +154,7 @@ describe('individual access settings', () => {
 		await details.trigger('toggle')
 		await flushPromises()
 		await details.findAll('input[type=checkbox]').at(-1)!.setValue(true)
-		await details.find('select').setValue('Unlimited')
+		await details.findAll('select').find((item) => item.text().includes('Выберите срок оставленных уроков'))!.setValue('Unlimited')
 		await details.findAll('button').find((item) => item.text() === 'Ограничить доступ')!.trigger('click')
 		await flushPromises()
 		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.limit_grant', {
