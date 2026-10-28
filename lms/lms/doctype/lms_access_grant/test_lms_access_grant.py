@@ -185,6 +185,24 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		frappe.set_user(self.student.email)
 		self.assertFalse(can_access_lesson(self.lesson.name))
 
+	def test_admin_can_change_only_one_students_start_and_personal_end(self):
+		from lms.lms.access_actions import update_grant_timing
+
+		progress = self._create_progress(self.student.email, self.course.name, self.lesson.name)
+		start = add_to_date(now_datetime(), days=-2).replace(microsecond=0)
+		args = (self.grant.name, start.isoformat(), "After Start", None, 30, 1)
+		frappe.set_user(self.other.email)
+		with self.assertRaises(frappe.PermissionError):
+			update_grant_timing(*args)
+		frappe.set_user("Administrator")
+		update_grant_timing(*args)
+		grant = frappe.get_doc("LMS Access Grant", self.grant.name)
+		self.assertEqual(grant.starts_at, start)
+		self.assertEqual((grant.personal_end_type, grant.personal_end_days, grant.ignore_course_end), ("After Start", 30, 1))
+		self.assertTrue(frappe.db.exists("LMS Course Progress", progress.name))
+		with self.assertRaises(frappe.ValidationError):
+			update_grant_timing(self.grant.name, start.isoformat(), "After Start", None, 0, 1)
+
 	def test_assignment_without_course_follows_actual_lesson(self):
 		assignment = frappe.get_doc({"doctype": "LMS Assignment", "title": "Isolated task",
 			"type": "Text", "question": "Test question"}).insert(ignore_permissions=True)

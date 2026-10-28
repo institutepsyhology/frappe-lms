@@ -14,12 +14,12 @@ def _admin_grant(name):
 	return grant
 
 
-def _explicit_choice(value):
+def _explicit_choice(value, message=None):
 	if value is True or value == "1" or type(value) is int and value == 1:
 		return True
 	if value is False or value == "0" or type(value) is int and value == 0:
 		return False
-	frappe.throw(_("Choose explicitly whether to extend the personal end date."), frappe.ValidationError)
+	frappe.throw(_(message or "Choose explicitly whether to extend the personal end date."), frappe.ValidationError)
 
 
 @frappe.whitelist()
@@ -33,7 +33,8 @@ def get_course_access_overview(course):
 		"default_personal_end_type", "default_personal_end_at", "default_personal_end_days",
 		"global_end_type", "global_end_at", "completed_retention_type", "completed_retention_days"], as_dict=True)
 	grants = frappe.get_all("LMS Access Grant", filters={"course": course},
-		fields=["name", "member", "status", "starts_at", "ends_at"], order_by="modified desc", limit_page_length=201)
+		fields=["name", "member", "status", "starts_at", "personal_end_type", "ends_at",
+			"personal_end_days", "ignore_course_end"], order_by="modified desc", limit_page_length=201)
 	lessons = frappe.get_all("Course Lesson", filters={"course": course},
 		fields=["name", "title"], order_by="name asc", limit_page_length=501)
 	schedule = frappe.get_all("LMS Access Policy Lesson", filters={"parent": policy.name,
@@ -157,6 +158,26 @@ def create_grant_for_enrolled_student(course, member, starts_at, lessons):
 			for lesson in lessons],
 	}).insert()
 	return {"name": grant.name, "status": grant.status, "lesson_count": len(grant.lessons)}
+
+
+@frappe.whitelist(methods=["POST"])
+def update_grant_timing(name, starts_at, personal_end_type, ends_at, personal_end_days, ignore_course_end):
+	"""Set one grant's start and personal end without changing learning records."""
+	grant = _admin_grant(name)
+	if grant.status not in ("Draft", "Active", "Frozen", "Limited"):
+		frappe.throw(_("A closed access grant cannot be edited."), frappe.ValidationError)
+	if not isinstance(starts_at, str) or not starts_at:
+		frappe.throw(_("A start time is required."), frappe.ValidationError)
+	ignore = _explicit_choice(ignore_course_end, "Choose explicitly whether to ignore the course end.")
+	if personal_end_type not in ("Unknown", "Inherit", "Unlimited", "At", "After Start"):
+		frappe.throw(_("Choose a valid personal end rule."), frappe.ValidationError)
+	grant.starts_at = get_datetime(starts_at)
+	grant.personal_end_type = personal_end_type
+	grant.ends_at = ends_at or None
+	grant.personal_end_days = personal_end_days
+	grant.ignore_course_end = int(ignore)
+	grant.save()
+	return {"name": grant.name, "status": grant.status}
 
 
 @frappe.whitelist(methods=["POST"])

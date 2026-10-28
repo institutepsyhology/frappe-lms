@@ -113,6 +113,28 @@
 				<div>{{ labels[grant.status] || grant.status }}</div>
 				<div v-if="grant.starts_at">Начало: {{ grant.starts_at }}</div>
 				<div v-if="grant.ends_at">Окончание: {{ grant.ends_at }}</div>
+				<details v-if="grant.status !== 'Revoked' && grantTiming[grant.name]" class="space-y-2">
+					<summary class="cursor-pointer">Персональные сроки</summary>
+					<div class="space-y-2 mt-2">
+						<label class="block">Начало курса ({{ overview.timezone }})
+							<input v-model="grantTiming[grant.name].starts_at" type="datetime-local" step="1" class="border rounded w-full p-1" />
+						</label>
+						<label class="block">Личный срок доступа
+							<select v-model="grantTiming[grant.name].personal_end_type" class="border rounded w-full p-1">
+								<option value="Inherit">Как у курса</option><option value="Unknown">Не задан</option><option value="Unlimited">Без ограничения</option>
+								<option value="After Start">Количество дней от начала</option><option value="At">До даты</option>
+							</select>
+						</label>
+						<label v-if="grantTiming[grant.name].personal_end_type === 'After Start'" class="block">Дней
+							<input v-model.number="grantTiming[grant.name].personal_end_days" type="number" min="1" class="border rounded w-full p-1" />
+						</label>
+						<label v-if="grantTiming[grant.name].personal_end_type === 'At'" class="block">Дата и время окончания
+							<input v-model="grantTiming[grant.name].ends_at" type="datetime-local" step="1" class="border rounded w-full p-1" />
+						</label>
+						<label class="flex gap-2"><input v-model="grantTiming[grant.name].ignore_course_end" type="checkbox" /> Не учитывать общее окончание курса</label>
+						<button class="underline" :disabled="busy || !grantTiming[grant.name].starts_at" @click="saveGrantTiming(grant)">Сохранить персональные сроки</button>
+					</div>
+				</details>
 				<div class="flex flex-wrap gap-2">
 					<button v-if="grant.status === 'Active'" class="underline" :disabled="busy" @click="freeze(grant)">Заморозить</button>
 					<template v-if="grant.status === 'Frozen'">
@@ -136,7 +158,8 @@ import { call, toast } from 'frappe-ui'
 import { inject, reactive, ref, watch } from 'vue'
 import type { SessionUser } from '@/types'
 
-type Grant = { name: string; member: string; status: string; starts_at?: string; ends_at?: string }
+type Grant = { name: string; member: string; status: string; starts_at?: string; ends_at?: string; personal_end_type?: string; personal_end_days?: number; ignore_course_end?: boolean | number }
+type GrantTiming = { starts_at: string; personal_end_type: string; ends_at: string | null; personal_end_days: number; ignore_course_end: boolean }
 type Defaults = { default_personal_end_type: string; default_personal_end_at: string | null; default_personal_end_days: number; global_end_type: string; global_end_at: string | null; completed_retention_type: string; completed_retention_days: number }
 type LessonRule = { lesson?: string; opening_type: string; opens_at: string | null; delay_days: number; prerequisite_type: string; prerequisite_lesson: string | null; prerequisite_assignment: string | null }
 type Overview = { release_enabled: boolean; policy_enabled: boolean; policy_exists: boolean; policy?: Defaults | null; timezone: string; grants: Grant[]; truncated: boolean; lessons: {name: string; title: string}[]; lessons_truncated: boolean; schedule: LessonRule[] }
@@ -147,6 +170,7 @@ const loading = ref(false)
 const error = ref(false)
 const busy = ref(false)
 const resumeChoice = reactive<Record<string, string>>({})
+const grantTiming = reactive<Record<string, GrantTiming>>({})
 const newMember = ref('')
 const newStart = ref('')
 const newLessons = ref<string[]>([])
@@ -164,6 +188,11 @@ async function load() {
 	error.value = false
 	try {
 		overview.value = await call('lms.lms.access_actions.get_course_access_overview', { course: props.course })
+		for (const grant of overview.value?.grants || []) {
+			grantTiming[grant.name] = { starts_at: grant.starts_at?.replace(' ', 'T') || '',
+				personal_end_type: grant.personal_end_type || 'Unknown', ends_at: grant.ends_at?.replace(' ', 'T') || null,
+				personal_end_days: grant.personal_end_days || 0, ignore_course_end: Boolean(grant.ignore_course_end) }
+		}
 		if (overview.value?.policy) {
 			Object.assign(defaults, overview.value.policy)
 			defaults.default_personal_end_at = defaults.default_personal_end_at?.replace(' ', 'T') || null
@@ -195,6 +224,15 @@ function resume(grant: Grant) {
 }
 function revoke(grant: Grant) {
 	if (window.confirm('Закрыть эту карточку? Прогресс и домашние задания сохранятся. Другие карточки ученика не изменятся.')) action('revoke_grant', grant)
+}
+function saveGrantTiming(grant: Grant) {
+	const values = grantTiming[grant.name]
+	if (!values?.starts_at) return
+	action('update_grant_timing', grant, { starts_at: values.starts_at,
+		personal_end_type: values.personal_end_type,
+		ends_at: values.personal_end_type === 'At' ? values.ends_at : null,
+		personal_end_days: values.personal_end_type === 'After Start' ? values.personal_end_days : 0,
+		ignore_course_end: values.ignore_course_end ? 1 : 0 })
 }
 async function createGrant() {
 	if (!newMember.value || !newStart.value || !newLessons.value.length) return

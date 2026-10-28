@@ -9,7 +9,8 @@ describe('individual access settings', () => {
 	beforeEach(() => {
 		callMock.mockReset()
 		callMock.mockResolvedValue({ release_enabled: false, policy_enabled: false, policy_exists: true,
-			grants: [{ name: 'grant-1', member: 'student@example.invalid', status: 'Frozen' }], truncated: false,
+			grants: [{ name: 'grant-1', member: 'student@example.invalid', status: 'Frozen', starts_at: '2026-10-28 10:30:00',
+				personal_end_type: 'Unlimited', personal_end_days: 0, ignore_course_end: 1 }], truncated: false,
 			lessons: [{name: 'lesson-1', title: 'Урок 1'}], lessons_truncated: false })
 	})
 	const render = (manager: boolean) => mount(IndividualAccessSettings, {
@@ -90,6 +91,17 @@ describe('individual access settings', () => {
 		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.update_course_lesson_rule', {
 			course: 'course-1', lesson: 'lesson-1', rule: { opening_type: 'After Start', opens_at: null,
 				delay_days: 3, prerequisite_type: 'None', prerequisite_lesson: null, prerequisite_assignment: null },
+		})
+	})
+
+	it('saves an individual start and end rule', async () => {
+		const wrapper = render(true)
+		await flushPromises()
+		await wrapper.findAll('button').find((item) => item.text() === 'Сохранить персональные сроки')!.trigger('click')
+		await flushPromises()
+		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.update_grant_timing', {
+			name: 'grant-1', starts_at: '2026-10-28T10:30:00', personal_end_type: 'Unlimited', ends_at: null,
+			personal_end_days: 0, ignore_course_end: 1,
 		})
 	})
 })
