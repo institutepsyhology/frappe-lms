@@ -239,6 +239,19 @@ def course_record_query_conditions(user=None, doctype=None) -> str:
 	return _render(condition)
 
 
+def publication_allows_lesson(lesson, row, user):
+	"""Apply draft and publication audience without considering the lesson schedule."""
+	if row.is_draft:
+		return False
+	if row.publication_audience != "Future Only":
+		return True
+	enrolled_at = frappe.db.get_value("LMS Enrollment", {"course": row.course, "member": user}, "creation")
+	if enrolled_at and row.lesson_published_at and enrolled_at >= row.lesson_published_at:
+		return True
+	from lms.lms.individual_access import policy_applies, grant_allows_lesson
+	return bool(policy_applies(row.course) and grant_allows_lesson(user=user, lesson=lesson, require_manual=True))
+
+
 def resolve_lesson_access(lesson: str, *, user: str | None = None) -> tuple[bool, bool]:
 	"""Return ``(is_instructor, can_access)`` for a lesson, computed in a single pass.
 
@@ -264,15 +277,9 @@ def resolve_lesson_access(lesson: str, *, user: str | None = None) -> tuple[bool
 		frappe.session.user = user
 		if can_modify_course(lesson_row.course):
 			return True, True
-		if lesson_row.is_draft:
+		if not publication_allows_lesson(lesson, lesson_row, user):
 			return False, False
-		from lms.lms.individual_access import policy_applies, restrict_member_lesson, grant_allows_lesson
-		if lesson_row.publication_audience == "Future Only":
-			enrolled_at = frappe.db.get_value("LMS Enrollment", {"course": lesson_row.course, "member": user}, "creation")
-			if (not enrolled_at or not lesson_row.lesson_published_at or enrolled_at < lesson_row.lesson_published_at) and not (
-				policy_applies(lesson_row.course) and grant_allows_lesson(user=user, lesson=lesson, require_manual=True)
-			):
-				return False, False
+		from lms.lms.individual_access import policy_applies, restrict_member_lesson
 
 		membership = bool(get_membership(lesson_row.course, user))
 		if membership:

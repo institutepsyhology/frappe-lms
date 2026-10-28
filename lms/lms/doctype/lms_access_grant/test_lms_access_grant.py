@@ -119,6 +119,19 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		frappe.set_user(self.student.email)
 		self.assertTrue(can_access_lesson(name))
 
+	def test_draft_and_future_only_lesson_do_not_reduce_existing_progress(self):
+		from lms.lms.api import create_lesson
+		from lms.lms.doctype.course_lesson.course_lesson import publish_lesson
+		from lms.lms.utils import get_course_progress
+
+		self._create_progress(self.student.email, self.course.name, self.lesson.name)
+		before = get_course_progress(self.course.name, self.student.email)
+		name = create_lesson(self.chapter.name)
+		self.assertEqual(get_course_progress(self.course.name, self.student.email), before)
+		with patch("lms.lms.individual_access.protected_courses", return_value=()):
+			publish_lesson(name, "Future Only")
+			self.assertEqual(get_course_progress(self.course.name, self.student.email), before)
+
 	def test_visit_retention_requires_an_authorized_record_before_expiry(self):
 		from lms.lms.individual_access import grant_allows_lesson
 		from lms.lms.visit_tracking import record_lesson_visit

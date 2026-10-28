@@ -361,12 +361,19 @@ def get_progress(course: str, lesson: str, member: str = None):
 
 def get_course_progress(course: str, member: str = None):
 	"""Returns the course progress of the session user"""
-	lesson_count = get_lesson_count(course)
+	member = member or frappe.session.user
+	chapters = frappe.get_all("Chapter Reference", {"parent": course}, pluck="chapter")
+	lessons = frappe.get_all("Lesson Reference", {"parent": ("in", chapters)}, pluck="lesson") if chapters else []
+	rows = frappe.get_all("Course Lesson", {"name": ("in", lessons)},
+		["name", "course", "is_draft", "publication_audience", "lesson_published_at"]) if lessons else []
+	from lms.lms.permissions import publication_allows_lesson
+	visible = [row.name for row in rows if publication_allows_lesson(row.name, row, member)]
+	lesson_count = len(visible)
 	if not lesson_count:
 		return 0
 	completed_lessons = frappe.db.count(
 		"LMS Course Progress",
-		{"course": course, "member": member or frappe.session.user, "status": "Complete"},
+		{"course": course, "member": member, "status": "Complete", "lesson": ("in", visible)},
 	)
 	precision = cint(frappe.db.get_default("float_precision")) or 3
 	return flt(((completed_lessons / lesson_count) * 100), precision)
@@ -1446,10 +1453,12 @@ def get_course_outline(course: str, progress: bool = False) -> list:
 
 	lesson_rows = get_outline_lessons([c.name for c in chapters])
 	if not can_modify_course(course):
-		from lms.lms.permissions import can_access_lesson
+		from lms.lms.permissions import publication_allows_lesson
 		restricted = set(frappe.get_all("Course Lesson", filters={"course": course, "is_draft": 1}, pluck="name"))
 		restricted.update(frappe.get_all("Course Lesson", filters={"course": course, "publication_audience": "Future Only"}, pluck="name"))
-		lesson_rows = [row for row in lesson_rows if row.name not in restricted or can_access_lesson(row.name)]
+		publication = {row.name: row for row in frappe.get_all("Course Lesson", filters={"name": ("in", list(restricted))},
+			fields=["name", "course", "is_draft", "publication_audience", "lesson_published_at"])} if restricted else {}
+		lesson_rows = [row for row in lesson_rows if row.name not in restricted or publication_allows_lesson(row.name, publication[row.name], frappe.session.user)]
 	files_by_name = get_scorm_files(chapters)
 	completed = get_completed_lessons(course, lesson_rows) if progress else set()
 
@@ -1627,8 +1636,10 @@ def get_ordered_lesson_rows(course: str) -> list:
 	restricted.update(frappe.get_all("Course Lesson", filters={"course": course, "publication_audience": "Future Only"}, pluck="name"))
 	if not restricted:
 		return rows
-	from lms.lms.permissions import can_access_lesson
-	return [row for row in rows if row.name not in restricted or can_access_lesson(row.name)]
+	from lms.lms.permissions import publication_allows_lesson
+	publication = {row.name: row for row in frappe.get_all("Course Lesson", filters={"name": ("in", list(restricted))},
+		fields=["name", "course", "is_draft", "publication_audience", "lesson_published_at"])}
+	return [row for row in rows if row.name not in restricted or publication_allows_lesson(row.name, publication[row.name], frappe.session.user)]
 
 
 def build_outline(
