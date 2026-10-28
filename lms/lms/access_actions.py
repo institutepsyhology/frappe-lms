@@ -172,6 +172,32 @@ def set_grant_lesson_manual_open(name, lesson, enabled):
 
 
 @frappe.whitelist(methods=["POST"])
+def set_grant_assigned_lessons(name, lessons):
+	"""Change one grant's lesson list without deleting progress or homework."""
+	if isinstance(lessons, str):
+		lessons = frappe.parse_json(lessons)
+	if not isinstance(lessons, list) or any(not isinstance(item, str) or not item for item in lessons):
+		frappe.throw(_("Provide the lesson list explicitly."), frappe.ValidationError)
+	selected = set(lessons)
+	if len(selected) != len(lessons):
+		frappe.throw(_("The lesson list contains duplicates."), frappe.ValidationError)
+	grant = _admin_grant(name)
+	if grant.status not in ("Draft", "Active", "Frozen"):
+		frappe.throw(_("Only draft, active or frozen access can change its assigned lessons."), frappe.ValidationError)
+	for lesson in lessons:
+		if frappe.db.get_value("Course Lesson", lesson, "course") != grant.course:
+			frappe.throw(_("Every lesson must belong to the selected course."), frappe.ValidationError)
+	retained = [row for row in grant.lessons if row.lesson in selected]
+	existing = {row.lesson for row in retained}
+	grant.set("lessons", retained)
+	for lesson in lessons:
+		if lesson not in existing:
+			grant.append("lessons", {"lesson": lesson, "opening_type": "Inherit", "prerequisite_state": "Inherit"})
+	grant.save()
+	return {"name": grant.name, "lesson_count": len(grant.lessons)}
+
+
+@frappe.whitelist(methods=["POST"])
 def create_grant_for_enrolled_student(course, member, starts_at, lessons):
 	"""Create one inherited access grant for an already enrolled student.
 

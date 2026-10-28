@@ -153,13 +153,35 @@ describe('individual access settings', () => {
 		;(details.element as HTMLDetailsElement).open = true
 		await details.trigger('toggle')
 		await flushPromises()
-		await details.find('input[type=checkbox]').setValue(true)
+		await details.findAll('input[type=checkbox]').at(-1)!.setValue(true)
 		await details.find('select').setValue('Unlimited')
 		await details.findAll('button').find((item) => item.text() === 'Ограничить доступ')!.trigger('click')
 		await flushPromises()
 		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.limit_grant', {
 			name: 'grant-1', retained_lessons: ['lesson-1'], retention_end_type: 'Unlimited', retention_ends_at: null,
 		})
+		confirm.mockRestore()
+	})
+
+	it('changes assigned lessons without deleting learning records', async () => {
+		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+		callMock.mockImplementation(async (method: string) => method.endsWith('get_grant_lessons')
+			? [{ lesson: 'lesson-1', title: 'Урок 1', manual_open: false, retain_when_limited: false }]
+			: { release_enabled: false, policy_enabled: false, policy_exists: true,
+				grants: [{ name: 'grant-1', member: 'student@example.invalid', status: 'Active' }], truncated: false,
+				lessons: [{name: 'lesson-1', title: 'Урок 1'}, {name: 'lesson-2', title: 'Урок 2'}], lessons_truncated: false })
+		const wrapper = render(true)
+		await flushPromises()
+		const details = wrapper.findAll('details').find((item) => item.text().includes('Уроки этого ученика'))!
+		;(details.element as HTMLDetailsElement).open = true
+		await details.trigger('toggle')
+		await flushPromises()
+		const assign = details.findAll('details').find((item) => item.text().includes('Изменить назначенные уроки'))!
+		await assign.findAll('input[type=checkbox]')[1].setValue(true)
+		await assign.find('button').trigger('click')
+		await flushPromises()
+		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.set_grant_assigned_lessons',
+			{ name: 'grant-1', lessons: ['lesson-1', 'lesson-2'] })
 		confirm.mockRestore()
 	})
 })

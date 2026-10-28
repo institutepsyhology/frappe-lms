@@ -121,6 +121,15 @@
 					<summary class="cursor-pointer">Уроки этого ученика</summary>
 					<div v-if="grantLessons[grant.name]" class="space-y-2 mt-2">
 						<p>Досрочное открытие действует, пока у ученика есть доступ к курсу.</p>
+						<details v-if="['Draft', 'Active', 'Frozen'].includes(grant.status)" class="border rounded p-2">
+							<summary class="cursor-pointer">Изменить назначенные уроки</summary>
+							<p>Снятие урока не удаляет прогресс или домашние задания.</p>
+							<label v-for="lesson in overview.lessons" :key="lesson.name" class="flex gap-2">
+								<input v-model="assignedLessons[grant.name]" type="checkbox" :value="lesson.name" /><span>{{ lesson.title || lesson.name }}</span>
+							</label>
+							<p v-if="overview.lessons_truncated">Список уроков неполный, изменение временно недоступно.</p>
+							<button class="underline" :disabled="busy || overview.lessons_truncated" @click="saveAssignedLessons(grant)">Сохранить назначенные уроки</button>
+						</details>
 						<div v-for="row in grantLessons[grant.name]" :key="row.lesson" class="flex flex-wrap gap-2 items-center">
 							<label v-if="['Active', 'Frozen'].includes(grant.status)" class="flex gap-2">
 								<input v-model="retainedLessons[grant.name]" type="checkbox" :value="row.lesson" />
@@ -201,6 +210,7 @@ const busy = ref(false)
 const resumeChoice = reactive<Record<string, string>>({})
 const grantTiming = reactive<Record<string, GrantTiming>>({})
 const grantLessons = reactive<Record<string, GrantLesson[]>>({})
+const assignedLessons = reactive<Record<string, string[]>>({})
 const retainedLessons = reactive<Record<string, string[]>>({})
 const retentionType = reactive<Record<string, string>>({})
 const retentionEnd = reactive<Record<string, string>>({})
@@ -262,7 +272,16 @@ function revoke(grant: Grant) {
 }
 async function refreshGrantLessons(grant: Grant) {
 	grantLessons[grant.name] = await call('lms.lms.access_actions.get_grant_lessons', { name: grant.name })
+	assignedLessons[grant.name] = grantLessons[grant.name].map((row) => row.lesson)
 	retainedLessons[grant.name] = grantLessons[grant.name].filter((row) => row.retain_when_limited).map((row) => row.lesson)
+}
+async function saveAssignedLessons(grant: Grant) {
+	if (overview.value?.lessons_truncated || !window.confirm('Изменить список уроков? Прогресс и домашние задания сохранятся.')) return
+	busy.value = true
+	try {
+		await call('lms.lms.access_actions.set_grant_assigned_lessons', { name: grant.name, lessons: assignedLessons[grant.name] || [] })
+		await refreshGrantLessons(grant)
+	} catch { toast.error('Не удалось сохранить список уроков.') } finally { busy.value = false }
 }
 async function loadGrantLessons(grant: Grant, event: Event) {
 	if (!(event.target as HTMLDetailsElement).open) return

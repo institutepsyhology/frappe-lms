@@ -183,6 +183,25 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		frappe.set_user(self.student.email)
 		self.assertFalse(can_access_lesson(self.lesson.name))
 
+	def test_admin_changes_assigned_lessons_without_removing_progress(self):
+		from lms.lms.access_actions import set_grant_assigned_lessons
+
+		second = self._create_lesson("Another assigned lesson", self.chapter.name, self.course.name)
+		progress = self._create_progress(self.student.email, self.course.name, self.lesson.name)
+		frappe.set_user(self.other.email)
+		with self.assertRaises(frappe.PermissionError):
+			set_grant_assigned_lessons(self.grant.name, [second.name])
+		frappe.set_user("Administrator")
+		with self.assertRaises(frappe.ValidationError):
+			set_grant_assigned_lessons(self.grant.name, ["unknown-lesson"])
+		set_grant_assigned_lessons(self.grant.name, [self.lesson.name, second.name])
+		grant = frappe.get_doc("LMS Access Grant", self.grant.name)
+		self.assertEqual(grant.lessons[0].opening_type, "At")
+		self.assertEqual(grant.lessons[1].opening_type, "Inherit")
+		set_grant_assigned_lessons(self.grant.name, [second.name])
+		self.assertTrue(frappe.db.exists("LMS Course Progress", progress.name))
+		self.assertEqual([row.lesson for row in frappe.get_doc("LMS Access Grant", self.grant.name).lessons], [second.name])
+
 	def test_revoke_closes_access_and_preserves_progress_and_enrollment(self):
 		from lms.lms.access_actions import revoke_grant
 
