@@ -8,6 +8,7 @@ import { useSettings } from '@/stores/settings'
 import { usersStore } from '@/stores/user'
 import { Heading } from '@/utils/heading'
 import { VideoChoice } from '@/utils/videoChoice'
+import { HtmlBlock, LessonButton } from '@/utils/customLessonBlocks'
 import Paragraph from '@editorjs/paragraph'
 import { CodeBox } from '@/utils/code'
 import NestedList from '@editorjs/nested-list'
@@ -184,6 +185,8 @@ export function getEditorTools(
 		},
 		image: SimpleImage,
 		videoChoice: VideoChoice,
+		htmlBlock: HtmlBlock,
+		lessonButton: LessonButton,
 		paragraph: {
 			class: Paragraph,
 			inlineToolbar: INLINE_TOOLBAR_ORDER,

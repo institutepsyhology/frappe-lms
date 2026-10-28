@@ -442,6 +442,18 @@ class TestLessonContentSurvivesSave(BaseTestUtils):
 		self.assertIn('href="https://frappe.io/"', saved)
 		self.assertIn('rel="noopener noreferrer"', saved)
 
+	def test_html_and_button_blocks_survive_lesson_save(self):
+		import base64
+
+		html = '<h1>Привет</h1><script>document.body.dataset.ready="yes"</script>'
+		encoded = base64.b64encode(html.encode()).decode()
+		content = _content({"id": "html", "type": "htmlBlock", "data": {"encodedHtml": encoded, "height": 400}},
+			{"id": "button", "type": "lessonButton", "data": {"text": "Материалы", "url": "https://example.org/file.pdf", "size": "large"}})
+		lesson = self._create_lesson("Custom block save", self.chapter.name, self.course.name, content)
+		blocks = json.loads(frappe.db.get_value("Course Lesson", lesson.name, "content"))["blocks"]
+		self.assertEqual(base64.b64decode(blocks[0]["data"]["encodedHtml"]).decode(), html)
+		self.assertEqual(blocks[1]["data"]["url"], "https://example.org/file.pdf")
+
 
 class TestServeResourceFileOwnership(BaseTestUtils):
 	"""Ticket 73894 finding E05. A lesson only vouches for a private file if the
