@@ -1445,6 +1445,11 @@ def get_course_outline(course: str, progress: bool = False) -> list:
 			chapter.scorm_package = None
 
 	lesson_rows = get_outline_lessons([c.name for c in chapters])
+	if not can_modify_course(course):
+		from lms.lms.permissions import can_access_lesson
+		restricted = set(frappe.get_all("Course Lesson", filters={"course": course, "is_draft": 1}, pluck="name"))
+		restricted.update(frappe.get_all("Course Lesson", filters={"course": course, "publication_audience": "Future Only"}, pluck="name"))
+		lesson_rows = [row for row in lesson_rows if row.name not in restricted or can_access_lesson(row.name)]
 	files_by_name = get_scorm_files(chapters)
 	completed = get_completed_lessons(course, lesson_rows) if progress else set()
 
@@ -1598,7 +1603,7 @@ def get_ordered_lesson_rows(course: str) -> list:
 	CourseChapter = frappe.qb.DocType("Course Chapter")
 	LessonReference = frappe.qb.DocType("Lesson Reference")
 	CourseLesson = frappe.qb.DocType("Course Lesson")
-	return (
+	rows = (
 		frappe.qb.from_(ChapterReference)
 		.join(CourseChapter)
 		.on(CourseChapter.name == ChapterReference.chapter)
@@ -1616,6 +1621,14 @@ def get_ordered_lesson_rows(course: str) -> list:
 		.orderby(ChapterReference.idx)
 		.orderby(LessonReference.idx)
 	).run(as_dict=True)
+	if can_modify_course(course):
+		return rows
+	restricted = set(frappe.get_all("Course Lesson", filters={"course": course, "is_draft": 1}, pluck="name"))
+	restricted.update(frappe.get_all("Course Lesson", filters={"course": course, "publication_audience": "Future Only"}, pluck="name"))
+	if not restricted:
+		return rows
+	from lms.lms.permissions import can_access_lesson
+	return [row for row in rows if row.name not in restricted or can_access_lesson(row.name)]
 
 
 def build_outline(
@@ -2716,6 +2729,9 @@ def get_lesson_creation_details(course: str, chapter: int, lesson: int) -> dict:
 				"name",
 				"title",
 				"include_in_preview",
+				"is_draft",
+				"publication_audience",
+				"lesson_published_at",
 				"body",
 				"content",
 				"instructor_notes",

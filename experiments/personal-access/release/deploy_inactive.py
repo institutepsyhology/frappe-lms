@@ -14,13 +14,17 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tarfile
 import time
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = Path("/opt/company-lms")
-OLD = "sha256:4b347cad9b02025de24a2609105ff604f5dfad5ca2deb4da0f993cf81e1dd43e"
-BASE_TAG = "company-lms:lesson-html-buttons-r20-20261028"
-TAG = "company-lms:lesson-settings-r21-20261028"
+OLD = "sha256:4781e698ca6b3b4ed09bbe9af113664887dd7dc17421127e472f80f23f8ab610"
+BASE_TAG = "company-lms:lesson-settings-r21-20261028"
+TAG = "company-lms:lesson-publication-r22-20261028"
+OVERLAY = ("lms/lms/api.py", "lms/lms/permissions.py", "lms/lms/utils.py",
+    "lms/lms/doctype/course_lesson/course_lesson.py", "lms/lms/doctype/course_lesson/course_lesson.json",
+    "frontend/src/pages/LessonForm.vue")
 SITES = ("my-lk.mastervision.su", "my-lk.iomp.ru", "my-lk.mv-centr.ru")
 BACKEND = "company-lms-backend-1"
 
@@ -114,6 +118,12 @@ def main():
     try:
         if command(["docker", "image", "inspect", BASE_TAG, "--format", "{{.Id}}"] ) != OLD:
             raise RuntimeError("base image is unavailable")
+        with tarfile.open(ROOT / "lesson-publication-overlay.tar", "x") as overlay:
+            for relative in OVERLAY:
+                path = ROOT / relative
+                if not path.is_file() or path.is_symlink():
+                    raise RuntimeError("missing source file: " + relative)
+                overlay.add(path, arcname=relative, recursive=False)
         command(["docker", "build", "--network=none", "--pull=false", "--build-arg", "SOURCE_COMMIT=" + commit,
                  "--tag", TAG, "-f", str(ROOT / "experiments/personal-access/release/Containerfile"), str(ROOT)], timeout=600)
         image = command(["docker", "image", "inspect", TAG, "--format", "{{.Id}}"])

@@ -962,7 +962,7 @@ def create_lesson(chapter: str) -> str:
 		frappe.throw(_("You do not have permission to add a lesson."), frappe.PermissionError)
 
 	idx = frappe.db.count("Lesson Reference", {"parent": chapter}) + 1
-	return add_lesson(_("Untitled lesson"), chapter, course, idx)
+	return add_lesson(_("Untitled lesson"), chapter, course, idx, draft=True)
 
 
 @frappe.whitelist()
@@ -1672,13 +1672,14 @@ def get_launch_file(extract_path: str):
 	return launch_file
 
 
-def add_lesson(title: str, chapter: str, course: str, idx: int):
+def add_lesson(title: str, chapter: str, course: str, idx: int, draft: bool = True):
 	lesson = frappe.new_doc("Course Lesson")
 	lesson.update(
 		{
 			"title": title,
 			"chapter": chapter,
 			"course": course,
+			"is_draft": int(draft),
 		}
 	)
 	lesson.insert()

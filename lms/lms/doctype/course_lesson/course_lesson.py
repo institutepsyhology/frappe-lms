@@ -47,6 +47,10 @@ class CourseLesson(Document):
 		self.validate_progress_recalculation()
 
 	def validate(self):
+		previous = None if self.is_new() else self.get_doc_before_save()
+		if previous and not self.flags.get("lesson_publication_action"):
+			if any(previous.get(field) != self.get(field) for field in ("is_draft", "publication_audience", "lesson_published_at")):
+				frappe.throw(_("Publish the lesson using its publication controls."), frappe.PermissionError)
 		self.content = sanitize_editorjs(self.content)
 		self.instructor_content = sanitize_editorjs(self.instructor_content)
 
@@ -95,6 +99,46 @@ class CourseLesson(Document):
 						"lesson": self.name,
 					},
 				)
+
+
+@frappe.whitelist(methods=["POST"])
+def publish_lesson(lesson, audience):
+	"""Publish a draft with an explicit decision about enrolled learners."""
+	from lms.lms.utils import can_modify_course
+
+	if audience not in ("All", "Future Only"):
+		frappe.throw(_("Choose who will receive this lesson."), frappe.ValidationError)
+	if not isinstance(lesson, str) or not lesson:
+		frappe.throw(_("Lesson not found."), frappe.ValidationError)
+	doc = frappe.get_doc("Course Lesson", lesson, for_update=True)
+	if not can_modify_course(doc.course):
+		frappe.throw(_("You cannot publish this lesson."), frappe.PermissionError)
+	doc.check_permission("write")
+	if not doc.is_draft:
+		frappe.throw(_("The lesson has already been published."), frappe.ValidationError)
+	frappe.db.get_value("LMS Course", doc.course, "name", for_update=True)
+	from lms.lms.individual_access import policy_applies
+	if policy_applies(doc.course):
+		policy_name = frappe.db.get_value("LMS Access Policy", {"course": doc.course, "enabled": 1}, "name")
+		rule = frappe.db.get_value("LMS Access Policy Lesson", {"parent": policy_name, "parenttype": "LMS Access Policy", "lesson": lesson}, ["opening_type", "prerequisite_type"], as_dict=True)
+		if not rule or rule.opening_type == "Unknown" or rule.prerequisite_type == "Unknown":
+			frappe.throw(_("Set the lesson opening and prerequisite rules before publication."), frappe.ValidationError)
+	if audience == "All":
+		grants = frappe.get_all("LMS Access Grant", filters={"course": doc.course,
+			"status": ("in", ["Draft", "Active", "Frozen"])}, pluck="name")
+		for name in grants:
+			grant = frappe.get_doc("LMS Access Grant", name, for_update=True)
+			if not frappe.db.exists("LMS Enrollment", {"course": doc.course, "member": grant.member}):
+				continue
+			if not any(row.lesson == lesson for row in grant.lessons):
+				grant.append("lessons", {"lesson": lesson, "opening_type": "Inherit", "prerequisite_state": "Inherit"})
+				grant.save(ignore_permissions=True)
+	doc.is_draft = 0
+	doc.publication_audience = audience
+	doc.lesson_published_at = now_datetime()
+	doc.flags.lesson_publication_action = True
+	doc.save()
+	return {"lesson": doc.name, "audience": audience, "published": True}
 
 
 def cleanup_lesson_backreferences(lesson: str):
@@ -163,6 +207,11 @@ def get_permission_query_conditions(user=None):
 		)
 
 	joined = " or ".join(conditions)
+	publication_rows = frappe.get_all("Course Lesson", filters={"is_draft": 1}, pluck="name")
+	publication_rows += frappe.get_all("Course Lesson", filters={"publication_audience": "Future Only"}, pluck="name")
+	denied = [name for name in set(publication_rows) if not can_access_lesson(name, user=user)]
+	if denied:
+		joined = f"({joined}) and `tabCourse Lesson`.name not in (" + ", ".join(frappe.db.escape(name) for name in denied) + ")"
 	from lms.lms.individual_access import protected_courses
 
 	courses = protected_courses()

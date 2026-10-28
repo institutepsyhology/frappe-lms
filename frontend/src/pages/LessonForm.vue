@@ -68,6 +68,18 @@
 				@keydown.enter="onTitleEnter"
 			/>
 
+			<div v-if="lessonDetails.data?.lesson?.is_draft" class="rounded-lg border border-outline-gray-2 p-4 space-y-3">
+				<p class="font-medium">Черновик урока</p>
+				<p>Ученики не видят черновик. Выберите, кому открыть урок после публикации.</p>
+				<select v-model="publicationAudience" aria-label="Кому открыть урок" class="block w-full rounded border p-2">
+					<option value="">Выберите, кому открыть урок</option>
+					<option value="All">Всем ученикам, включая уже записанных</option>
+					<option value="Future Only">Только ученикам, которые запишутся позже</option>
+				</select>
+				<p v-if="publicationAudience === 'All'">Ограниченные карточки доступа не расширяются автоматически.</p>
+				<button type="button" class="rounded bg-ink-gray-9 px-4 py-2 text-white" :disabled="!publicationAudience || isDirty || publishingLesson" @click="publishLesson">Опубликовать урок</button>
+				<p v-if="isDirty">Дождитесь сохранения изменений перед публикацией.</p>
+			</div>
 			<LessonAccessSettings :course="props.courseName" :lesson="lessonDetails.data?.lesson?.name" />
 
 			<details
@@ -158,6 +170,21 @@ const editor = ref(null)
 const instructorEditor = ref(null)
 const user = inject('$user')
 const titleRef = ref(null)
+const publicationAudience = ref('')
+const publishingLesson = ref(false)
+async function publishLesson() {
+	if (!publicationAudience.value || isDirty.value || !lessonDetails.data?.lesson?.name) return
+	publishingLesson.value = true
+	try {
+		await call('lms.lms.doctype.course_lesson.course_lesson.publish_lesson', {
+			lesson: lessonDetails.data.lesson.name, audience: publicationAudience.value,
+		})
+		await lessonDetails.reload()
+		publicationAudience.value = ''
+		toast.success('Урок опубликован.')
+	} catch { toast.error('Не удалось опубликовать урок. Сохраните настройки открытия и условия доступа, затем попробуйте снова.') }
+	finally { publishingLesson.value = false }
+}
 
 // A lesson title is one line. The field stays a textarea so a long title wraps
 // and grows; only the explicit break is refused.

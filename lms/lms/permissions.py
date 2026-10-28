@@ -253,7 +253,7 @@ def resolve_lesson_access(lesson: str, *, user: str | None = None) -> tuple[bool
 	if not isinstance(lesson, str) or not lesson:
 		return False, False
 
-	lesson_row = frappe.db.get_value("Course Lesson", lesson, ["course", "include_in_preview"], as_dict=True)
+	lesson_row = frappe.db.get_value("Course Lesson", lesson, ["course", "include_in_preview", "is_draft", "publication_audience", "lesson_published_at"], as_dict=True)
 	if not lesson_row:
 		return False, False
 
@@ -264,7 +264,15 @@ def resolve_lesson_access(lesson: str, *, user: str | None = None) -> tuple[bool
 		frappe.session.user = user
 		if can_modify_course(lesson_row.course):
 			return True, True
-		from lms.lms.individual_access import policy_applies, restrict_member_lesson
+		if lesson_row.is_draft:
+			return False, False
+		from lms.lms.individual_access import policy_applies, restrict_member_lesson, grant_allows_lesson
+		if lesson_row.publication_audience == "Future Only":
+			enrolled_at = frappe.db.get_value("LMS Enrollment", {"course": lesson_row.course, "member": user}, "creation")
+			if (not enrolled_at or not lesson_row.lesson_published_at or enrolled_at < lesson_row.lesson_published_at) and not (
+				policy_applies(lesson_row.course) and grant_allows_lesson(user=user, lesson=lesson, require_manual=True)
+			):
+				return False, False
 
 		membership = bool(get_membership(lesson_row.course, user))
 		if membership:
@@ -605,14 +613,17 @@ def file_has_permission(doc, ptype="read", user=None):
 	user = user or frappe.session.user
 	from lms.lms.individual_access import policy_applies, protected_courses
 
-	if protected_courses() and doc.get("is_private") and doc.get("file_url"):
+	if doc.get("is_private") and doc.get("file_url"):
 		from lms.lms.doctype.course_lesson.course_lesson import (
 			_references_vouched_by_owner,
 			_resolve_lesson_references,
 		)
 
 		references = _references_vouched_by_owner(_resolve_lesson_references(doc.file_url), doc.owner)
-		if any(policy_applies(frappe.db.get_value("Course Lesson", lesson, "course")) for lesson, _ in references):
+		if any(policy_applies(frappe.db.get_value("Course Lesson", lesson, "course"))
+			or frappe.db.get_value("Course Lesson", lesson, "is_draft")
+			or frappe.db.get_value("Course Lesson", lesson, "publication_audience") == "Future Only"
+			for lesson, _ in references):
 			if not any(can_access_lesson(lesson, instructor_only=only, user=user) for lesson, only in references):
 				return False
 

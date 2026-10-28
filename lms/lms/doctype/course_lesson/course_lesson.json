@@ -9,6 +9,9 @@
  "engine": "InnoDB",
  "field_order": [
   "title",
+  "is_draft",
+  "publication_audience",
+  "lesson_published_at",
   "include_in_preview",
   "is_scorm_package",
   "column_break_4",
@@ -32,6 +35,26 @@
   "help"
  ],
  "fields": [
+  {
+   "default": "0",
+   "fieldname": "is_draft",
+   "fieldtype": "Check",
+   "label": "Lesson Draft",
+   "read_only": 1
+  },
+  {
+   "fieldname": "publication_audience",
+   "fieldtype": "Select",
+   "label": "Lesson Publication Audience",
+   "options": "\nAll\nFuture Only",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lesson_published_at",
+   "fieldtype": "Datetime",
+   "label": "Lesson Published At",
+   "read_only": 1
+  },
   {
    "fieldname": "chapter",
    "fieldtype": "Link",

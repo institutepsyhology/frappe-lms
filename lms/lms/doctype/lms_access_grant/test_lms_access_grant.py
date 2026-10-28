@@ -60,6 +60,65 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		with self.assertRaises(frappe.PermissionError):
 			course_lesson._save_progress(self.lesson.name, self.course.name)
 
+	def test_draft_publication_requires_an_explicit_audience_and_protects_existing_students(self):
+		from lms.lms.api import create_lesson
+		from lms.lms.doctype.course_lesson.course_lesson import publish_lesson
+
+		name = create_lesson(self.chapter.name)
+		self.assertTrue(frappe.db.get_value("Course Lesson", name, "is_draft"))
+		frappe.set_user(self.student.email)
+		self.assertFalse(can_access_lesson(name))
+		self.assertFalse(frappe.has_permission("Course Lesson", "read", name))
+		outline = get_course_outline(self.course.name)
+		self.assertNotIn(name, [lesson.name for chapter in outline for lesson in chapter.lessons])
+		with self.assertRaises(frappe.PermissionError):
+			publish_lesson(name, "All")
+		frappe.set_user("Administrator")
+		draft = frappe.get_doc("Course Lesson", name)
+		draft.is_draft = 0
+		with self.assertRaises(frappe.PermissionError):
+			draft.save()
+		with self.assertRaises(frappe.ValidationError):
+			publish_lesson(name, "")
+		with patch("lms.lms.individual_access.protected_courses", return_value=()):
+			publish_lesson(name, "Future Only")
+		with patch("lms.lms.individual_access.protected_courses", return_value=()):
+			frappe.set_user(self.student.email)
+			self.assertFalse(can_access_lesson(name))
+			frappe.set_user("Administrator")
+			new_user = self._create_user("stage-future@example.invalid", "Future", "Student", ["LMS Student"])
+			enrollment = self._create_enrollment(new_user.email, self.course.name)
+			frappe.db.set_value("LMS Enrollment", enrollment.name, "creation", add_to_date(now_datetime(), seconds=1))
+			frappe.set_user(new_user.email)
+			self.assertTrue(can_access_lesson(name))
+		frappe.set_user("Administrator")
+		from lms.lms.access_actions import set_grant_assigned_lessons, set_grant_lesson_manual_open
+		set_grant_assigned_lessons(self.grant.name, [self.lesson.name, name])
+		set_grant_lesson_manual_open(self.grant.name, name, 1)
+		frappe.set_user(self.student.email)
+		self.assertTrue(can_access_lesson(name))
+
+	def test_publish_for_all_assigns_the_lesson_to_existing_grants(self):
+		from lms.lms.api import create_lesson
+		from lms.lms.access_actions import create_course_access_policy
+		from lms.lms.doctype.course_lesson.course_lesson import publish_lesson
+
+		name = create_lesson(self.chapter.name)
+		policy_name = create_course_access_policy(self.course.name)["name"]
+		policy = frappe.get_doc("LMS Access Policy", policy_name)
+		policy.default_personal_end_type = "Unlimited"
+		policy.global_end_type = "Unlimited"
+		for row in policy.lessons:
+			row.opening_type = "After Start"
+			row.prerequisite_type = "None"
+		policy.enabled = 1
+		policy.save()
+		publish_lesson(name, "All")
+		grant = frappe.get_doc("LMS Access Grant", self.grant.name)
+		self.assertIn(name, [row.lesson for row in grant.lessons])
+		frappe.set_user(self.student.email)
+		self.assertTrue(can_access_lesson(name))
+
 	def test_visit_retention_requires_an_authorized_record_before_expiry(self):
 		from lms.lms.individual_access import grant_allows_lesson
 		from lms.lms.visit_tracking import record_lesson_visit

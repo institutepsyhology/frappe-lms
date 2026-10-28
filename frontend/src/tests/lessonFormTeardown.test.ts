@@ -7,6 +7,7 @@ import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 // - `editorState.saveData` is what each mocked BlockEditor.save() returns, keyed
 //   by the editor's uploadContext.fieldname ('content' vs 'instructor_content').
 const created = vi.hoisted(() => ({ list: [] as any[] }))
+const callMock = vi.hoisted(() => vi.fn())
 const editorState = vi.hoisted(() => ({
 	saveData: {} as Record<string, any>,
 	// When true, the instructor editor's isReady() never resolves, so the form's
@@ -24,6 +25,7 @@ vi.mock('frappe-ui', async () => {
 	const { reactive } = await import('vue')
 	const stub = (name: string) => ({ name, render: () => null })
 	return {
+		call: callMock,
 		createResource: (config: any) => {
 			const r: any = reactive({
 				data: null,
@@ -189,6 +191,8 @@ describe('LessonForm teardown autosave', () => {
 
 	beforeEach(() => {
 		created.list.length = 0
+		callMock.mockReset()
+		callMock.mockResolvedValue({ published: true })
 		editorState.saveData = {}
 		editorState.holdInstructorReady = false
 		editorState.rejectBodySave = false
@@ -202,6 +206,16 @@ describe('LessonForm teardown autosave', () => {
 			// already unmounted by the test
 		}
 		document.body.innerHTML = ''
+	})
+
+	it('requires an explicit audience before publishing a draft', async () => {
+		wrapper = await mountLoaded({ is_draft: 1 })
+		const button = wrapper.findAll('button').find(item => item.text() === 'Опубликовать урок')!
+		expect(button.attributes('disabled')).toBeDefined()
+		await wrapper.find('select[aria-label="Кому открыть урок"]').setValue('Future Only')
+		await button.trigger('click')
+		await flushPromises()
+		expect(callMock).toHaveBeenCalledWith('lms.lms.doctype.course_lesson.course_lesson.publish_lesson', { lesson: LESSON_NAME, audience: 'Future Only' })
 	})
 
 	it('folds in instructor-note edits even when unmount flushes during the body save', async () => {
