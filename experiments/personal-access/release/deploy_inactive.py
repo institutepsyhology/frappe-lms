@@ -19,9 +19,10 @@ import time
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = Path("/opt/company-lms")
-OLD = "sha256:4781e698ca6b3b4ed09bbe9af113664887dd7dc17421127e472f80f23f8ab610"
+OLD = "sha256:51e12f9a97c6ad444e13bd35f146dc81fe7bcf3c67e88fb662f33379bde0d1ca"
 BASE_TAG = "company-lms:lesson-settings-r21-20261028"
-TAG = "company-lms:lesson-publication-r22-20261028"
+BASE_IMAGE = "sha256:4781e698ca6b3b4ed09bbe9af113664887dd7dc17421127e472f80f23f8ab610"
+TAG = "company-lms:lesson-progress-r23-20261029"
 OVERLAY = ("lms/lms/api.py", "lms/lms/permissions.py", "lms/lms/utils.py",
     "lms/lms/doctype/course_lesson/course_lesson.py", "lms/lms/doctype/course_lesson/course_lesson.json",
     "frontend/src/pages/LessonForm.vue")
@@ -116,7 +117,7 @@ def main():
               "migrated_sites": [], "release_switches_before": prior_states, "ok": False}
     switched = False
     try:
-        if command(["docker", "image", "inspect", BASE_TAG, "--format", "{{.Id}}"] ) != OLD:
+        if command(["docker", "image", "inspect", BASE_TAG, "--format", "{{.Id}}"] ) != BASE_IMAGE:
             raise RuntimeError("base image is unavailable")
         with tarfile.open(ROOT / "lesson-publication-overlay.tar", "x") as overlay:
             for relative in OVERLAY:
