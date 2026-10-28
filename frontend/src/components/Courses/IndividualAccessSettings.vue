@@ -10,6 +10,10 @@
 			<p v-else-if="!overview.policy_enabled" class="text-amber-700">
 				Правила этого курса пока выключены.
 			</p>
+			<div v-if="overview.release_enabled && overview.policy_exists && !overview.policy_enabled" class="space-y-1">
+				<p>Включение доступно для неопубликованного курса без учеников и с выключенной самостоятельной записью после заполнения сроков и расписания всех уроков.</p>
+				<button class="underline" :disabled="busy" @click="enablePolicy">Включить правила для курса</button>
+			</div>
 			<div v-if="!overview.policy_exists" class="space-y-2">
 				<p>Настройки доступа для курса ещё не созданы.</p>
 				<button class="underline" :disabled="busy" @click="createPolicy">Создать настройки доступа</button>
@@ -338,6 +342,15 @@ async function action(method: string, grant: Grant, extra: Record<string, unknow
 	} finally {
 		busy.value = false
 	}
+}
+async function enablePolicy() {
+	if (!window.confirm('Включить индивидуальные правила для курса без записанных учеников? Проверьте сроки и расписание уроков.')) return
+	busy.value = true
+	try {
+		await call('lms.lms.access_actions.enable_empty_course_policy', { course: props.course })
+		await load()
+	} catch { toast.error('Не удалось включить правила. Проверьте публикацию, запись учеников, сроки и расписания уроков.') }
+	finally { busy.value = false }
 }
 function freeze(grant: Grant) {
 	if (window.confirm('Заморозить эту карточку? Прогресс и домашние задания сохранятся.')) action('freeze_grant', grant)

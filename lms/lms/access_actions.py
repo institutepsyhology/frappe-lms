@@ -76,6 +76,43 @@ def create_course_access_policy(course):
 
 
 @frappe.whitelist(methods=["POST"])
+def enable_empty_course_policy(course):
+	"""Enable a completely configured policy only for a course with no enrollments.
+
+	Existing students require an explicit migration and are never converted here.
+	The site release switch is controlled separately by the deployment operator.
+	"""
+	frappe.only_for("System Manager")
+	if frappe.conf.get("individual_access_release_enabled") is not True:
+		frappe.throw(_("Individual access is disabled on this site."), frappe.ValidationError)
+	if not isinstance(course, str):
+		frappe.throw(_("Course not found."), frappe.ValidationError)
+	course_info = frappe.db.get_value("LMS Course", course, ["name", "published", "disable_self_learning"],
+		as_dict=True, for_update=True)
+	if not course_info:
+		frappe.throw(_("Course not found."), frappe.ValidationError)
+	if course_info.published or not course_info.disable_self_learning:
+		frappe.throw(_("Use an unpublished course with self-enrollment disabled."), frappe.ValidationError)
+	name = frappe.db.get_value("LMS Access Policy", {"course": course}, "name", for_update=True)
+	if not name:
+		frappe.throw(_("Set up the course access policy first."), frappe.ValidationError)
+	policy = frappe.get_doc("LMS Access Policy", name, for_update=True)
+	policy.check_permission("write")
+	if policy.enabled:
+		frappe.throw(_("The course access policy is already enabled."), frappe.ValidationError)
+	if frappe.db.exists("LMS Enrollment", {"course": course}):
+		frappe.throw(_("A course with enrolled students requires a separate access migration."), frappe.ValidationError)
+	lessons = set(frappe.get_all("Course Lesson", filters={"course": course}, pluck="name"))
+	if (not lessons or {row.lesson for row in policy.lessons} != lessons
+		or policy.default_personal_end_type == "Unknown" or policy.global_end_type == "Unknown"
+		or any(row.opening_type == "Unknown" or row.prerequisite_type == "Unknown" for row in policy.lessons)):
+		frappe.throw(_("Set all course end and lesson opening rules before enabling access."), frappe.ValidationError)
+	policy.enabled = 1
+	policy.save()
+	return {"name": policy.name, "enabled": True}
+
+
+@frappe.whitelist(methods=["POST"])
 def update_course_access_defaults(course, defaults):
 	"""Save explicit course-wide defaults only while the policy is disabled."""
 	frappe.only_for("System Manager")

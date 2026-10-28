@@ -141,6 +141,46 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		with self.assertRaises(frappe.ValidationError):
 			update_course_access_defaults(self.course.name, values)
 
+	def test_enable_policy_rejects_courses_with_existing_students(self):
+		from lms.lms.access_actions import create_course_access_policy, enable_empty_course_policy
+
+		policy_name = create_course_access_policy(self.course.name)["name"]
+		with patch.dict(frappe.conf, {"individual_access_release_enabled": True}):
+			frappe.set_user(self.student.email)
+			with self.assertRaises(frappe.PermissionError):
+				enable_empty_course_policy(self.course.name)
+			frappe.set_user("Administrator")
+			with self.assertRaises(frappe.ValidationError):
+				enable_empty_course_policy(self.course.name)
+		self.assertFalse(frappe.db.get_value("LMS Access Policy", policy_name, "enabled"))
+
+	def test_enable_policy_requires_complete_rules_on_empty_course(self):
+		from lms.lms.access_actions import create_course_access_policy, enable_empty_course_policy
+
+		course = self._create_course(title="Empty activation test", instructor=self.teacher.email)
+		frappe.db.set_value("LMS Course", course.name, {"published": 0, "disable_self_learning": 1})
+		chapter = self._create_chapter("Empty activation chapter", course.name)
+		lesson = self._create_lesson("Empty activation lesson", chapter.name, course.name)
+		name = create_course_access_policy(course.name)["name"]
+		with patch.dict(frappe.conf, {"individual_access_release_enabled": True}):
+			with self.assertRaises(frappe.ValidationError):
+				enable_empty_course_policy(course.name)
+			policy = frappe.get_doc("LMS Access Policy", name)
+			policy.default_personal_end_type = "Unlimited"
+			policy.global_end_type = "Unlimited"
+			policy.lessons[0].opening_type = "After Start"
+			policy.lessons[0].prerequisite_type = "None"
+			policy.save()
+			frappe.db.set_value("LMS Course", course.name, "published", 1)
+			with self.assertRaises(frappe.ValidationError):
+				enable_empty_course_policy(course.name)
+			frappe.db.set_value("LMS Course", course.name, {"published": 0, "disable_self_learning": 0})
+			with self.assertRaises(frappe.ValidationError):
+				enable_empty_course_policy(course.name)
+			frappe.db.set_value("LMS Course", course.name, "disable_self_learning", 1)
+			self.assertTrue(enable_empty_course_policy(course.name)["enabled"])
+			self.assertEqual(policy.lessons[0].lesson, lesson.name)
+
 	def test_lesson_rule_is_validated_without_enabling_policy(self):
 		from lms.lms.access_actions import create_course_access_policy, update_course_lesson_rule
 

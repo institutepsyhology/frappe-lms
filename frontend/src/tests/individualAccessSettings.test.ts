@@ -63,6 +63,19 @@ describe('individual access settings', () => {
 		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.create_course_access_policy', { course: 'course-1' })
 	})
 
+	it('asks for confirmation before enabling an empty course policy', async () => {
+		callMock.mockResolvedValue({ release_enabled: true, policy_enabled: false, policy_exists: true,
+			grants: [], truncated: false, lessons: [], lessons_truncated: false })
+		const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+		const wrapper = render(true)
+		await flushPromises()
+		await wrapper.findAll('button').find((item) => item.text() === 'Включить правила для курса')!.trigger('click')
+		await flushPromises()
+		expect(confirm).toHaveBeenCalledOnce()
+		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.enable_empty_course_policy', { course: 'course-1' })
+		confirm.mockRestore()
+	})
+
 	it('saves explicit defaults without enabling the policy', async () => {
 		callMock.mockResolvedValueOnce({ release_enabled: false, policy_enabled: false, policy_exists: true,
 			policy: { default_personal_end_type: 'After Start', default_personal_end_at: null,
