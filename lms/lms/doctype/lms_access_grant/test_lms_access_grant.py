@@ -236,6 +236,27 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		self.assertTrue(frappe.db.exists("LMS Course Progress", progress.name))
 		self.assertEqual([row.lesson for row in frappe.get_doc("LMS Access Grant", self.grant.name).lessons], [second.name])
 
+	def test_restart_preview_counts_without_modifying_student_data(self):
+		from lms.lms.access_actions import preview_course_restart
+
+		progress = self._create_progress(self.student.email, self.course.name, self.lesson.name)
+		assignment = frappe.get_doc({"doctype": "LMS Assignment", "title": "Preview homework",
+			"type": "Text", "question": "Test question"}).insert(ignore_permissions=True)
+		frappe.db.set_value("Course Lesson", self.lesson.name, "content",
+			json.dumps({"blocks": [{"type": "assignment", "data": {"assignment": assignment.name}}]}))
+		submission = frappe.get_doc({"doctype": "LMS Assignment Submission", "assignment": assignment.name,
+			"lesson": self.lesson.name, "member": self.student.email, "type": "Text", "answer": "Test answer"})
+		submission.insert(ignore_permissions=True)
+		frappe.set_user(self.other.email)
+		with self.assertRaises(frappe.PermissionError):
+			preview_course_restart(self.grant.name)
+		frappe.set_user("Administrator")
+		preview = preview_course_restart(self.grant.name)
+		self.assertEqual((preview["progress"], preview["homework"]), (1, 1))
+		self.assertTrue(preview["enrolled"])
+		self.assertTrue(frappe.db.exists("LMS Course Progress", progress.name))
+		self.assertTrue(frappe.db.exists("LMS Assignment Submission", submission.name))
+
 	def test_revoke_closes_access_and_preserves_progress_and_enrollment(self):
 		from lms.lms.access_actions import revoke_grant
 

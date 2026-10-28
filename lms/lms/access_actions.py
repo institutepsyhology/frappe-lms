@@ -211,6 +211,24 @@ def set_grant_assigned_lessons(name, lessons):
 	return {"name": grant.name, "lesson_count": len(grant.lessons)}
 
 
+@frappe.whitelist()
+def preview_course_restart(name):
+	"""Count this learner's course records without changing or deleting them."""
+	grant = _admin_grant(name)
+	lessons = frappe.get_all("Course Lesson", filters={"course": grant.course}, pluck="name")
+	homework = frappe.db.count("LMS Assignment Submission", {"member": grant.member,
+		"lesson": ("in", lessons)}) if lessons else 0
+	return {
+		"progress": frappe.db.count("LMS Course Progress", {"member": grant.member, "course": grant.course}),
+		"homework": homework,
+		"quiz_submissions": frappe.db.count("LMS Quiz Submission", {"member": grant.member, "course": grant.course}),
+		"visits": frappe.db.count("LMS Lesson Visit", {"member": grant.member, "course": grant.course}),
+		"other_grants": frappe.db.count("LMS Access Grant", {"member": grant.member, "course": grant.course,
+			"name": ("!=", grant.name), "status": ("in", ["Draft", "Active", "Frozen", "Limited"])}),
+		"enrolled": bool(frappe.db.exists("LMS Enrollment", {"member": grant.member, "course": grant.course})),
+	}
+
+
 @frappe.whitelist(methods=["POST"])
 def create_grant_for_enrolled_student(course, member, starts_at, lessons):
 	"""Create one inherited access grant for an already enrolled student.
