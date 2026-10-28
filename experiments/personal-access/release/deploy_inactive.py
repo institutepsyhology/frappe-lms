@@ -18,9 +18,9 @@ import time
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = Path("/opt/company-lms")
-OLD = "sha256:0d00368b0c3021e4dac5cc9e03518feac5dc24f9df72854a4b3b54e3a25ad3f0"
-BASE_TAG = "company-lms:individual-access-disabled-r11-20261028"
-TAG = "company-lms:individual-access-disabled-r12-20261028"
+OLD = "sha256:6b92ba94da32057d6e2c5380a1bc785debf368fc6c6d98c118836dea7c34ebd3"
+BASE_TAG = "company-lms:individual-access-disabled-r12-20261028"
+TAG = "company-lms:individual-access-disabled-r13-20261028"
 SITES = ("my-lk.mastervision.su", "my-lk.iomp.ru", "my-lk.mv-centr.ru")
 BACKEND = "company-lms-backend-1"
 
@@ -33,7 +33,7 @@ for site in %r:
  try:
   frappe.init(site=site); frappe.connect()
   flag = frappe.conf.get('individual_access_release_enabled') is True
-  names = ('LMS Access Grant','LMS Access Grant Lesson','LMS Access Policy','LMS Access Policy Lesson')
+  names = ('LMS Access Grant','LMS Access Grant Lesson','LMS Access Policy','LMS Access Policy Lesson','LMS Lesson Visit')
   result.append({'site':site,'release_enabled':flag,'doctypes':all(frappe.db.exists('DocType', name) for name in names)})
  finally: frappe.destroy()
 print('ACCESS_RELEASE_STATE:'+json.dumps(result))
