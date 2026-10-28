@@ -50,7 +50,8 @@ def main():
 	teacher = BaseTestUtils._create_user(f"teacher-{tag}@example.invalid", "Test", "Teacher", ["Course Creator"])
 	student = BaseTestUtils._create_user(f"student-{tag}@example.invalid", "Test", "Student", ["LMS Student"])
 	other = BaseTestUtils._create_user(f"other-{tag}@example.invalid", "Test", "Other", ["LMS Student"])
-	for user in (student, other):
+	manager = BaseTestUtils._create_user(f"manager-{tag}@example.invalid", "Test", "Manager", ["System Manager"], user_type="System User")
+	for user in (student, other, manager):
 		user.new_password = password
 		user.save(ignore_permissions=True)
 	course = BaseTestUtils._create_course(title="HTTP Access Test " + tag, instructor=teacher.email)
@@ -90,7 +91,7 @@ def main():
 		else:
 			raise RuntimeError("test web server did not start")
 		clients = []
-		for user in (student, other):
+		for user in (student, other, manager):
 			opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 			form = urllib.parse.urlencode({"usr": user.email, "pwd": password}).encode()
 			status, _ = call(opener, "/api/method/login", form)
@@ -114,6 +115,11 @@ def main():
 		path = "/api/resource/Course%20Lesson/" + urllib.parse.quote(lesson.name, safe="")
 		status, _ = call(clients[1], path)
 		checks["denied_direct_document"] = status in (401, 403)
+		path = "/api/method/lms.lms.access_actions.get_course_access_overview?" + urllib.parse.urlencode({"course": course.name})
+		status, raw = call(clients[2], path)
+		checks["manager_access_overview"] = status == 200 and len(json.loads(raw)["message"]["grants"]) == 1
+		status, _ = call(clients[1], path)
+		checks["student_denied_access_overview"] = status in (401, 403)
 	finally:
 		if server:
 			server.terminate()
