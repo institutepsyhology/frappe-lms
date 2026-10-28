@@ -69,7 +69,7 @@ class CourseLesson(Document):
 		if not len(enrollments):
 			return
 
-		frappe.enqueue(method=self.recalculate_progress, queue="long", is_async=True, enrollments=enrollments)
+		frappe.enqueue(method=self.recalculate_progress, queue="long", is_async=True, enqueue_after_commit=True, enrollments=enrollments)
 
 	def recalculate_progress(self, enrollments):
 		for enrollment in enrollments:
@@ -138,6 +138,7 @@ def publish_lesson(lesson, audience):
 	doc.lesson_published_at = now_datetime()
 	doc.flags.lesson_publication_action = True
 	doc.save()
+	doc.validate_progress_recalculation()
 	return {"lesson": doc.name, "audience": audience, "published": True}
 
 

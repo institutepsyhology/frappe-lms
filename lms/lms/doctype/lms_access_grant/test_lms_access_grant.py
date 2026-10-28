@@ -113,7 +113,9 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 			row.prerequisite_type = "None"
 		policy.enabled = 1
 		policy.save()
-		publish_lesson(name, "All")
+		with patch.object(course_lesson.CourseLesson, "validate_progress_recalculation") as recalculate:
+			publish_lesson(name, "All")
+			recalculate.assert_called_once()
 		grant = frappe.get_doc("LMS Access Grant", self.grant.name)
 		self.assertIn(name, [row.lesson for row in grant.lessons])
 		frappe.set_user(self.student.email)
