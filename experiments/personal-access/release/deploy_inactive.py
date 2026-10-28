@@ -1,9 +1,9 @@
-"""Build and deploy the disabled access feature on the three existing sites.
+"""Build and deploy the access feature on the three existing sites.
 
 Run as root from a reviewed git-archive context. Creates fresh database backups,
 checks them, migrates each site with the new image, then switches the application
-image. The release switch must be absent/false on all sites. Rollback restores the
-old image; it does not reverse additive database migrations.
+image. The release switch is preserved on each site. Rollback restores the old
+image; it does not reverse additive database migrations.
 """
 
 import datetime
@@ -18,9 +18,9 @@ import time
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = Path("/opt/company-lms")
-OLD = "sha256:ed928d3053a2ea65dd6cdeed31b38e8f165c911fcbb5542da7dffad2f38528c2"
-BASE_TAG = "company-lms:individual-access-disabled-r17-20261028"
-TAG = "company-lms:individual-access-disabled-r18-20261028"
+OLD = "sha256:b30a4044d77649508c2b3c0bfeca9964b263b7a75bb1f93ae452a04cf3f98fa4"
+BASE_TAG = "company-lms:individual-access-disabled-r18-20261028"
+TAG = "company-lms:individual-access-r19-20261028"
 SITES = ("my-lk.mastervision.su", "my-lk.iomp.ru", "my-lk.mv-centr.ru")
 BACKEND = "company-lms-backend-1"
 
@@ -101,8 +101,7 @@ def main():
     lines = re.findall(rb"^LMS_IMAGE=(.+)$", original, re.M)
     if len(lines) != 1 or lines[0].strip().decode() != OLD:
         raise RuntimeError("runtime image changed since review")
-    if any(row["release_enabled"] for row in check_sites()):
-        raise RuntimeError("access policy is already enabled on a production site")
+    prior_states = check_sites()
     before = helper.snapshot()
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     backup = BASE / "backups" / ("access-inactive-" + stamp)
@@ -110,7 +109,7 @@ def main():
     helper.write_new(backup / "runtime.env.before", original)
     helper.write_new(backup / "site-counts.before.json", (json.dumps(before) + "\n").encode())
     report = {"source_commit": commit, "previous_image": OLD, "backup_directory": str(backup),
-              "migrated_sites": [], "release_enabled": False, "ok": False}
+              "migrated_sites": [], "release_switches_before": prior_states, "ok": False}
     switched = False
     try:
         if command(["docker", "image", "inspect", BASE_TAG, "--format", "{{.Id}}"] ) != OLD:
@@ -152,8 +151,8 @@ def main():
                 raise RuntimeError("new image failed health checks")
             time.sleep(3)
         states = check_sites()
-        if any(row["release_enabled"] or not row["doctypes"] for row in states):
-            raise RuntimeError("schema or disabled-policy verification failed")
+        if any(not row["doctypes"] for row in states) or states != prior_states:
+            raise RuntimeError("schema or site release switch verification failed")
         after = helper.snapshot()
         if after != before:
             raise RuntimeError("site counts or languages changed")

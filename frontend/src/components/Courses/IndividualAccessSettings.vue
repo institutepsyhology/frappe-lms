@@ -18,7 +18,7 @@
 				<p>Настройки доступа для курса ещё не созданы.</p>
 				<button class="underline" :disabled="busy" @click="createPolicy">Создать настройки доступа</button>
 			</div>
-			<details v-if="overview.policy && !overview.policy_enabled" class="border rounded p-3">
+			<details v-if="overview.policy" class="border rounded p-3">
 				<summary class="cursor-pointer">Общие сроки курса</summary>
 				<div class="space-y-2 mt-3">
 					<label class="block">Персональный срок по умолчанию
@@ -61,7 +61,7 @@
 					<button class="underline" :disabled="busy" @click="saveDefaults">Сохранить общие сроки</button>
 				</div>
 			</details>
-			<details v-if="overview.policy_exists && !overview.policy_enabled" class="border rounded p-3">
+			<details v-if="overview.policy_exists" class="border rounded p-3">
 				<summary class="cursor-pointer">Расписание отдельных уроков</summary>
 				<div class="space-y-2 mt-3">
 					<label class="block">Урок

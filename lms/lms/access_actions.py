@@ -114,7 +114,7 @@ def enable_empty_course_policy(course):
 
 @frappe.whitelist(methods=["POST"])
 def update_course_access_defaults(course, defaults):
-	"""Save explicit course-wide defaults only while the policy is disabled."""
+	"""Save explicit course-wide defaults, keeping active rules complete."""
 	frappe.only_for("System Manager")
 	if isinstance(defaults, str):
 		defaults = frappe.parse_json(defaults)
@@ -130,11 +130,11 @@ def update_course_access_defaults(course, defaults):
 		frappe.throw(_("Set up the course access policy first."), frappe.ValidationError)
 	policy = frappe.get_doc("LMS Access Policy", name, for_update=True)
 	policy.check_permission("write")
-	if policy.enabled:
-		frappe.throw(_("Disable the policy before editing its defaults."), frappe.ValidationError)
+	if policy.enabled and (defaults["default_personal_end_type"] == "Unknown" or defaults["global_end_type"] == "Unknown"):
+		frappe.throw(_("Active course access rules must have known end dates."), frappe.ValidationError)
 	policy.update(defaults)
 	policy.save()
-	return {"name": policy.name, "enabled": False}
+	return {"name": policy.name, "enabled": bool(policy.enabled)}
 
 
 @frappe.whitelist(methods=["POST"])
@@ -151,7 +151,7 @@ def update_grant_visited_retention(name, retention_type, retention_days):
 
 @frappe.whitelist(methods=["POST"])
 def update_course_lesson_rule(course, lesson, rule):
-	"""Save a lesson's opening and prerequisite rule on a disabled policy."""
+	"""Save a lesson's opening and prerequisite rule."""
 	frappe.only_for("System Manager")
 	if isinstance(rule, str):
 		rule = frappe.parse_json(rule)
@@ -165,8 +165,8 @@ def update_course_lesson_rule(course, lesson, rule):
 		frappe.throw(_("Set up the course access policy first."), frappe.ValidationError)
 	policy = frappe.get_doc("LMS Access Policy", name, for_update=True)
 	policy.check_permission("write")
-	if policy.enabled:
-		frappe.throw(_("Disable the policy before editing its lesson rules."), frappe.ValidationError)
+	if policy.enabled and (rule["opening_type"] == "Unknown" or rule["prerequisite_type"] == "Unknown"):
+		frappe.throw(_("Active lesson rules must be fully specified."), frappe.ValidationError)
 	if frappe.db.get_value("Course Lesson", lesson, "course") != course:
 		frappe.throw(_("The lesson does not belong to this course."), frappe.ValidationError)
 	row = next((item for item in policy.lessons if item.lesson == lesson), None)
@@ -174,7 +174,7 @@ def update_course_lesson_rule(course, lesson, rule):
 		row = policy.append("lessons", {"lesson": lesson})
 	row.update(rule)
 	policy.save()
-	return {"name": policy.name, "lesson": lesson, "enabled": False}
+	return {"name": policy.name, "lesson": lesson, "enabled": bool(policy.enabled)}
 
 
 @frappe.whitelist()

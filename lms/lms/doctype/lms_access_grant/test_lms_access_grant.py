@@ -155,7 +155,7 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		self.assertFalse(frappe.db.get_value("LMS Access Policy", policy_name, "enabled"))
 
 	def test_enable_policy_requires_complete_rules_on_empty_course(self):
-		from lms.lms.access_actions import create_course_access_policy, enable_empty_course_policy
+		from lms.lms.access_actions import create_course_access_policy, enable_empty_course_policy, update_course_access_defaults, update_course_lesson_rule
 
 		course = self._create_course(title="Empty activation test", instructor=self.teacher.email)
 		frappe.db.set_value("LMS Course", course.name, {"published": 0, "disable_self_learning": 1})
@@ -180,6 +180,16 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 			frappe.db.set_value("LMS Course", course.name, "disable_self_learning", 1)
 			self.assertTrue(enable_empty_course_policy(course.name)["enabled"])
 			self.assertEqual(policy.lessons[0].lesson, lesson.name)
+			defaults = {"default_personal_end_type": "After Start", "default_personal_end_at": None,
+				"default_personal_end_days": 30, "global_end_type": "Unlimited", "global_end_at": None,
+				"completed_retention_type": "None", "completed_retention_days": 0}
+			self.assertTrue(update_course_access_defaults(course.name, defaults)["enabled"])
+			rule = {"opening_type": "After Start", "opens_at": None, "delay_days": 2,
+				"prerequisite_type": "None", "prerequisite_lesson": None, "prerequisite_assignment": None}
+			self.assertTrue(update_course_lesson_rule(course.name, lesson.name, rule)["enabled"])
+			defaults["global_end_type"] = "Unknown"
+			with self.assertRaises(frappe.ValidationError):
+				update_course_access_defaults(course.name, defaults)
 
 	def test_lesson_rule_is_validated_without_enabling_policy(self):
 		from lms.lms.access_actions import create_course_access_policy, update_course_lesson_rule
