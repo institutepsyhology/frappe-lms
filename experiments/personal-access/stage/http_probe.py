@@ -54,6 +54,9 @@ def main():
 	for user in (student, other, manager):
 		user.new_password = password
 		user.save(ignore_permissions=True)
+	from frappe.core.doctype.user.user import generate_keys
+	student_keys = generate_keys(student.email)
+	other_keys = generate_keys(other.email)
 	course = BaseTestUtils._create_course(title="HTTP Access Test " + tag, instructor=teacher.email)
 	chapter = BaseTestUtils._create_chapter("HTTP Test Chapter " + tag, course.name)
 	BaseTestUtils._create_chapter_reference(course.name, chapter.name)
@@ -120,6 +123,12 @@ def main():
 		checks["manager_access_overview"] = status == 200 and len(json.loads(raw)["message"]["grants"]) == 1
 		status, _ = call(clients[1], path)
 		checks["student_denied_access_overview"] = status in (401, 403)
+		form = urllib.parse.urlencode({"course": course.name, "lesson": lesson.name}).encode()
+		for user_keys, label, expected in ((student_keys, "authorized_visit", True), (other_keys, "denied_visit", False)):
+			opener = urllib.request.build_opener()
+			opener.addheaders = [("Authorization", "token " + user_keys["api_key"] + ":" + user_keys["api_secret"])]
+			status, raw = call(opener, "/api/method/lms.lms.visit_tracking.record_lesson_visit", form)
+			checks[label] = (status == 200 and bool(json.loads(raw)["message"].get("recorded"))) if expected else status in (401, 403)
 	finally:
 		if server:
 			server.terminate()
