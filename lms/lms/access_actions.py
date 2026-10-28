@@ -143,6 +143,34 @@ def get_lesson_assignments(course, lesson):
 		fields=["name", "title"], limit_page_length=0) if names else []
 
 
+@frappe.whitelist()
+def get_grant_lessons(name):
+	"""List the lessons assigned to one personal access grant."""
+	frappe.only_for("System Manager")
+	if not isinstance(name, str) or not name:
+		frappe.throw(_("A grant name is required."), frappe.ValidationError)
+	grant = frappe.get_doc("LMS Access Grant", name)
+	grant.check_permission("read")
+	return [{"lesson": row.lesson, "title": frappe.db.get_value("Course Lesson", row.lesson, "title"),
+		"manual_open": bool(row.manual_open), "retain_when_limited": bool(row.retain_when_limited)}
+		for row in grant.lessons]
+
+
+@frappe.whitelist(methods=["POST"])
+def set_grant_lesson_manual_open(name, lesson, enabled):
+	"""Explicitly open or restore the schedule for one assigned lesson."""
+	grant = _admin_grant(name)
+	if grant.status not in ("Draft", "Active", "Frozen", "Limited"):
+		frappe.throw(_("A closed access grant cannot be edited."), frappe.ValidationError)
+	value = _explicit_choice(enabled, "Choose explicitly whether to open the lesson early.")
+	row = next((item for item in grant.lessons if item.lesson == lesson), None)
+	if not row:
+		frappe.throw(_("The lesson is not assigned to this grant."), frappe.ValidationError)
+	row.manual_open = int(value)
+	grant.save()
+	return {"name": grant.name, "lesson": lesson, "manual_open": value}
+
+
 @frappe.whitelist(methods=["POST"])
 def create_grant_for_enrolled_student(course, member, starts_at, lessons):
 	"""Create one inherited access grant for an already enrolled student.

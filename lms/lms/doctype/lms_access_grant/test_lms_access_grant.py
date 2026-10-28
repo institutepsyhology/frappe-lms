@@ -163,6 +163,26 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		frappe.set_user(self.student.email)
 		self.assertFalse(can_access_lesson(self.lesson.name))
 
+	def test_admin_can_open_only_an_assigned_lesson_early(self):
+		from lms.lms.access_actions import get_grant_lessons, set_grant_lesson_manual_open
+
+		frappe.db.set_value("LMS Access Grant Lesson", self.grant.lessons[0].name,
+			{"opens_at": add_to_date(now_datetime(), days=2), "manual_open": 0})
+		frappe.set_user(self.other.email)
+		with self.assertRaises(frappe.PermissionError):
+			get_grant_lessons(self.grant.name)
+		frappe.set_user("Administrator")
+		self.assertEqual(get_grant_lessons(self.grant.name)[0]["lesson"], self.lesson.name)
+		with self.assertRaises(frappe.ValidationError):
+			set_grant_lesson_manual_open(self.grant.name, "unknown-lesson", 1)
+		set_grant_lesson_manual_open(self.grant.name, self.lesson.name, 1)
+		frappe.set_user(self.student.email)
+		self.assertTrue(can_access_lesson(self.lesson.name))
+		frappe.set_user("Administrator")
+		set_grant_lesson_manual_open(self.grant.name, self.lesson.name, 0)
+		frappe.set_user(self.student.email)
+		self.assertFalse(can_access_lesson(self.lesson.name))
+
 	def test_revoke_closes_access_and_preserves_progress_and_enrollment(self):
 		from lms.lms.access_actions import revoke_grant
 

@@ -121,4 +121,22 @@ describe('individual access settings', () => {
 		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.get_lesson_assignments',
 			{ course: 'course-1', lesson: 'lesson-1' })
 	})
+
+	it('opens an assigned lesson early for the selected grant', async () => {
+		callMock.mockImplementation(async (method: string) => method.endsWith('get_grant_lessons')
+			? [{ lesson: 'lesson-1', title: 'Урок 1', manual_open: false, retain_when_limited: false }]
+			: { release_enabled: false, policy_enabled: false, policy_exists: true,
+				grants: [{ name: 'grant-1', member: 'student@example.invalid', status: 'Active' }], truncated: false,
+				lessons: [{name: 'lesson-1', title: 'Урок 1'}], lessons_truncated: false })
+		const wrapper = render(true)
+		await flushPromises()
+		const details = wrapper.findAll('details').find((item) => item.text().includes('Уроки этого ученика'))!
+		;(details.element as HTMLDetailsElement).open = true
+		await details.trigger('toggle')
+		await flushPromises()
+		await wrapper.findAll('button').find((item) => item.text() === 'Открыть досрочно')!.trigger('click')
+		await flushPromises()
+		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.set_grant_lesson_manual_open',
+			{ name: 'grant-1', lesson: 'lesson-1', enabled: 1 })
+	})
 })

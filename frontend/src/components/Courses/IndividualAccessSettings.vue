@@ -117,6 +117,30 @@
 				<div>{{ labels[grant.status] || grant.status }}</div>
 				<div v-if="grant.starts_at">Начало: {{ grant.starts_at }}</div>
 				<div v-if="grant.ends_at">Окончание: {{ grant.ends_at }}</div>
+				<details @toggle="loadGrantLessons(grant, $event)">
+					<summary class="cursor-pointer">Уроки этого ученика</summary>
+					<div v-if="grantLessons[grant.name]" class="space-y-2 mt-2">
+						<p>Досрочное открытие действует, пока у ученика есть доступ к курсу.</p>
+						<div v-for="row in grantLessons[grant.name]" :key="row.lesson" class="flex flex-wrap gap-2 items-center">
+							<label v-if="['Active', 'Frozen'].includes(grant.status)" class="flex gap-2">
+								<input v-model="retainedLessons[grant.name]" type="checkbox" :value="row.lesson" />
+								<span>{{ row.title || row.lesson }}</span>
+							</label>
+							<span v-else>{{ row.title || row.lesson }}</span>
+							<button v-if="grant.status !== 'Revoked'" class="underline" :disabled="busy" @click="setManual(grant, row)">
+								{{ row.manual_open ? 'Вернуть расписание' : 'Открыть досрочно' }}
+							</button>
+						</div>
+						<div v-if="['Active', 'Frozen'].includes(grant.status)" class="space-y-2">
+							<p>Чтобы ограничить доступ, отметьте уроки, которые останутся доступны. Если ничего не отмечено, закроются все уроки этой карточки.</p>
+							<select v-model="retentionType[grant.name]" class="border rounded w-full p-1">
+								<option value="">Выберите срок оставленных уроков</option><option value="Unlimited">Без ограничения</option><option value="At">До даты</option>
+							</select>
+							<input v-if="retentionType[grant.name] === 'At'" v-model="retentionEnd[grant.name]" type="datetime-local" step="1" class="border rounded w-full p-1" />
+							<button class="underline" :disabled="busy || !retentionType[grant.name] || (retentionType[grant.name] === 'At' && !retentionEnd[grant.name])" @click="limitGrant(grant)">Ограничить доступ</button>
+						</div>
+					</div>
+				</details>
 				<details v-if="grant.status !== 'Revoked' && grantTiming[grant.name]" class="space-y-2">
 					<summary class="cursor-pointer">Персональные сроки</summary>
 					<div class="space-y-2 mt-2">
@@ -164,6 +188,7 @@ import type { SessionUser } from '@/types'
 
 type Grant = { name: string; member: string; status: string; starts_at?: string; ends_at?: string; personal_end_type?: string; personal_end_days?: number; ignore_course_end?: boolean | number }
 type GrantTiming = { starts_at: string; personal_end_type: string; ends_at: string | null; personal_end_days: number; ignore_course_end: boolean }
+type GrantLesson = { lesson: string; title: string; manual_open: boolean; retain_when_limited: boolean }
 type Defaults = { default_personal_end_type: string; default_personal_end_at: string | null; default_personal_end_days: number; global_end_type: string; global_end_at: string | null; completed_retention_type: string; completed_retention_days: number }
 type LessonRule = { lesson?: string; opening_type: string; opens_at: string | null; delay_days: number; prerequisite_type: string; prerequisite_lesson: string | null; prerequisite_assignment: string | null }
 type Overview = { release_enabled: boolean; policy_enabled: boolean; policy_exists: boolean; policy?: Defaults | null; timezone: string; grants: Grant[]; truncated: boolean; lessons: {name: string; title: string}[]; lessons_truncated: boolean; schedule: LessonRule[] }
@@ -175,6 +200,10 @@ const error = ref(false)
 const busy = ref(false)
 const resumeChoice = reactive<Record<string, string>>({})
 const grantTiming = reactive<Record<string, GrantTiming>>({})
+const grantLessons = reactive<Record<string, GrantLesson[]>>({})
+const retainedLessons = reactive<Record<string, string[]>>({})
+const retentionType = reactive<Record<string, string>>({})
+const retentionEnd = reactive<Record<string, string>>({})
 const newMember = ref('')
 const newStart = ref('')
 const newLessons = ref<string[]>([])
@@ -230,6 +259,30 @@ function resume(grant: Grant) {
 }
 function revoke(grant: Grant) {
 	if (window.confirm('Закрыть эту карточку? Прогресс и домашние задания сохранятся. Другие карточки ученика не изменятся.')) action('revoke_grant', grant)
+}
+async function refreshGrantLessons(grant: Grant) {
+	grantLessons[grant.name] = await call('lms.lms.access_actions.get_grant_lessons', { name: grant.name })
+	retainedLessons[grant.name] = grantLessons[grant.name].filter((row) => row.retain_when_limited).map((row) => row.lesson)
+}
+async function loadGrantLessons(grant: Grant, event: Event) {
+	if (!(event.target as HTMLDetailsElement).open) return
+	try { await refreshGrantLessons(grant) } catch { toast.error('Не удалось загрузить уроки ученика.') }
+}
+async function setManual(grant: Grant, row: GrantLesson) {
+	busy.value = true
+	try {
+		await call('lms.lms.access_actions.set_grant_lesson_manual_open', { name: grant.name, lesson: row.lesson, enabled: row.manual_open ? 0 : 1 })
+		await refreshGrantLessons(grant)
+	} catch { toast.error('Не удалось изменить доступ к уроку.') } finally { busy.value = false }
+}
+async function limitGrant(grant: Grant) {
+	if (!retentionType[grant.name] || !window.confirm('Ограничить доступ по выбранному списку? Прогресс и домашние задания сохранятся.')) return
+	busy.value = true
+	try {
+		await call('lms.lms.access_actions.limit_grant', { name: grant.name, retained_lessons: retainedLessons[grant.name] || [],
+			retention_end_type: retentionType[grant.name], retention_ends_at: retentionType[grant.name] === 'At' ? retentionEnd[grant.name] : null })
+		await load()
+	} catch { toast.error('Не удалось ограничить доступ. Проверьте срок и выбранные уроки.') } finally { busy.value = false }
 }
 function saveGrantTiming(grant: Grant) {
 	const values = grantTiming[grant.name]
