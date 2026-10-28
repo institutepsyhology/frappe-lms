@@ -1,5 +1,5 @@
 # Built offline from the verified production image. Only access source is overlaid.
-FROM company-lms:individual-access-r19-20261028
+FROM company-lms:lesson-html-buttons-r20-20261028
 ARG SOURCE_COMMIT
 USER frappe
 WORKDIR /home/frappe/frappe-bench/apps/lms
@@ -29,7 +29,10 @@ COPY --chown=frappe:0 frontend/src/tests/scormChapterLocking.test.ts frontend/sr
 COPY --chown=frappe:0 frontend/src/utils/index.js frontend/src/utils/index.js
 COPY --chown=frappe:0 frontend/src/utils/customLessonBlocks.ts frontend/src/utils/customLessonBlocks.ts
 COPY --chown=frappe:0 frontend/src/tests/customLessonBlocks.test.ts frontend/src/tests/customLessonBlocks.test.ts
-RUN cd frontend && node node_modules/vitest/vitest.mjs run src/tests/customLessonBlocks.test.ts src/tests/individualAccessSettings.test.ts src/tests/videoChoice.test.ts src/tests/lessonLocking.test.ts src/tests/scormChapterLocking.test.ts --maxWorkers=2
+COPY --chown=frappe:0 frontend/src/pages/LessonForm.vue frontend/src/pages/LessonForm.vue
+COPY --chown=frappe:0 frontend/src/components/Courses/LessonAccessSettings.vue frontend/src/components/Courses/LessonAccessSettings.vue
+COPY --chown=frappe:0 frontend/src/tests/lessonAccessSettings.test.ts frontend/src/tests/lessonAccessSettings.test.ts
+RUN cd frontend && node node_modules/vitest/vitest.mjs run src/tests/lessonAccessSettings.test.ts src/tests/customLessonBlocks.test.ts src/tests/individualAccessSettings.test.ts src/tests/videoChoice.test.ts src/tests/lessonLocking.test.ts src/tests/scormChapterLocking.test.ts --maxWorkers=2
 RUN cd frontend && NODE_OPTIONS=--max-old-space-size=4096 yarn build
 RUN /home/frappe/frappe-bench/env/bin/python -m compileall -q lms/lms/individual_access.py lms/lms/visit_tracking.py lms/lms/access_actions.py lms/lms/permissions.py lms/lms/utils.py
 RUN /home/frappe/frappe-bench/env/bin/python -c "from pathlib import Path; from babel.messages.pofile import read_po; from babel.messages.mofile import write_mo; p=Path('/home/frappe/frappe-bench/assets/locale/ru/LC_MESSAGES/lms.mo'); p.parent.mkdir(parents=True,exist_ok=True); catalog=read_po(open('lms/locale/ru.po',encoding='utf-8'),locale='ru'); write_mo(open(p,'wb'),catalog,use_fuzzy=False)"

@@ -68,6 +68,8 @@
 				@keydown.enter="onTitleEnter"
 			/>
 
+			<LessonAccessSettings :course="props.courseName" :lesson="lessonDetails.data?.lesson?.name" />
+
 			<details
 				class="instructor-notes rounded-lg border border-outline-gray-2"
 				@toggle="onInstructorNotesToggle"
@@ -140,6 +142,7 @@ import { convertBodyToBlocks as convertToJSON } from '@/utils/lessonMacros'
 import { resourceErrorMessage, submitResource } from '@/utils/resource'
 import { hasVideoContent } from '@/utils/video'
 import BlockEditor from '@/components/BlockEditor.vue'
+import LessonAccessSettings from '@/components/Courses/LessonAccessSettings.vue'
 import BottomSheet from '@/components/BottomSheet.vue'
 import { useScreenSize } from '@/utils/composables'
 import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
