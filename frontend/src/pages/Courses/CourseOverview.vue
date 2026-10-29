@@ -199,6 +199,12 @@ watch(
 	{ immediate: true }
 )
 
+function russianCount(count: number, forms: [string, string, string]): string {
+	const lastTwo = count % 100
+	const last = count % 10
+	return lastTwo >= 11 && lastTwo <= 14 ? forms[2] : last === 1 ? forms[0] : last >= 2 && last <= 4 ? forms[1] : forms[2]
+}
+
 const outlineStats = computed(() => {
 	const chapters = outline.data || []
 	const lessonCount = chapters.reduce(
@@ -207,15 +213,14 @@ const outlineStats = computed(() => {
 	)
 	const parts: string[] = []
 	if (chapters.length) {
-		parts.push(
-			`${chapters.length} ${
-				chapters.length === 1 ? __('section') : __('sections')
-			}`
-		)
+		const sectionWord = __('section') === 'раздел'
+			? russianCount(chapters.length, ['раздел', 'раздела', 'разделов'])
+			: chapters.length === 1 ? __('section') : __('sections')
+		parts.push(`${chapters.length} ${sectionWord}`)
 	}
 	if (lessonCount) {
 		parts.push(
-			`${lessonCount} ${lessonCount === 1 ? __('lesson') : __('lessons')}`
+			`${lessonCount} ${__('lesson') === 'урок' ? russianCount(lessonCount, ['урок', 'урока', 'уроков']) : lessonCount === 1 ? __('lesson') : __('lessons')}`
 		)
 	}
 	return parts.join(' · ')

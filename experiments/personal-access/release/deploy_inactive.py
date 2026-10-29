@@ -19,10 +19,10 @@ import time
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = Path("/opt/company-lms")
-OLD = "sha256:84658e1220b924758df631265f67ce87064a1a7bc06282e6fbc72860c2fbc5a8"
+OLD = "sha256:7987c052967bd9eda74a63b02b4d70f5f13aacf01f312ae659d5466eb28754d5"
 BASE_TAG = "company-lms:lesson-settings-r21-20261028"
 BASE_IMAGE = "sha256:4781e698ca6b3b4ed09bbe9af113664887dd7dc17421127e472f80f23f8ab610"
-TAG = "company-lms:one-click-r30-20261029"
+TAG = "company-lms:overview-ru-r31-20261029"
 OVERLAY = ("lms/lms/api.py", "lms/lms/permissions.py", "lms/lms/utils.py",
     "lms/lms/doctype/course_lesson/course_lesson.py", "lms/lms/doctype/course_lesson/course_lesson.json",
     "lms/lms/access_actions.py", "lms/lms/individual_access.py",
@@ -30,6 +30,7 @@ OVERLAY = ("lms/lms/api.py", "lms/lms/permissions.py", "lms/lms/utils.py",
     "frontend/src/components/Courses/LessonAccessSettings.vue", "frontend/src/tests/lessonAccessSettings.test.ts",
     "frontend/src/pages/LessonForm.vue", "frontend/src/components/CourseOutline.vue",
     "frontend/src/pages/Forms/CourseEnrollmentForm.vue", "frontend/src/pages/Courses/CourseDetail.vue",
+    "frontend/src/pages/Courses/CourseOverview.vue", "lms/locale/ru.po",
     "frontend/src/tests/courseEnrollmentForm.test.ts",
     "frontend/src/components/Courses/IndividualAccessSettings.vue", "frontend/src/tests/individualAccessSettings.test.ts",
     "lms/lms/doctype/lms_access_grant/test_lms_access_grant.py")
@@ -158,6 +159,10 @@ def main():
                      "--entrypoint", "bench", "-w", "/home/frappe/frappe-bench/sites", image,
                      "--site", site, "migrate"], timeout=300)
             report["migrated_sites"].append(site)
+        # The compiled message catalog lives in the shared sites/assets volume.
+        command(["docker", "run", "--rm", "--network", network, "--volumes-from", BACKEND,
+                 "--entrypoint", "bench", "-w", "/home/frappe/frappe-bench", image,
+                 "compile-po-to-mo", "--app", "lms", "--locale", "ru", "--force"], timeout=120)
         temporary = env.with_name(".env.access-" + stamp)
         helper.write_new(temporary, re.sub(rb"(?m)^LMS_IMAGE=.+$", ("LMS_IMAGE=" + image).encode(), original))
         os.replace(temporary, env)
