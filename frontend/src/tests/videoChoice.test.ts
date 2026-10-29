@@ -151,3 +151,19 @@ describe('videoChoice EditorJS block', () => {
 		expect(root.querySelector('iframe')).toBeNull()
 	})
 })
+
+describe('video playback position', () => {
+	afterEach(() => localStorage.clear())
+	it.each(['rutube', 'youtube'] as const)('saves and restores %s independently', (provider) => {
+		const tool = new VideoChoice({ data: { ...data, defaultProvider: provider }, readOnly: true })
+		const root = tool.render()
+		document.body.append(root)
+		const frame = root.querySelector('iframe')!
+		const origin = provider === 'rutube' ? 'https://rutube.ru' : 'https://www.youtube.com'
+		const message = provider === 'rutube' ? { type: 'player:currentTime', data: { time: 42 } } : { event: 'infoDelivery', info: { currentTime: 42 } }
+		window.dispatchEvent(new MessageEvent('message', { origin, source: frame.contentWindow, data: JSON.stringify(message) }))
+		tool.destroy()
+		const next = new VideoChoice({ data: { ...data, defaultProvider: provider }, readOnly: true }).render()
+		expect(new URL(next.querySelector('iframe')!.src).searchParams.get(provider === 'rutube' ? 't' : 'start')).toBe('42')
+	})
+})

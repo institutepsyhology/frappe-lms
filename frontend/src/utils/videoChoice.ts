@@ -237,6 +237,7 @@ export class VideoChoice {
 		}
 		const frame = document.createElement('iframe')
 		frame.src = source
+		if (this.readOnly) this.attachResume(frame, source, this.activeProvider)
 		frame.title = `${__('Видео')} — ${LABELS[this.activeProvider]}`
 		frame.className = 'w-full h-full border-0'
 		frame.setAttribute('width', '100%')
@@ -251,13 +252,47 @@ export class VideoChoice {
 			this.playerHost.append(frame)
 			return
 		}
-		this.attachProtectedPlayer(frame, source, this.activeProvider)
+		this.attachProtectedPlayer(frame, this.activeProvider)
 	}
 
 
-	private attachProtectedPlayer(frame: HTMLIFrameElement, source: string, provider: VideoProvider) {
-		const host = this.playerHost!
+
+	private attachResume(frame: HTMLIFrameElement, source: string, provider: VideoProvider) {
 		const url = new URL(source)
+		const id = url.pathname.split('/').filter(Boolean).pop()
+		if (!id) return
+		const key = `lms-video-position:${provider}:${id}`
+		let saved = 0
+		try { saved = Number(localStorage.getItem(key)) || 0 } catch { /* storage may be unavailable */ }
+		if (Number.isFinite(saved) && saved >= 10) {
+			url.searchParams.set(provider === 'youtube' ? 'start' : 't', String(Math.floor(saved)))
+			frame.src = url.toString()
+		}
+		const origin = provider === 'youtube' ? 'https://www.youtube.com' : 'https://rutube.ru'
+		let readyToSave = saved < 10
+		const onMessage = (event: MessageEvent) => {
+			if (event.origin !== origin || event.source !== frame.contentWindow) return
+			let message = event.data
+			if (typeof message === 'string') { try { message = JSON.parse(message) } catch { return } }
+			if (!message || typeof message !== 'object') return
+			const time = provider === 'youtube' && message.event === 'infoDelivery'
+				? message.info?.currentTime : provider === 'rutube' && message.type === 'player:currentTime'
+					? message.data?.time : undefined
+			if (typeof time !== 'number' || !Number.isFinite(time) || time < 0) return
+			// Ignore early pre-seek events until the saved position is reached.
+			if (!readyToSave) {
+				if (Math.abs(time - saved) > 5) return
+				readyToSave = true
+			}
+			try { localStorage.setItem(key, String(Math.floor(time))) } catch { /* playback still works */ }
+		}
+		window.addEventListener('message', onMessage)
+		this.cleanupPlayer = () => window.removeEventListener('message', onMessage)
+	}
+
+	private attachProtectedPlayer(frame: HTMLIFrameElement, provider: VideoProvider) {
+		const host = this.playerHost!
+		const url = new URL(frame.src)
 		if (provider === 'youtube') {
 			url.searchParams.set('enablejsapi', '1')
 			url.searchParams.set('origin', window.location.origin)
@@ -320,7 +355,8 @@ export class VideoChoice {
 		window.addEventListener('message', onMessage)
 		frame.addEventListener('load', () => { if (provider === 'youtube') frame.contentWindow?.postMessage(JSON.stringify({event:'listening', id: 1}), origin) })
 		host.append(frame, cover, controls)
-		this.cleanupPlayer = () => window.removeEventListener('message', onMessage)
+		const cleanupResume = this.cleanupPlayer
+		this.cleanupPlayer = () => { cleanupResume?.(); window.removeEventListener('message', onMessage) }
 	}
 
 	save(): VideoChoiceData {
