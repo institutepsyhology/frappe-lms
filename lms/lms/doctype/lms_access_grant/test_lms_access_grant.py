@@ -78,6 +78,17 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		frappe.set_user("Administrator")
 		self.assertEqual(get_course_outline(self.course.name, progress=True)[0].lessons[0].title, self.lesson.title)
 
+	def test_new_grant_defaults_start_to_current_site_time(self):
+		from lms.lms.access_actions import create_course_access_policy, create_grant_for_enrolled_student
+
+		frappe.set_user("Administrator")
+		create_course_access_policy(self.course.name)
+		before = now_datetime()
+		result = create_grant_for_enrolled_student(self.course.name, self.other.email, None, [self.lesson.name])
+		start = frappe.get_doc("LMS Access Grant", result["name"]).starts_at
+		self.assertGreaterEqual(start, before.replace(microsecond=0))
+		self.assertLessEqual(start, now_datetime())
+
 	def test_student_with_grant_and_student_without_grant(self):
 		frappe.set_user(self.student.email)
 		self.assertTrue(can_access_lesson(self.lesson.name))

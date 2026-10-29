@@ -53,6 +53,22 @@ describe('individual access settings', () => {
 		})
 	})
 
+	it('uses the current site time when no custom start is entered', async () => {
+		const wrapper = render(true)
+		await flushPromises()
+		const panel = wrapper.findAll('details').find((item) => item.text().includes('Добавить персональную карточку'))!
+		await panel.element.setAttribute('open', '')
+		await panel.trigger('toggle')
+		expect(wrapper.find('input[type=datetime-local]').element.value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
+		await wrapper.find('input[type=email]').setValue('new@example.invalid')
+		await wrapper.find('input[type=checkbox]').setValue(true)
+		await wrapper.findAll('button').find((item) => item.text() === 'Создать карточку')!.trigger('click')
+		await flushPromises()
+		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.create_grant_for_enrolled_student', {
+			course: 'course-1', member: 'new@example.invalid', starts_at: null, lessons: ['lesson-1'],
+		})
+	})
+
 	it('creates an unconfigured course policy on request', async () => {
 		callMock.mockResolvedValueOnce({ release_enabled: false, policy_enabled: false, policy_exists: false,
 			grants: [], truncated: false, lessons: [], lessons_truncated: false })

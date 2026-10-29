@@ -105,7 +105,7 @@
 					</template>
 				</div>
 			</details>
-			<details v-if="overview.policy_exists" class="border rounded p-3">
+			<details v-if="overview.policy_exists" class="border rounded p-3" @toggle="onNewGrantToggle">
 				<summary class="cursor-pointer">Добавить персональную карточку</summary>
 				<div class="space-y-2 mt-3">
 					<p>Новая карточка не удаляет прежний прогресс и домашние задания.</p>
@@ -113,7 +113,8 @@
 						<input v-model.trim="newMember" type="email" class="border rounded w-full p-1" />
 					</label>
 					<label class="block">Начало курса по времени сайта ({{ overview.timezone }})
-						<input v-model="newStart" type="datetime-local" class="border rounded w-full p-1" />
+						<input v-model="newStart" type="datetime-local" class="border rounded w-full p-1" @input="newStartChanged = true" />
+						<span>По умолчанию — текущее время сайта; можно указать другое.</span>
 					</label>
 					<p>Выберите уроки:</p>
 					<label v-for="lesson in overview.lessons" :key="lesson.name" class="flex gap-2">
@@ -121,7 +122,7 @@
 						<span>{{ lesson.title || lesson.name }}</span>
 					</label>
 					<p v-if="overview.lessons_truncated">Показаны первые 500 уроков.</p>
-					<button class="underline" :disabled="busy || !newMember || !newStart || !newLessons.length" @click="createGrant">Создать карточку</button>
+					<button class="underline" :disabled="busy || !newMember || !newLessons.length" @click="createGrant">Создать карточку</button>
 				</div>
 			</details>
 			<p v-if="!overview.grants.length">Персональных карточек пока нет.</p>
@@ -297,6 +298,13 @@ const retentionType = reactive<Record<string, string>>({})
 const retentionEnd = reactive<Record<string, string>>({})
 const newMember = ref('')
 const newStart = ref('')
+const newStartChanged = ref(false)
+function onNewGrantToggle(event: Event) {
+	if (!(event.target as HTMLDetailsElement).open || newStartChanged.value) return
+	const parts = new Intl.DateTimeFormat('en-CA', { timeZone: overview.value?.timezone || 'UTC', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date())
+	const value = (kind: string) => parts.find(part => part.type === kind)?.value || ''
+	newStart.value = `${value('year')}-${value('month')}-${value('day')}T${value('hour')}:${value('minute')}`
+}
 const newLessons = ref<string[]>([])
 const defaults = reactive<Defaults>({ default_personal_end_type: 'Unknown', default_personal_end_at: null,
 	default_personal_end_days: 0, global_end_type: 'Unknown', global_end_at: null,
@@ -458,14 +466,15 @@ function saveGrantVisits(grant: Grant) {
 		retention_days: values.kind === 'Days' ? values.days : 0 })
 }
 async function createGrant() {
-	if (!newMember.value || !newStart.value || !newLessons.value.length) return
+	if (!newMember.value || !newLessons.value.length) return
 	busy.value = true
 	try {
 		await call('lms.lms.access_actions.create_grant_for_enrolled_student', {
-			course: props.course, member: newMember.value, starts_at: newStart.value, lessons: newLessons.value,
+			course: props.course, member: newMember.value, starts_at: newStartChanged.value && newStart.value ? newStart.value : null, lessons: newLessons.value,
 		})
 		newMember.value = ''
 		newStart.value = ''
+		newStartChanged.value = false
 		newLessons.value = []
 		await load()
 	} catch {
