@@ -8,6 +8,10 @@
 			<div v-show="lessonSection === 'settings'" class="space-y-4">
 				<h2 class="text-xl font-semibold">Настройки урока</h2>
 				<LessonAccessSettings :course="props.courseName" :lesson="lessonDetails.data?.lesson?.name" />
+				<div v-if="user?.data?.is_system_manager && lessonDetails.data?.lesson" class="rounded-lg border border-outline-gray-2 p-4 space-y-3">
+					<label class="flex gap-2"><input v-model="hideLockedTitle" type="checkbox" /> Скрывать название урока, пока он закрыт ученику</label>
+					<button type="button" class="rounded bg-ink-gray-9 px-4 py-2 text-white" :disabled="savingTitleVisibility" @click="saveTitleVisibility">Сохранить отображение названия</button>
+				</div>
 			</div>
 			<div v-show="lessonSection === 'content'" class="space-y-6">
 			<button
@@ -148,6 +152,7 @@ import {
 	ref,
 	nextTick,
 	onBeforeUnmount,
+	watch,
 } from 'vue'
 import { ChevronRight, NotebookPen } from 'lucide-vue-next'
 import { useDebounceFn } from '@vueuse/core'
@@ -181,6 +186,18 @@ const user = inject('$user')
 const titleRef = ref(null)
 const publicationAudience = ref('')
 const publishingLesson = ref(false)
+const hideLockedTitle = ref(false)
+const savingTitleVisibility = ref(false)
+async function saveTitleVisibility() {
+	if (!lessonDetails.data?.lesson?.name) return
+	savingTitleVisibility.value = true
+	try {
+		await call('lms.lms.access_actions.set_lesson_title_visibility', { course: props.courseName, lesson: lessonDetails.data.lesson.name, hide_title: hideLockedTitle.value })
+		toast.success('Настройка названия сохранена.')
+	} catch { toast.error('Не удалось сохранить настройку названия.') }
+	finally { savingTitleVisibility.value = false }
+}
+
 async function publishLesson() {
 	if (!publicationAudience.value || isDirty.value || !lessonDetails.data?.lesson?.name) return
 	publishingLesson.value = true
@@ -675,6 +692,7 @@ const validateLesson = () => {
 		return 'Title is required'
 	}
 }
+watch(() => lessonDetails.data?.lesson?.name, () => { hideLockedTitle.value = Boolean(lessonDetails.data?.lesson?.hide_title_when_locked) }, { immediate: true })
 </script>
 <style>
 /* Drop the default disclosure marker; rotate chevron via [open]. */

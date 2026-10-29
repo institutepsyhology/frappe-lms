@@ -12,6 +12,7 @@
   "is_draft",
   "publication_audience",
   "lesson_published_at",
+  "hide_title_when_locked",
   "include_in_preview",
   "is_scorm_package",
   "column_break_4",
@@ -53,6 +54,13 @@
    "fieldname": "lesson_published_at",
    "fieldtype": "Datetime",
    "label": "Lesson Published At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "hide_title_when_locked",
+   "fieldtype": "Check",
+   "label": "Hide Title When Locked",
+   "default": "0",
    "read_only": 1
   },
   {

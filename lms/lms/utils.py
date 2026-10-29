@@ -1473,6 +1473,13 @@ def get_course_outline(course: str, progress: bool = False) -> list:
 		from lms.lms.permissions import can_access_lesson
 
 		mask_inaccessible_outline(outline, can_access_lesson)
+	if not can_modify_course(course):
+		from lms.lms.permissions import can_access_lesson
+		hidden = set(frappe.get_all("Course Lesson", filters={"course": course, "hide_title_when_locked": 1}, pluck="name"))
+		for chapter in outline:
+			for lesson in chapter.lessons:
+				if lesson.name in hidden and (lesson.get("locked") or not can_access_lesson(lesson.name)):
+					lesson.title = _("Урок закрыт")
 	return outline
 
 
@@ -1787,7 +1794,7 @@ def get_lesson(course: str, chapter: int, lesson: int) -> dict:
 	if lesson_name in locked:
 		return {
 			"locked": 1,
-			"title": lesson_details.title,
+			"title": _("Урок закрыт") if frappe.db.get_value("Course Lesson", lesson_name, "hide_title_when_locked") else lesson_details.title,
 			"course_title": frappe.db.get_value("LMS Course", course, "title"),
 			"redirect_to": get_lesson_index(resume) if resume else "1-1",
 		}
@@ -1810,7 +1817,7 @@ def get_lesson(course: str, chapter: int, lesson: int) -> dict:
 	if not can_access:
 		return {
 			"no_preview": 1,
-			"title": lesson_details.title,
+			"title": _("Урок закрыт") if frappe.db.get_value("Course Lesson", lesson_name, "hide_title_when_locked") else lesson_details.title,
 			"course_title": course_info.title,
 			"disable_self_learning": course_info.disable_self_learning,
 		}
@@ -2743,6 +2750,7 @@ def get_lesson_creation_details(course: str, chapter: int, lesson: int) -> dict:
 				"is_draft",
 				"publication_audience",
 				"lesson_published_at",
+				"hide_title_when_locked",
 				"body",
 				"content",
 				"instructor_notes",

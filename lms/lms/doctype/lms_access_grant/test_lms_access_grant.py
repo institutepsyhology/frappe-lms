@@ -61,6 +61,23 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 			update_lesson_index(self.lesson.name, target.name, other_chapter.name, 0)
 		self.assertEqual(frappe.db.get_value("Course Lesson", self.lesson.name, "chapter"), target.name)
 
+	def test_hidden_title_only_for_learner_without_access(self):
+		from lms.lms.access_actions import set_lesson_title_visibility
+
+		frappe.set_user("Administrator")
+		set_lesson_title_visibility(self.course.name, self.lesson.name, True)
+		self.assertEqual(frappe.db.get_value("Course Lesson", self.lesson.name, "hide_title_when_locked"), 1)
+		frappe.set_user(self.other.email)
+		outline = get_course_outline(self.course.name, progress=True)
+		self.assertEqual(outline[0].lessons[0].title, "Урок закрыт")
+		self.assertEqual(get_lesson(self.course.name, 1, 1).get("title"), "Урок закрыт")
+		with self.assertRaises(frappe.PermissionError):
+			set_lesson_title_visibility(self.course.name, self.lesson.name, False)
+		frappe.set_user(self.student.email)
+		self.assertEqual(get_course_outline(self.course.name, progress=True)[0].lessons[0].title, self.lesson.title)
+		frappe.set_user("Administrator")
+		self.assertEqual(get_course_outline(self.course.name, progress=True)[0].lessons[0].title, self.lesson.title)
+
 	def test_student_with_grant_and_student_without_grant(self):
 		frappe.set_user(self.student.email)
 		self.assertTrue(can_access_lesson(self.lesson.name))

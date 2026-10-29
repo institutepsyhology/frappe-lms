@@ -517,3 +517,16 @@ def limit_grant(name, retained_lessons, retention_end_type, retention_ends_at=No
 	grant.frozen_at = None
 	grant.save()
 	return {"name": grant.name, "status": grant.status, "retained_count": len(selected)}
+
+
+@frappe.whitelist(methods=["POST"])
+def set_lesson_title_visibility(course, lesson, hide_title):
+	"""Set whether the title is shown to learners who cannot open the lesson."""
+	frappe.only_for("System Manager")
+	if not isinstance(course, str) or not isinstance(lesson, str):
+		frappe.throw(_("Invalid lesson."), frappe.ValidationError)
+	if frappe.db.get_value("Course Lesson", lesson, "course") != course:
+		frappe.throw(_("The lesson does not belong to this course."), frappe.ValidationError)
+	value = int(_explicit_choice(hide_title, "Choose whether to hide the title."))
+	frappe.db.set_value("Course Lesson", lesson, "hide_title_when_locked", value)
+	return {"hide_title_when_locked": value}
