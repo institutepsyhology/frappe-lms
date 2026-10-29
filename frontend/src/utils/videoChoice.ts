@@ -325,8 +325,10 @@ export class VideoChoice {
 		const seek = (time: number) => send(provider === 'youtube' ? 'seekTo' : 'player:setCurrentTime', {time}, [time, true])
 		button('−10 с', () => provider === 'rutube' ? send('player:relativelySeek', {time: -10}) : seek(Math.max(0, current - 10)))
 		button('+10 с', () => provider === 'rutube' ? send('player:relativelySeek', {time: 10}) : seek(Math.min(duration || Infinity, current + 10)))
-		const progress = document.createElement('input'); progress.type = 'range'; progress.min = '0'; progress.max = '100'; progress.value = '0'; progress.style.flex = '1'; progress.setAttribute('aria-label', 'Позиция видео')
+		const progress = document.createElement('input'); progress.type = 'range'; progress.min = '0'; progress.max = '100'; progress.value = '0'; progress.style.cssText = 'appearance:auto;-webkit-appearance:auto;flex:1;min-width:60px;height:16px;accent-color:#f97316;cursor:pointer'; progress.setAttribute('aria-label', 'Позиция видео')
 		progress.addEventListener('change', () => { if (duration) seek(Number(progress.value) * duration / 100) }); controls.append(progress)
+		const clock = document.createElement('span'); clock.style.cssText = 'font-size:12px;white-space:nowrap'; clock.textContent = '0:00 / 0:00'; controls.append(clock)
+		const formatTime = (seconds: number) => { const total = Math.max(0, Math.floor(seconds)); const h = Math.floor(total / 3600); const m = Math.floor(total / 60) % 60; const sec = String(total % 60).padStart(2, '0'); return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}` }
 		const volume = document.createElement('input'); volume.type = 'range'; volume.min = '0'; volume.max = '100'; volume.value = '100'; volume.style.width = '65px'; volume.setAttribute('aria-label', 'Громкость')
 		volume.addEventListener('input', () => send(provider === 'youtube' ? 'setVolume' : 'player:setVolume', {volume: Number(volume.value) / 100}, [Number(volume.value)])); controls.append(volume)
 		if (provider === 'youtube') {
@@ -351,6 +353,7 @@ export class VideoChoice {
 			}
 			play.textContent = playing ? '❚❚' : '▶'; play.setAttribute('aria-label', playing ? 'Пауза' : 'Воспроизвести')
 			if (duration) progress.value = String(current / duration * 100)
+			clock.textContent = `${formatTime(current)} / ${formatTime(duration)}`
 		}
 		window.addEventListener('message', onMessage)
 		frame.addEventListener('load', () => { if (provider === 'youtube') frame.contentWindow?.postMessage(JSON.stringify({event:'listening', id: 1}), origin) })

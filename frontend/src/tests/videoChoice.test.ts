@@ -167,3 +167,19 @@ describe('video playback position', () => {
 		expect(new URL(next.querySelector('iframe')!.src).searchParams.get(provider === 'rutube' ? 't' : 'start')).toBe('42')
 	})
 })
+
+describe('YouTube seeking', () => {
+	it('seeks to a chosen point on a long video', () => {
+		const tool = new VideoChoice({ data: { ...data, defaultProvider: 'youtube' }, readOnly: true })
+		const root = tool.render(); document.body.append(root)
+		const frame = root.querySelector('iframe')!
+		const send = vi.spyOn(frame.contentWindow!, 'postMessage')
+		window.dispatchEvent(new MessageEvent('message', { origin: 'https://www.youtube.com', source: frame.contentWindow, data: JSON.stringify({event:'infoDelivery', info:{duration:7200,currentTime:10}}) }))
+		const progress = root.querySelector('[aria-label="Позиция видео"]') as HTMLInputElement
+		expect(progress.style.appearance).toBe('auto')
+		progress.value = '50'; progress.dispatchEvent(new Event('change'))
+		expect(send).toHaveBeenCalledWith(expect.stringContaining('"args":[3600,true]'), 'https://www.youtube.com')
+		expect(root.textContent).toContain('0:10 / 2:00:00')
+		tool.destroy()
+	})
+})
