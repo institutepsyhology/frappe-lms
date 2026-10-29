@@ -45,6 +45,22 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		frappe.set_user("Administrator")
 		super().tearDown()
 
+	def test_move_lesson_between_course_chapters(self):
+		from lms.lms.api import update_lesson_index
+
+		target = self._create_chapter("Move target chapter", self.course.name)
+		self._create_chapter_reference(self.course.name, target.name, idx=2)
+		frappe.set_user("Administrator")
+		update_lesson_index(self.lesson.name, self.chapter.name, target.name, 0)
+		self.assertEqual(frappe.db.get_value("Course Lesson", self.lesson.name, "chapter"), target.name)
+		self.assertFalse(frappe.db.exists("Lesson Reference", {"parent": self.chapter.name, "lesson": self.lesson.name}))
+		self.assertTrue(frappe.db.exists("Lesson Reference", {"parent": target.name, "lesson": self.lesson.name}))
+		other_course = self._create_course(title="Other move test course", instructor=self.teacher.email)
+		other_chapter = self._create_chapter("Other course chapter", other_course.name)
+		with self.assertRaises(frappe.ValidationError):
+			update_lesson_index(self.lesson.name, target.name, other_chapter.name, 0)
+		self.assertEqual(frappe.db.get_value("Course Lesson", self.lesson.name, "chapter"), target.name)
+
 	def test_student_with_grant_and_student_without_grant(self):
 		frappe.set_user(self.student.email)
 		self.assertTrue(can_access_lesson(self.lesson.name))

@@ -19,16 +19,17 @@ import time
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = Path("/opt/company-lms")
-OLD = "sha256:6c6e865c6c9165c5292c5c83da784d5840284e00b9355b895f4a42962f966018"
+OLD = "sha256:633d96a8e16f85cd84e54e0e5ca9e6477e505e57135b9c0abc7456b39c1ed402"
 BASE_TAG = "company-lms:lesson-settings-r21-20261028"
 BASE_IMAGE = "sha256:4781e698ca6b3b4ed09bbe9af113664887dd7dc17421127e472f80f23f8ab610"
-TAG = "company-lms:lesson-menu-r26-20261029"
+TAG = "company-lms:lesson-modules-r27-20261029"
 OVERLAY = ("lms/lms/api.py", "lms/lms/permissions.py", "lms/lms/utils.py",
     "lms/lms/doctype/course_lesson/course_lesson.py", "lms/lms/doctype/course_lesson/course_lesson.json",
     "lms/lms/access_actions.py", "lms/lms/individual_access.py",
     "lms/lms/doctype/lms_access_policy_lesson/lms_access_policy_lesson.json",
     "frontend/src/components/Courses/LessonAccessSettings.vue", "frontend/src/tests/lessonAccessSettings.test.ts",
-    "frontend/src/pages/LessonForm.vue")
+    "frontend/src/pages/LessonForm.vue", "frontend/src/components/CourseOutline.vue",
+    "lms/lms/doctype/lms_access_grant/test_lms_access_grant.py")
 SITES = ("my-lk.mastervision.su", "my-lk.iomp.ru", "my-lk.mv-centr.ru")
 BACKEND = "company-lms-backend-1"
 

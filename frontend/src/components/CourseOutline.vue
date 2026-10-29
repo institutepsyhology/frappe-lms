@@ -21,6 +21,7 @@
 				{{ __('Add') }}
 			</Button>
 		</div>
+		<p v-if="allowEdit && outline.data?.length" class="mb-3 px-2 text-sm text-ink-gray-5">Разделы объединяют уроки по темам или модулям. Перетаскивайте уроки и разделы для изменения порядка; дважды нажмите на название раздела, чтобы переименовать его.</p>
 		<div
 			v-if="allowEdit && outline.data && !outline.data.length"
 			class="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center text-ink-gray-5 h-full"
@@ -216,6 +217,10 @@ const updateLessonIndex = createResource({
 	onSuccess() {
 		outline.reload()
 		toast.success(__('Lesson moved successfully'))
+	},
+	onError() {
+		outline.reload()
+		toast.error('Не удалось переместить урок. Список обновлён.')
 	},
 })
 

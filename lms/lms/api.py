@@ -968,13 +968,27 @@ def create_lesson(chapter: str) -> str:
 @frappe.whitelist()
 def update_lesson_index(lesson: str, sourceChapter: str, targetChapter: str, idx: int):
 	course = frappe.db.get_value("Course Chapter", sourceChapter, "course")
-	if not can_modify_course(course):
+	if not course or not can_modify_course(course):
 		frappe.throw(_("You do not have permission to modify this lesson."), frappe.PermissionError)
+	if frappe.db.get_value("Course Chapter", targetChapter, "course") != course:
+		frappe.throw(_("The target chapter must belong to the same course."))
+	if frappe.db.get_value("Course Chapter", targetChapter, "is_scorm_package"):
+		frappe.throw(_("Lessons cannot be moved into a SCORM chapter."))
+	if not frappe.db.exists("Lesson Reference", {"parent": sourceChapter, "lesson": lesson}):
+		frappe.throw(_("The lesson is not in the source chapter."))
+	if frappe.db.get_value("Course Lesson", lesson, "course") != course:
+		frappe.throw(_("The lesson must belong to the same course."))
+	idx = int(idx)
+	if idx < 0:
+		frappe.throw(_("Invalid lesson position."))
 
 	hasMoved = sourceChapter == targetChapter
+	if not hasMoved and frappe.db.exists("Lesson Reference", {"parent": targetChapter, "lesson": lesson}):
+		frappe.throw(_("The lesson is already in the target chapter."))
 	update_source_chapter(lesson, sourceChapter, idx, hasMoved)
 	if not hasMoved:
 		update_target_chapter(lesson, targetChapter, idx)
+		frappe.db.set_value("Course Lesson", lesson, "chapter", targetChapter)
 
 
 def update_source_chapter(lesson: str, chapter: str, idx: int, hasMoved: bool = False):
