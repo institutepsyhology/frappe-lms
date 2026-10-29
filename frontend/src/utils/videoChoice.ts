@@ -15,6 +15,7 @@ interface VideoChoiceOptions {
 
 const PROVIDERS: VideoProvider[] = ['rutube', 'youtube']
 const LABELS: Record<VideoProvider, string> = { rutube: 'Rutube', youtube: 'YouTube' }
+const PROVIDER_PREFERENCE_KEY = 'lms-video-provider-preference'
 
 // Source pages are accepted while authoring, but only exact, known player URLs
 // ever reach an iframe. Drop unrelated query parameters; retain a private Rutube
@@ -79,6 +80,12 @@ export class VideoChoice {
 		this.readOnly = readOnly
 		this.block = block
 		this.activeProvider = this.data.defaultProvider
+		if (readOnly) {
+			try {
+				const preferred = localStorage.getItem(PROVIDER_PREFERENCE_KEY)
+				if (preferred === 'youtube' || preferred === 'rutube') this.activeProvider = preferred
+			} catch { /* Browser storage may be unavailable. */ }
+		}
 	}
 
 	static get isReadOnlySupported() {
@@ -119,6 +126,9 @@ export class VideoChoice {
 			button.dataset.provider = provider
 			button.addEventListener('click', () => {
 				this.activeProvider = provider
+				if (this.readOnly) {
+					try { localStorage.setItem(PROVIDER_PREFERENCE_KEY, provider) } catch { /* Playback remains available. */ }
+				}
 				this.refreshPlayer()
 			})
 			this.buttons.set(provider, button)

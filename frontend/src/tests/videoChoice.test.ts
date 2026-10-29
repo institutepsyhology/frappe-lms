@@ -11,6 +11,7 @@ const data = { rutube: rutubeSource, youtube: `https://youtu.be/${youtubeId}`, d
 
 afterEach(() => {
 	document.body.replaceChildren()
+	localStorage.clear()
 })
 
 describe('video source URLs', () => {
@@ -181,5 +182,26 @@ describe('YouTube seeking', () => {
 		expect(send).toHaveBeenCalledWith(expect.stringContaining('"args":[3600,true]'), 'https://www.youtube.com')
 		expect(root.textContent).toContain('0:10 / 2:00:00')
 		tool.destroy()
+	})
+})
+
+
+describe('viewer video source preference', () => {
+	it('remembers a manual choice for new blocks and later changes', () => {
+		const first = new VideoChoice({data, readOnly: true}).render()
+		;(first.querySelector('[data-provider="youtube"]') as HTMLButtonElement).click()
+		const next = new VideoChoice({data, readOnly: true}).render()
+		expect(next.querySelector('[aria-pressed="true"]')?.textContent).toBe('YouTube')
+		;(next.querySelector('[data-provider="rutube"]') as HTMLButtonElement).click()
+		const after = new VideoChoice({data, readOnly: true}).render()
+		expect(after.querySelector('[aria-pressed="true"]')?.textContent).toBe('Rutube')
+	})
+	it('falls back without changing preference and leaves editor default independent', () => {
+		localStorage.setItem('lms-video-provider-preference', 'youtube')
+		const missing = new VideoChoice({data: {...data, youtube: ''}, readOnly: true}).render()
+		expect(missing.querySelector('[aria-pressed="true"]')?.textContent).toBe('Rutube')
+		expect(localStorage.getItem('lms-video-provider-preference')).toBe('youtube')
+		const editor = new VideoChoice({data, readOnly: false}).render()
+		expect(editor.querySelector('[aria-pressed="true"]')?.textContent).toBe('Rutube')
 	})
 })
