@@ -532,3 +532,56 @@ def set_lesson_title_visibility(course, lesson, hide_title):
 	value = int(_explicit_choice(hide_title, "Choose whether to hide the title."))
 	frappe.db.set_value("Course Lesson", lesson, "hide_title_when_locked", value)
 	return {"hide_title_when_locked": value}
+
+
+@frappe.whitelist(methods=["POST"])
+def enroll_student_with_access(course, email, first_name=None, last_name=None, middle_name=None, phone=None, starts_at=None, ends_at=None):
+	"""Enroll a student and create their inherited access in one transaction.
+
+	The course must already have an enabled access policy when a personal start or
+	end is requested. Existing access cards are never overwritten. New accounts
+	are created without sending email; delivery is a separate administrator action.
+	"""
+	from frappe.utils import validate_email_address
+	from lms.lms.individual_access import policy_applies
+	from lms.lms.utils import can_modify_course
+
+	if not isinstance(course, str) or not course or not can_modify_course(course):
+		frappe.throw(_("You do not have permission to enroll students in this course."), frappe.PermissionError)
+	if not isinstance(email, str) or not validate_email_address(email.strip(), throw=False):
+		frappe.throw(_("Enter a valid email address."), frappe.ValidationError)
+	email = email.strip().lower()
+	frappe.db.get_value("LMS Course", course, "name", for_update=True)
+	start = get_datetime(starts_at) if starts_at else now_datetime()
+	end = get_datetime(ends_at) if ends_at else None
+	if end and end <= start:
+		frappe.throw(_("The access end must be later than the start."), frappe.ValidationError)
+	protected = policy_applies(course)
+	if not protected and (starts_at or end):
+		frappe.throw(_("Enable the course access policy before setting personal dates."), frappe.ValidationError)
+	member = frappe.db.get_value("User", {"email": email}, "name")
+	if member and not frappe.db.get_value("User", member, "enabled"):
+		frappe.throw(_("This user is disabled."), frappe.ValidationError)
+	if not member:
+		user = frappe.get_doc({"doctype": "User", "email": email, "first_name": first_name or email,
+			"last_name": last_name or "", "middle_name": middle_name or "", "mobile_no": phone or "", "user_type": "Website User",
+			"send_welcome_email": 0})
+		user.insert(ignore_permissions=True)
+		member = user.name
+	if frappe.db.exists("LMS Enrollment", {"course": course, "member": member}):
+		frappe.throw(_("Student is already enrolled in this course."), frappe.ValidationError)
+	if protected and frappe.db.exists("LMS Access Grant", {"course": course, "member": member, "status": ("!=", "Revoked")}):
+		frappe.throw(_("This student already has an access grant for the course."), frappe.ValidationError)
+	lessons = frappe.get_all("Course Lesson", filters={"course": course}, pluck="name") if protected else []
+	if protected and not lessons:
+		frappe.throw(_("Add lessons before enrolling a student."), frappe.ValidationError)
+	enrollment = frappe.get_doc({"doctype": "LMS Enrollment", "course": course, "member": member}).insert(ignore_permissions=True)
+	grant = None
+	if protected:
+		grant = frappe.get_doc({"doctype": "LMS Access Grant", "course": course, "member": member,
+			"starts_at": start, "status": "Active", "personal_end_type": "At" if end else "Inherit",
+			"ends_at": end, "course_end_type": "Inherit", "completed_retention_type": "Inherit",
+			"lessons": [{"lesson": lesson, "opening_type": "Inherit", "prerequisite_state": "Inherit"} for lesson in lessons],
+		}).insert(ignore_permissions=True)
+	return {"enrollment": enrollment.name, "member": member, "grant": grant.name if grant else None,
+		"starts_at": str(start) if grant else None, "lessons": len(lessons)}

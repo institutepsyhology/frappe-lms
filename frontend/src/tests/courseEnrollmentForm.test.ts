@@ -171,7 +171,7 @@ const fields = (wrapper: ReturnType<typeof mount>) =>
 	wrapper.find('[data-testid="course-enrollment-fields"]')
 
 const pickStudent = async (wrapper: ReturnType<typeof mount>) => {
-	const input = wrapper.find('[data-testid="link-User"] input')
+	const input = wrapper.find('input[type=email]')
 	await input.setValue('student@example.com')
 }
 
@@ -280,18 +280,9 @@ describe('CourseEnrollmentForm as a route', () => {
 			.find('[data-testid="course-enrollment-save"]')
 			.trigger('click')
 		expect(enrollResource.submit).toHaveBeenCalledTimes(1)
-		expect(
-			(
-				optionsFor('frappe.client.insert').makeParams as () => { doc: unknown }
-			)()
-		).toEqual({
-			doc: {
-				doctype: 'LMS Enrollment',
-				course: 'COURSE-1',
-				member: 'student@example.com',
-				payment: null,
-				purchased_certificate: false,
-			},
+		expect((optionsFor('lms.lms.access_actions.enroll_student_with_access').makeParams as () => unknown)()).toEqual({
+			course: 'COURSE-1', email: 'student@example.com', first_name: null, last_name: null,
+			middle_name: null, phone: null, starts_at: null, ends_at: null,
 		})
 	})
 
@@ -377,43 +368,13 @@ describe('CourseEnrollmentForm as a route', () => {
 		expect(router.currentRoute.value.name).toBe('CourseDetail')
 	})
 
-	// Link hands its onCreate exactly one argument; a handler that expected a
-	// second `close` callback threw on every click.
-	it('opens Settings from "Create New" without a second callback', async () => {
+	it('offers optional access dates and names directly in the form', async () => {
 		const router = makeRouter()
-		await router.push({
-			name: 'CourseDetail',
-			params: { courseName: 'COURSE-1' },
-			hash: COURSE_TAB,
-		})
-		await openForm(router, { lmsFormEntry: true })
+		await openForm(router)
 		const wrapper = await mountForm(router)
-
-		await wrapper.find('[data-testid="create-User"]').trigger('click')
-		await flushPromises()
-
-		expect(openSettingsMock).toHaveBeenCalledWith('Members')
-		expect(router.currentRoute.value.name).toBe('CourseDetail')
-	})
-
-	// Settings is mounted only in the desktop sidebar. Closing the form for a
-	// dialog that never appears threw away whatever the user had typed and left
-	// them with no way to add the member they came for.
-	it('stays put when Settings has nowhere to open', async () => {
-		openSettingsMock.mockReturnValue(false)
-		const router = makeRouter()
-		await router.push({
-			name: 'CourseDetail',
-			params: { courseName: 'C1' },
-		})
-		await openForm(router, { lmsFormEntry: true })
-		const wrapper = await mountForm(router)
-
-		await wrapper.find('[data-testid="create-User"]').trigger('click')
-		await flushPromises()
-
-		expect(openSettingsMock).toHaveBeenCalledWith('Members')
-		expect(router.currentRoute.value.name).toBe('NewCourseEnrollment')
+		expect(wrapper.find('input[type=email]').exists()).toBe(true)
+		expect(wrapper.findAll('input[type=datetime-local]')).toHaveLength(2)
+		expect(wrapper.text()).toContain('Если не указано — текущая дата и время сайта')
 	})
 
 	it('mobile: the back control pops the router back to the course', async () => {

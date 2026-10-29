@@ -8,27 +8,15 @@
 				{{ refusal }}
 			</div>
 			<div v-else data-testid="course-enrollment-fields" class="space-y-4">
-				<FormControl
-					type="checkbox"
-					:label="__('Purchased Certificate')"
-					v-model="purchasedCertificate"
-				/>
-				<Link
-					doctype="User"
-					:label="__('Student')"
-					placeholder=" "
-					v-model="student"
-					:required="true"
-					:onCreate="openMemberSettings"
-				/>
-				<Link
-					v-if="purchasedCertificate"
-					doctype="LMS Payment"
-					:label="__('Payment')"
-					placeholder=" "
-					v-model="payment"
-					:onCreate="openPaymentSettings"
-				/>
+				<label class="block">Email *<input v-model.trim="studentEmail" type="email" required class="mt-1 block w-full rounded border p-2" /></label>
+				<label class="block">Имя <input v-model.trim="firstName" class="mt-1 block w-full rounded border p-2" /></label>
+				<label class="block">Фамилия <input v-model.trim="lastName" class="mt-1 block w-full rounded border p-2" /></label>
+				<label class="block">Отчество <input v-model.trim="middleName" class="mt-1 block w-full rounded border p-2" /></label>
+				<label class="block">Телефон <input v-model.trim="phone" type="tel" class="mt-1 block w-full rounded border p-2" /></label>
+				<label class="block">Открыть доступ <input v-model="startsAt" type="datetime-local" class="mt-1 block w-full rounded border p-2" /></label>
+				<p class="text-sm text-ink-gray-6">Если не указано — текущая дата и время сайта.</p>
+				<label class="block">Закрыть доступ <input v-model="endsAt" type="datetime-local" class="mt-1 block w-full rounded border p-2" /></label>
+				<p class="text-sm text-ink-gray-6">Если не указано — как в настройках курса. Даты указываются по времени сайта.</p>
 			</div>
 		</template>
 		<template #actions>
@@ -50,14 +38,11 @@
 <script setup lang="ts">
 import {
 	createResource,
-	FormControl,
 	getCachedListResource,
 	toast,
 } from 'frappe-ui'
 import { computed, inject, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { openSettings } from '@/utils'
-import Link from '@/components/Controls/Link.vue'
 import FormShell from '@/components/FormShell.vue'
 import HeaderButton from '@/components/HeaderButton.vue'
 import { useFormRoute } from '@/composables/useFormRoute'
@@ -78,9 +63,13 @@ const route = useRoute()
 const readOnlyMode = (window as Window & { read_only_mode?: boolean })
 	.read_only_mode
 
-const student = ref<string | null>(null)
-const payment = ref<string | null>(null)
-const purchasedCertificate = ref<boolean>(false)
+const studentEmail = ref('')
+const firstName = ref('')
+const lastName = ref('')
+const middleName = ref('')
+const phone = ref('')
+const startsAt = ref('')
+const endsAt = ref('')
 
 // The course page keeps its active tab in route.hash and CourseEditor keeps the
 // open lesson in route.query, so both have to travel back with us — closing to a
@@ -137,17 +126,11 @@ const refusal = computed(() => {
 // A plain createResource rather than a list resource, so a save does not also
 // fire frappe-ui's unfiltered follow-up list fetch.
 const enrollment = createResource({
-	url: 'frappe.client.insert',
+	url: 'lms.lms.access_actions.enroll_student_with_access',
 	makeParams() {
-		return {
-			doc: {
-				doctype: 'LMS Enrollment',
-				course: props.courseName,
-				member: student.value,
-				payment: purchasedCertificate.value ? payment.value : null,
-				purchased_certificate: purchasedCertificate.value,
-			},
-		}
+		return { course: props.courseName, email: studentEmail.value, first_name: firstName.value || null,
+			last_name: lastName.value || null, middle_name: middleName.value || null, phone: phone.value || null,
+			starts_at: startsAt.value || null, ends_at: endsAt.value || null }
 	},
 }) as unknown as Resource<unknown>
 
@@ -157,27 +140,9 @@ const reloadStudents = () => {
 	getCachedListResource(['courseProgress', props.courseName])?.reload()
 }
 
-// Link calls these with one argument unless it is in `inlineCreate` mode, which
-// neither field is — it closes its own dropdown first, so there is no second
-// close callback to invoke here.
-//
-// Leaving the form to open Settings is the modal's behaviour kept intact: the
-// settings drawer would otherwise sit under a full-screen form on a phone.
-const openMemberSettings = () => {
-	if (openSettings('Members')) close()
-}
-
-const openPaymentSettings = () => {
-	if (openSettings('Transactions')) close()
-}
-
 const validateData = (): boolean => {
-	if (!student.value) {
-		toast.error(__('Please select a student to enroll.'))
-		return false
-	}
-	if (purchasedCertificate.value && !payment.value) {
-		toast.error(__('Please select a payment for the purchased certificate.'))
+	if (!studentEmail.value) {
+		toast.error('Укажите email ученика.')
 		return false
 	}
 	return true

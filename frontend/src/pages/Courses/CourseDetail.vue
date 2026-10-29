@@ -96,7 +96,7 @@
 				v-if="tab?.key === 'dashboard' && course.data && isMobile"
 				variant="outline"
 				class="!size-9"
-				:tooltip="__('Enroll')"
+				:tooltip="'Добавить ученика'"
 				@click="openEnrollForm()"
 			>
 				<template #icon>
@@ -111,7 +111,7 @@
 				<template #prefix>
 					<span class="lucide-plus size-4" />
 				</template>
-				{{ __('Enroll') }}
+				Добавить ученика
 			</Button>
 			<Button
 				v-if="tab?.key === 'settings' && user.data?.is_moderator && !isMobile"

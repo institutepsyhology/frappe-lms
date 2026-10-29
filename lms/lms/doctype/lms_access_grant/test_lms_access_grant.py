@@ -89,6 +89,25 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		self.assertGreaterEqual(start, before.replace(microsecond=0))
 		self.assertLessEqual(start, now_datetime())
 
+	def test_enroll_new_student_and_open_access_in_one_action(self):
+		from lms.lms.access_actions import enroll_student_with_access
+
+		frappe.set_user("Administrator")
+		frappe.get_doc({"doctype": "LMS Access Policy", "course": self.course.name, "enabled": 1,
+			"default_personal_end_type": "Unlimited", "global_end_type": "Unlimited",
+			"completed_retention_type": "None", "visited_retention_type": "None",
+			"lessons": [{"lesson": self.lesson.name, "opening_type": "After Start", "delay_days": 0,
+				"prerequisite_type": "None"}]}).insert(ignore_permissions=True)
+		result = enroll_student_with_access(self.course.name, "stage-oneclick@example.invalid", first_name="Learner")
+		self.assertTrue(frappe.db.exists("LMS Enrollment", result["enrollment"]))
+		self.assertEqual(frappe.get_doc("LMS Access Grant", result["grant"]).lessons[0].lesson, self.lesson.name)
+		self.assertTrue(can_access_lesson(self.lesson.name, user=result["member"]))
+		with self.assertRaises(frappe.ValidationError):
+			enroll_student_with_access(self.course.name, "stage-oneclick@example.invalid")
+		frappe.set_user(self.other.email)
+		with self.assertRaises(frappe.PermissionError):
+			enroll_student_with_access(self.course.name, "unauthorized@example.invalid")
+
 	def test_student_with_grant_and_student_without_grant(self):
 		frappe.set_user(self.student.email)
 		self.assertTrue(can_access_lesson(self.lesson.name))
