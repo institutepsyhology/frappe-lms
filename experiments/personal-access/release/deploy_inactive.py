@@ -19,10 +19,10 @@ import time
 
 ROOT = Path(__file__).resolve().parents[3]
 BASE = Path("/opt/company-lms")
-OLD = "sha256:7987c052967bd9eda74a63b02b4d70f5f13aacf01f312ae659d5466eb28754d5"
+OLD = "sha256:0588aad425435aed74c002c306ff910e0b70383cb76b3b92cbd9e7135bab0f7c"
 BASE_TAG = "company-lms:lesson-settings-r21-20261028"
 BASE_IMAGE = "sha256:4781e698ca6b3b4ed09bbe9af113664887dd7dc17421127e472f80f23f8ab610"
-TAG = "company-lms:overview-ru-r31-20261029"
+TAG = "company-lms:youtube-controls-r32-20261029"
 OVERLAY = ("lms/lms/api.py", "lms/lms/permissions.py", "lms/lms/utils.py",
     "lms/lms/doctype/course_lesson/course_lesson.py", "lms/lms/doctype/course_lesson/course_lesson.json",
     "lms/lms/access_actions.py", "lms/lms/individual_access.py",
@@ -31,6 +31,7 @@ OVERLAY = ("lms/lms/api.py", "lms/lms/permissions.py", "lms/lms/utils.py",
     "frontend/src/pages/LessonForm.vue", "frontend/src/components/CourseOutline.vue",
     "frontend/src/pages/Forms/CourseEnrollmentForm.vue", "frontend/src/pages/Courses/CourseDetail.vue",
     "frontend/src/pages/Courses/CourseOverview.vue", "lms/locale/ru.po",
+    "frontend/src/utils/videoChoice.ts", "frontend/src/tests/videoChoice.test.ts",
     "frontend/src/tests/courseEnrollmentForm.test.ts",
     "frontend/src/components/Courses/IndividualAccessSettings.vue", "frontend/src/tests/individualAccessSettings.test.ts",
     "lms/lms/doctype/lms_access_grant/test_lms_access_grant.py")

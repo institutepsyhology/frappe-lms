@@ -56,13 +56,13 @@ describe('videoChoice EditorJS block', () => {
 		document.body.append(root)
 		expect(root.querySelectorAll('iframe')).toHaveLength(1)
 		expect(root.querySelector('iframe')?.src).toBe(rutubeEmbed)
-		expect([...root.querySelectorAll('button')].map((button) => button.textContent)).toEqual(['Rutube', 'YouTube'])
+		expect([...root.querySelectorAll('button[data-provider]')].map((button) => button.textContent)).toEqual(['Rutube', 'YouTube'])
 		expect(root.querySelector('button[aria-pressed="true"]')?.textContent).toBe('Rutube')
 		const activeButton = root.querySelector('button[aria-pressed="true"]')!
 		expect(getComputedStyle(activeButton).backgroundColor).toBe('rgb(17, 24, 39)')
 		expect(getComputedStyle(activeButton).color).toBe('rgb(255, 255, 255)')
 		expect(root.querySelector('a')).toBeNull()
-		expect(root.querySelector('input')).toBeNull()
+		expect(root.querySelector('input[type=url]')).toBeNull()
 		expect(root.querySelector('iframe')?.getAttribute('sandbox')).toBe('allow-scripts allow-same-origin allow-presentation')
 		expect(root.querySelector('iframe')?.getAttribute('allow')).toBe('autoplay; fullscreen; picture-in-picture; encrypted-media')
 	})
@@ -75,7 +75,7 @@ describe('videoChoice EditorJS block', () => {
 		root.querySelectorAll('button')[1].click()
 		expect(previous.isConnected).toBe(false)
 		expect(root.querySelectorAll('iframe')).toHaveLength(1)
-		expect(root.querySelector('iframe')?.src).toBe(youtubeEmbed)
+		expect(root.querySelector('iframe')?.src).toContain(youtubeEmbed)
 		expect(root.querySelector('button[aria-pressed="true"]')?.textContent).toBe('YouTube')
 		expect(tool.save()).toEqual({ rutube: rutubeEmbed, youtube: youtubeEmbed, defaultProvider: 'rutube' })
 	})
@@ -83,7 +83,7 @@ describe('videoChoice EditorJS block', () => {
 	it('falls back to the valid provider without creating an empty iframe', () => {
 		const tool = new VideoChoice({ data: { ...data, rutube: 'javascript:alert(1)' }, readOnly: true })
 		const root = tool.render()
-		expect(root.querySelector('iframe')?.src).toBe(youtubeEmbed)
+		expect(root.querySelector('iframe')?.src).toContain(youtubeEmbed)
 		expect(root.querySelectorAll('button')[0].disabled).toBe(true)
 		const empty = new VideoChoice({ data: {}, readOnly: true }).render()
 		expect(empty.querySelector('iframe')).toBeNull()
@@ -121,6 +121,24 @@ describe('videoChoice EditorJS block', () => {
 		expect(root.querySelector('iframe')?.src).toBe(youtubeEmbed)
 		root.querySelectorAll('button')[0].click()
 		expect(tool.save().defaultProvider).toBe('youtube')
+	})
+
+	it('provides separate playback controls for YouTube and preserves the standard Rutube player', () => {
+		const tool = new VideoChoice({ data, readOnly: true })
+		const root = tool.render()
+		document.body.append(root)
+		expect(root.querySelector('[aria-label="Воспроизвести или приостановить видео"]')).toBeNull()
+		;(root.querySelector('[data-provider="youtube"]') as HTMLButtonElement).click()
+		const frame = root.querySelector('iframe')!
+		expect(frame.tabIndex).toBe(-1)
+		expect(new URL(frame.src).searchParams.get('controls')).toBe('0')
+		const send = vi.spyOn(frame.contentWindow!, 'postMessage')
+		;(root.querySelector('[aria-label="▶"]') as HTMLButtonElement).click()
+		expect(send).toHaveBeenCalledWith(expect.stringContaining('playVideo'), 'https://www.youtube.com')
+		expect(root.textContent).toContain('❚❚')
+		;(root.querySelector('[aria-label="Пауза"]') as HTMLButtonElement).click()
+		expect(send).toHaveBeenCalledWith(expect.stringContaining('pauseVideo'), 'https://www.youtube.com')
+		tool.destroy()
 	})
 
 	it('tears down its iframe when the editor removes the block', () => {
