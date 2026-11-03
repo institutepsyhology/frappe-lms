@@ -42,3 +42,8 @@ imports per site until the database transaction commits or rolls back.
 This source file and tests contain synthetic data only. Never commit actual
 lesson contents, students, screenshot bytes, authentication information, or
 private media links to GitHub.
+
+The reusable schema definition is `lms/lms/avo_mapping_fields.py`; the current
+backend-only image does not include it. The four fields can also be created via
+the authenticated native MCP `Custom Field` document API, deliberately and
+independently on each intended site. The importer does not install them itself.

@@ -41,3 +41,8 @@ private source snapshot was confirmed, and an identical retry returned
 MCP dry-run. Cross-account input to another site was rejected. A source with
 unsupported HTML was reported as `ready=false` without creating a lesson.
 An authenticated learner-view screenshot/player check is still outstanding.
+
+The four AVO identity fields were independently created through native MCP on
+the Master Vision site as well as on mv-centr. A synthetic dry-run on Master
+Vision passed with its own source origin; no Master Vision lesson was created.
+IOMP has no verified AVO source mapping and the import method rejects it.
