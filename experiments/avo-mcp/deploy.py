@@ -126,6 +126,11 @@ def main():
         if actual != source_hashes:
             raise RuntimeError('candidate_source_mismatch')
         report['image'] = image
+        command(['docker','run','--rm','--network=none','--mount',
+            'type=bind,src=' + str(ROOT / 'lms/lms') + ',dst=/tmp/avo-mcp-tests,readonly',
+            '--entrypoint','/home/frappe/frappe-bench/env/bin/python',image,
+            '-m','unittest','discover','-s','/tmp/avo-mcp-tests','-p','test_avo*.py'],timeout=90)
+        report['candidate_tests_passed'] = True
         backups = []
         for site in SITES:
             out = command(['docker','exec','-i','-u','frappe','-w','/home/frappe/frappe-bench/sites',
