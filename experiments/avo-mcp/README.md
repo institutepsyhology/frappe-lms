@@ -20,3 +20,24 @@ source snapshot. An identical retry succeeded without duplication, a changed
 retry was rejected, and no enrollment was created. Guest access was denied
 both to the importer and to the private image. These checks do not prove browser
 playback, screenshot rendering or backup restore.
+
+## Deployment and live verification, 2026-11-03
+
+Source commit `25712d6b1c57bb3625b0e681a8f8d72dc62b900c` produced image
+`sha256:3ee9ef7f61c0d9d1a24a0a6b4b59960b78274600a765af75a9a69e9eb9b01b39`
+from previous image `sha256:d985d00e9ce5d032baf77aa8d5cdd6508a22b4194a66a600ba962c526c5ac94a`.
+Source digests matched the published commit. The candidate started and passed
+14 synthetic tests; fresh database backups passed gzip integrity checks; all
+six services and three sites were healthy and counts, languages and access
+release switches were unchanged during deployment. This does not prove backup
+restore. The earlier multi-layer candidate was not installed because it could
+not start; the successful release uses one new filesystem layer.
+
+Through the authenticated Codex MCP on the intended site, the new method was
+discovered and its dry-run checked on real AVO data. One course and lesson were
+created as drafts, source IDs and both original video pairs were read back, a
+private source snapshot was confirmed, and an identical retry returned
+`already_imported`; a modified retry was rejected. A synthetic image passed
+MCP dry-run. Cross-account input to another site was rejected. A source with
+unsupported HTML was reported as `ready=false` without creating a lesson.
+An authenticated learner-view screenshot/player check is still outstanding.
