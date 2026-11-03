@@ -17,6 +17,7 @@ from lms.lms.avo_transform import IMAGE_KEY, plan_import
 SITE_ACCOUNTS = {
     'my-lk.mv-centr.ru': ('mv-centr', 'https://shop.mv-centr.ru'),
     'my-lk.mastervision.su': ('mastervision', 'https://shop.mastervision.su'),
+    'my-lk.iomp.ru': ('iomp', 'https://shop.iomp.ru'),
 }
 MAX_IMAGE = 5 * 1024 * 1024
 MAX_IMAGES = 10
@@ -70,6 +71,24 @@ def _matching(doctype, account, source_id):
 
 
 def _find_image_keys(payload):
+    if payload.get('format') == 'ape':
+        pending, keys, count = [payload.get('ape')], set(), 0
+        while pending:
+            node = pending.pop()
+            count += 1
+            if count > 1000:
+                raise ValueError('too_many_blocks')
+            if not isinstance(node, dict):
+                continue
+            if node.get('name') == 'image':
+                key = node.get('id')
+                if not isinstance(key, str) or not IMAGE_KEY.fullmatch(key) or key in keys:
+                    raise ValueError('invalid_image_key')
+                keys.add(key)
+            children = node.get('children', [])
+            if isinstance(children, list):
+                pending.extend(children)
+        return keys
     if payload.get('format') != 'preview':
         return set()
     items = payload.get('content', [])

@@ -10,6 +10,102 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_labelled_legacy_players_become_one_pair_for_each_account(self):
+        def text_block(value):
+            return {'name': 'text', 'fields': {'html': '<p><strong>' + value + '</strong></p>'}}
+        def video(provider, url):
+            return {'name': 'video', 'fields': {'videoProvider': provider, 'videoSrc': url}}
+        yt = 'https://youtu.be/abcdefghijk'
+        rt = 'https://rutube.ru/play/embed/0123456789abcdef0123456789abcdef/?p=secret'
+        root = {'name':'page','children':[{'name':'section','children':[{'name':'column','children':[
+            text_block('До видео'), text_block('ОСНОВНОЙ ПЛЕЕР'), video('youtube', yt),
+            text_block('АЛЬТЕРНАТИВНЫЙ ПЛЕЕР'), video('rutube', rt), text_block('После видео')
+        ]}]}]}
+        for account in ('iomp', 'mv-centr', 'mastervision'):
+            payload = sample(root, 'ape'); payload['account'] = account
+            out = plan_import(payload)
+            self.assertTrue(out['ready'], out['issues'])
+            self.assertEqual([x['type'] for x in out['blocks']], ['paragraph','videoChoice','paragraph'])
+            self.assertEqual(out['blocks'][1]['data'], {'youtube':yt,'rutube':rt,'defaultProvider':'youtube'})
+            self.assertIn('legacy_player_labels_combined', out['warnings'])
+
+    def test_do_not_guess_pairs_for_different_labels_or_intervening_content(self):
+        def text_block(value): return {'name':'text','fields':{'html':'<p>' + value + '</p>'}}
+        def video(provider, code): return {'name':'video','fields':{'videoProvider':provider,'videoSrc':code}}
+        yt = video('youtube','https://youtu.be/abcdefghijk')
+        rt = video('rutube','https://rutube.ru/play/embed/0123456789abcdef0123456789abcdef/')
+        for nodes in (
+            [text_block('ОСНОВНОЙ ПЛЕЕР'), yt, text_block('Другая часть'), rt],
+            [text_block('ОСНОВНОЙ ПЛЕЕР'), yt, text_block('АЛЬТЕРНАТИВНЫЙ ПЛЕЕР'), text_block('Текст'), rt],
+            [text_block('ОСНОВНОЙ ПЛЕЕР'), yt, text_block('АЛЬТЕРНАТИВНЫЙ ПЛЕЕР'), yt],
+            [text_block('ОСНОВНОЙ ПЛЕЕР ЧАСТЬ 1'), yt, text_block('АЛЬТЕРНАТИВНЫЙ ПЛЕЕР ЧАСТЬ 1'), rt],
+        ):
+            out = plan_import(sample({'name':'page','children':nodes}, 'ape'))
+            self.assertFalse(out['ready'])
+            self.assertIn('legacy_player_pair_unresolved', out['issues'])
+            self.assertEqual(sum(b['type']=='videoChoice' for b in out['blocks']), 2)
+            self.assertNotIn('legacy_player_labels_combined', out['warnings'])
+
+        split = {'name':'page', 'children':[
+            {'name':'section','children':[text_block('ОСНОВНОЙ ПЛЕЕР'),yt]},
+            {'name':'section','children':[text_block('АЛЬТЕРНАТИВНЫЙ ПЛЕЕР'),rt]},
+        ]}
+        out = plan_import(sample(split, 'ape'))
+        self.assertFalse(out['ready'])
+        self.assertIn('legacy_player_pair_unresolved', out['issues'])
+
+    def test_many_pairs_keep_both_sources_order_and_default(self):
+        nodes = []
+        for index in range(20):
+            first, second = (('youtube', 'rutube') if index % 2 == 0 else ('rutube', 'youtube'))
+            urls = {'youtube': 'https://youtu.be/abcdefghijk',
+                    'rutube': 'https://rutube.ru/play/embed/0123456789abcdef0123456789abcdef/?p=secret'}
+            nodes.extend([
+                {'name':'text','fields':{'html':'<p>ОСНОВНОЙ ПЛЕЕР</p>'}},
+                {'name':'video','fields':{'videoProvider':first,'videoSrc':urls[first]}},
+                {'name':'text','fields':{'html':'<p>АЛЬТЕРНАТИВНЫЙ ПЛЕЕР</p>'}},
+                {'name':'video','fields':{'videoProvider':second,'videoSrc':urls[second]}},
+            ])
+        out = plan_import(sample({'name':'page','children':nodes}, 'ape'))
+        self.assertTrue(out['ready'], out['issues'])
+        self.assertEqual(len(out['blocks']), 20)
+        self.assertEqual([b['data']['defaultProvider'] for b in out['blocks']],
+                         ['youtube', 'rutube'] * 10)
+        self.assertTrue(all(b['data']['youtube'] and b['data']['rutube'].endswith('?p=secret')
+                            for b in out['blocks']))
+
+    def test_ape_independent_videos_buttons_image_and_formatted_text(self):
+        image_id = '83d9d865-1b9e-4086-a355-bb6f68be4730'
+        root = {'name': 'page', 'children': [
+            {'name': 'image', 'id': image_id, 'fields': {'imageSrc': 'https://example.test/img.jpg', 'anchor': ''}},
+            {'name': 'text', 'fields': {'html': '<p style="text-align:center"><span style="color:red"><strong>Здравствуйте, {name}</strong></span></p>', 'anchor': ''}},
+            {'name': 'video', 'fields': {'videoProvider': 'youtube', 'videoSrc': 'https://youtu.be/abcdefghijk'}},
+            {'name': 'text', 'fields': {'html': '<p>Другой проигрыватель</p>'}},
+            {'name': 'video', 'fields': {'videoProvider': 'rutube', 'videoSrc': 'https://rutube.ru/play/embed/0123456789abcdef0123456789abcdef/?p=secret'}},
+            {'name': 'button', 'fields': {'html': 'Аудио', 'url': 'https://example.test/audio', 'linkType': 'url', 'blank': True, 'anchor': '', 'toAnchor': '', 'event': '', 'icon': ''}},
+        ]}
+        out = plan_import(sample(root, 'ape'), {image_id: '/private/files/image.jpg'})
+        self.assertTrue(out['ready'], out['issues'])
+        self.assertEqual([b['type'] for b in out['blocks']], ['image', 'paragraph', 'videoChoice', 'paragraph', 'videoChoice', 'paragraph'])
+        self.assertIn('{name}', out['blocks'][1]['data']['text'])
+        self.assertIn('ape_text_formatting_not_reconstructed', out['warnings'])
+        self.assertEqual(out['blocks'][2]['data']['youtube'], 'https://youtu.be/abcdefghijk')
+        self.assertEqual(out['blocks'][2]['data']['rutube'], '')
+        self.assertEqual(out['blocks'][4]['data']['youtube'], '')
+        self.assertIn('?p=secret', out['blocks'][4]['data']['rutube'])
+        self.assertIn('https://example.test/audio', out['blocks'][5]['data']['text'])
+        self.assertIn('image_not_prepared', plan_import(sample(root, 'ape'))['issues'])
+
+    def test_ape_formatted_html_and_button_refuse_unrecognized_data(self):
+        for node in [
+            {'name': 'text', 'fields': {'html': '<p><script>alert(1)</script></p>'}},
+            {'name': 'text', 'fields': {'html': '<span onclick="alert(1)">x</span>'}},
+            {'name': 'button', 'fields': {'html': 'x', 'url': 'javascript:alert(1)', 'linkType': 'url'}},
+            {'name': 'button', 'fields': {'html': 'x', 'url': 'https://example.test', 'linkType': 'event', 'event': 'doSomething'}},
+            {'name': 'button', 'fields': {'html': '<strong>Audio</strong>', 'url': 'https://example.test', 'linkType': 'url'}},
+        ]:
+            self.assertFalse(plan_import(sample({'name':'page','children':[node]}, 'ape'))['ready'])
+
     def test_pair_text_links_and_original_query(self):
         youtube = "https://youtu.be/abcdefghijk"
         rutube = "https://rutube.ru/video/private/0123456789abcdef0123456789abcdef/?p=secret&x=1"

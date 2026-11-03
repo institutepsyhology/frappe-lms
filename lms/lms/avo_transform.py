@@ -139,6 +139,132 @@ def _safe_html(value):
         return False
 
 
+def _normalize_ape_text(value):
+    """Strip only APE's presentation wrappers; reject any unrecognized markup."""
+    if not isinstance(value, str):
+        raise ValueError('invalid_text')
+
+    class Normalizer(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=False)
+            self.parts, self.stack, self.changed = [], [], False
+
+        def handle_starttag(self, tag, attrs):
+            if tag not in ALLOWED_TAGS | {'span'}:
+                raise ValueError('unsupported_html')
+            if len({key for key, _ in attrs}) != len(attrs):
+                raise ValueError('duplicate_attribute')
+            if tag in ('p', 'span') and all(key == 'style' for key, _ in attrs):
+                if attrs or tag == 'span':
+                    self.changed = True
+                attrs = []
+            elif attrs and not (tag == 'a' and all(key in ('href', 'title') for key, _ in attrs)):
+                raise ValueError('unsupported_attribute')
+            if tag != 'br':
+                self.stack.append(tag)
+            if tag != 'span':
+                attributes = ''.join(' ' + key + '="' + escape(val or '', quote=True) + '"' for key, val in attrs)
+                self.parts.append('<' + tag + attributes + '>')
+
+        def handle_startendtag(self, tag, attrs):
+            self.handle_starttag(tag, attrs)
+            if tag != 'br':
+                self.handle_endtag(tag)
+
+        def handle_endtag(self, tag):
+            if tag == 'br':
+                return
+            if not self.stack or self.stack.pop() != tag:
+                raise ValueError('unbalanced_html')
+            if tag != 'span':
+                self.parts.append('</' + tag + '>')
+
+        def handle_data(self, data): self.parts.append(data)
+        def handle_entityref(self, name): self.parts.append('&' + name + ';')
+        def handle_charref(self, name): self.parts.append('&#' + name + ';')
+        def handle_comment(self, data): raise ValueError('unsupported_html')
+        def handle_decl(self, decl): raise ValueError('unsupported_html')
+        def handle_pi(self, data): raise ValueError('unsupported_html')
+        def unknown_decl(self, data): raise ValueError('unsupported_html')
+
+    parser = Normalizer()
+    parser.feed(value)
+    parser.close()
+    result = ''.join(parser.parts)
+    if parser.stack or not _safe_html(result):
+        raise ValueError('unsupported_html')
+    return result, parser.changed
+
+
+def _legacy_player_pairs(root):
+    """Recognize explicit AVO main/alternative player labels, never infer by proximity alone."""
+    class Label(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.parts = []
+            self.valid = True
+        def handle_starttag(self, tag, attrs):
+            if tag not in ('p', 'strong', 'b', 'em', 'i', 'br') or attrs:
+                self.valid = False
+            if tag == 'br': self.parts.append(' ')
+        def handle_data(self, data): self.parts.append(data)
+
+    def label(node):
+        if not isinstance(node, dict) or node.get('name') != 'text' or node.get('children'):
+            return None
+        fields = node.get('fields')
+        if not isinstance(fields, dict) or fields.get('anchor'):
+            return None
+        if any(v not in (None, '', False, [], {}) for k, v in fields.items() if k not in ('html', 'anchor')):
+            return None
+        try:
+            value, _ = _normalize_ape_text(fields.get('html'))
+            p = Label(); p.feed(value); p.close()
+            if p.valid:
+                text = ' '.join(''.join(p.parts).split()).casefold()
+                if 'основной плеер' in text or 'альтернативный плеер' in text:
+                    return text
+        except (ValueError, RecursionError):
+            pass
+        return None
+
+    def is_single_video(node):
+        if not isinstance(node, dict) or node.get('name') != 'video' or node.get('children'):
+            return False
+        fields = node.get('fields')
+        return (isinstance(fields, dict) and fields.get('videoProvider') in ('youtube', 'rutube')
+                and fields.get('videoProvider2') in (None, '') and fields.get('videoSrc2') in (None, '')
+                and _player_url(fields.get('videoSrc'), fields.get('videoProvider')))
+
+    pending, sequence = [(root, None)], []
+    while pending:
+        node, section = pending.pop()
+        if isinstance(node, dict) and node.get('name') in ('page', 'section', 'column', 'container'):
+            if node.get('name') == 'section':
+                section = id(node)
+            children = node.get('children', [])
+            if isinstance(children, list): pending.extend((child, section) for child in reversed(children))
+        else:
+            sequence.append((node, section))
+    first, skip, labels = {}, set(), set()
+    for n, _ in sequence:
+        if label(n): labels.add(id(n))
+    index = 0
+    while index + 3 < len(sequence):
+        entries = sequence[index:index + 4]
+        (a, sa), (v1, sv1), (b, sb), (v2, sv2) = entries
+        if (sa == sv1 == sb == sv2 and label(a) == 'основной плеер' and label(b) == 'альтернативный плеер'
+                and is_single_video(v1) and is_single_video(v2)
+                and v1['fields']['videoProvider'] != v2['fields']['videoProvider']):
+            first[id(v1)] = v2['fields']
+            skip.update((id(a), id(b), id(v2)))
+            labels.difference_update((id(a), id(b)))
+            index += 4
+        else:
+            index += 1
+    return first, skip, labels
+
+
 def plan_import(payload, image_urls=None):
     """Return a non-mutating import plan; any issue means stop and review.
 
@@ -206,6 +332,18 @@ def plan_import(payload, image_urls=None):
             issue("video_pair_incomplete")
             return
         blocks.append({"type": "videoChoice", "data": {**found, "defaultProvider": players[0]["provider"]}})
+
+    def single_video(provider, value):
+        if provider not in ('youtube', 'rutube') or not _player_url(value, provider):
+            issue('video_url_invalid')
+            return
+        parsed = urlsplit(value)
+        ignored = set(parse_qs(parsed.query, keep_blank_values=True)) - ({'v'} if provider == 'youtube' else {'p'})
+        if (ignored or parsed.fragment) and 'video_player_may_drop_parameters' not in plan['warnings']:
+            plan['warnings'].append('video_player_may_drop_parameters')
+        data = {'youtube': '', 'rutube': '', 'defaultProvider': provider}
+        data[provider] = value
+        blocks.append({'type': 'videoChoice', 'data': data})
 
     def entry(item):
         if not isinstance(item, dict):
@@ -276,6 +414,11 @@ def plan_import(payload, image_urls=None):
         root = payload.get("ape")
         if not isinstance(root, dict) or root.get("name") != "page":
             raise ValueError("invalid_ape_root")
+        legacy_first, legacy_skip, legacy_unmatched = _legacy_player_pairs(root)
+        if legacy_unmatched:
+            issue('legacy_player_pair_unresolved')
+        if legacy_first:
+            plan['warnings'].append('legacy_player_labels_combined')
         stack, count = [root], 0
         while stack:
             node = stack.pop()
@@ -309,12 +452,46 @@ def plan_import(payload, image_urls=None):
                 if any(k in fields for k in ("nativePlayer", "nativePlayer2", "isShowProgressControl", "isShowFastRewindButtons", "isFloating")):
                     if "ape_video_settings_not_reconstructed" not in plan["warnings"]:
                         plan["warnings"].append("ape_video_settings_not_reconstructed")
-                video_pair([{"provider": fields.get("videoProvider"), "url": fields.get("videoSrc")},
-                            {"provider": fields.get("videoProvider2"), "url": fields.get("videoSrc2")}])
+                if id(node) in legacy_first:
+                    other = legacy_first[id(node)]
+                    video_pair([{'provider': fields.get('videoProvider'), 'url': fields.get('videoSrc')},
+                                {'provider': other.get('videoProvider'), 'url': other.get('videoSrc')}])
+                elif id(node) in legacy_skip:
+                    pass
+                elif fields.get('videoProvider2') in (None, '') and fields.get('videoSrc2') in (None, ''):
+                    single_video(fields.get('videoProvider'), fields.get('videoSrc'))
+                else:
+                    video_pair([{"provider": fields.get("videoProvider"), "url": fields.get("videoSrc")},
+                                {"provider": fields.get("videoProvider2"), "url": fields.get("videoSrc2")}])
             elif kind == "text":
                 if fields.get("anchor") or any(v not in (None, "", False, [], {}) for k, v in fields.items() if k not in ("html", "anchor")):
                     issue("unsupported_text_settings")
-                paragraph(fields.get("html"))
+                try:
+                    normalized, changed = _normalize_ape_text(fields.get('html'))
+                    if changed and 'ape_text_formatting_not_reconstructed' not in plan['warnings']:
+                        plan['warnings'].append('ape_text_formatting_not_reconstructed')
+                    if id(node) not in legacy_skip:
+                        paragraph(normalized)
+                except (ValueError, RecursionError):
+                    issue('unsafe_or_unrecognized_html')
+            elif kind == 'button':
+                allowed = {'anchor', 'html', 'icon', 'linkType', 'url', 'blank', 'toAnchor', 'event'}
+                if (fields.get('linkType') != 'url' or any(fields.get(k) not in (None, '', False) for k in ('anchor','icon','toAnchor','event'))
+                        or any(v not in (None, '', False, [], {}) for k, v in fields.items() if k not in allowed)
+                        or not isinstance(fields.get('html'), str) or '<' in fields['html'] or '>' in fields['html']
+                        or not _url(fields.get('url'))):
+                    issue('unsupported_button')
+                else:
+                    paragraph('<a href="' + escape(fields['url'], quote=True) + '">' + escape(fields['html']) + '</a>')
+                    if fields.get('blank') and 'ape_button_new_tab_not_reconstructed' not in plan['warnings']:
+                        plan['warnings'].append('ape_button_new_tab_not_reconstructed')
+            elif kind == 'image':
+                allowed = {'anchor', 'imageSrc'}
+                if (fields.get('anchor') or not _url(fields.get('imageSrc'))
+                        or any(v not in (None, '', False, [], {}) for k, v in fields.items() if k not in allowed)):
+                    issue('unsupported_image_settings')
+                else:
+                    entry({'type': 'image', 'image_key': node.get('id'), 'caption': ''})
             elif kind == "page":
                 known = {"commonFontName", "commonFontLink", "commonFontFamily", "headingFontName", "headingFontLink", "headingFontFamily", "fontPair"}
                 if any(v not in (None, "", False, [], {}) for k, v in fields.items() if k not in known):

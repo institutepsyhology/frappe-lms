@@ -38,6 +38,26 @@ class Meta:
 
 
 class ImportTests(unittest.TestCase):
+    def test_iomp_site_account_mapping_and_isolation(self):
+        p = payload()
+        p.update(account='iomp', source_origin='https://shop.iomp.ru')
+        with self.assertRaisesRegex(ValueError, 'site_account_mismatch'):
+            module.import_lesson(p, {'one': png()})
+        module.frappe.local.site = 'my-lk.iomp.ru'
+        self.assertTrue(module.import_lesson(p, {'one': png()})['ready'])
+        p['source_origin'] = 'https://shop.mv-centr.ru'
+        with self.assertRaisesRegex(ValueError, 'site_account_mismatch'):
+            module.import_lesson(p, {'one': png()})
+
+    def test_ape_image_must_match_supplied_file(self):
+        p = payload()
+        p['format'] = 'ape'
+        p.pop('content')
+        p['ape'] = {'name':'page', 'children':[{'name':'image', 'id':'one', 'fields':{'imageSrc':'https://example.test/a.jpg'}}]}
+        with self.assertRaisesRegex(ValueError, 'image_keys_mismatch'):
+            module._plan(p, {})
+        self.assertTrue(module._plan(p, module._images({'one':png()}))['ready'])
+
     def setUp(self):
         module.frappe.local = types.SimpleNamespace(site="my-lk.mv-centr.ru")
         module.frappe.only_for = lambda role: self.assertEqual(role, "System Manager")
