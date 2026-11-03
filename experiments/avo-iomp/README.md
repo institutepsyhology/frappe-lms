@@ -21,3 +21,21 @@ builds a single-layer overlay, tests it in isolation, backs up all sites,
 checks health and unchanged site counts, and rolls back on failure. After
 release verify the actual MCP transport, isolation, dry-run and browser player.
 Document any limitations and the matching released commit in this repository.
+
+## Release verification, 2026-11-03
+
+Published source `ac74d8b6ea4c9a5dd91c4f8c3bae247e9f8c5dde` produced image
+`sha256:3d777da4a1255e0027aa50d8f164918ddc08eab0bef0640c873c3e7d766d1243`.
+The candidate passed 21 synthetic backend tests. Integrity checks passed on
+fresh database backups; six application services and three sites were healthy,
+with unchanged site counts, language, and access-release switches. A backup
+integrity check does not demonstrate a restore.
+
+The four identity fields in `lms/lms/avo_mapping_fields.py` were created and
+read back on IOMP through its MCP. Synthetic labelled-pair dry runs through the
+actual Codex MCP succeeded independently on IOMP, mv-centr and Master Vision.
+Synthetic inputs with mismatched IOMP/mv-centr origins were rejected. A changed
+label returned `legacy_player_pair_unresolved` and `ready=false`. No real
+IOMP lesson or access grant was created by these checks. An IOMP example passed
+local conversion using a placeholder for its image, with both original video
+URLs retained in one pair. Actual image transfer and playback remain unverified.
