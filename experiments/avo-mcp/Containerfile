@@ -1,0 +1,9 @@
+ARG BASE_IMAGE=sha256:d985d00e9ce5d032baf77aa8d5cdd6508a22b4194a66a600ba962c526c5ac94a
+FROM ${BASE_IMAGE}
+USER root
+COPY --chown=frappe:root lms/lms/avo_import.py lms/lms/avo_transform.py /home/frappe/frappe-bench/apps/lms/lms/lms/
+COPY lms/lms/test_avo_import_unit.py lms/lms/test_avo_transform.py /tmp/avo-mcp-tests/
+RUN /home/frappe/frappe-bench/env/bin/python -m py_compile /home/frappe/frappe-bench/apps/lms/lms/lms/avo_import.py /home/frappe/frappe-bench/apps/lms/lms/lms/avo_transform.py \
+ && /home/frappe/frappe-bench/env/bin/python -m unittest discover -s /tmp/avo-mcp-tests -p 'test_avo*.py' \
+ && rm -rf /tmp/avo-mcp-tests
+USER frappe
