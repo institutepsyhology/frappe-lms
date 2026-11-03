@@ -13,6 +13,7 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 BASE = Path('/opt/company-lms')
 OLD = 'sha256:d985d00e9ce5d032baf77aa8d5cdd6508a22b4194a66a600ba962c526c5ac94a'
+BASE_TAG = 'company-lms:video-provider-0e67fa5'
 TAG = 'company-lms:avo-mcp-20261103'
 BACKEND = 'company-lms-backend-1'
 SITES = ('my-lk.mastervision.su', 'my-lk.iomp.ru', 'my-lk.mv-centr.ru')
@@ -96,6 +97,8 @@ def main():
     spec.loader.exec_module(helper)
     if not helper.services_healthy(OLD):
         raise RuntimeError('unexpected_runtime_image')
+    if command(['docker','image','inspect',BASE_TAG,'--format','{{.Id}}']) != OLD:
+        raise RuntimeError('unexpected_base_image')
     env = BASE / 'runtime/.env'
     original = env.read_bytes()
     lines = re.findall(rb'^LMS_IMAGE=(.+)$', original, re.M)
