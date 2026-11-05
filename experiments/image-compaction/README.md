@@ -41,3 +41,10 @@ health checks on all three sites, unchanged site state, rollback, actual MCP
 verification, and a published matching commit. Subsequent releases must start
 from a pinned compacted baseline and include every relevant source change, not
 stack new releases on the previous one indefinitely.
+
+`deploy.py` implements the guarded switch for the specific image IDs pinned
+in this experiment. It reruns the entire comparison immediately before the
+switch, verifies fresh database backups, saves the original runtime settings,
+and rolls back if service, site, count, language, or release-setting checks
+fail. It changes no lesson or course data. It is deliberately pinned and must
+not be reused with different images without a new review and verification.
