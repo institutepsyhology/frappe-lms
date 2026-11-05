@@ -27,6 +27,14 @@ the isolated comparison and reports only difference categories and hashed path
 examples. Do not use the candidate for production until every difference has
 been explained and the verification strategy has been revised and rerun.
 
+On 2026-11-05 the strict comparison found only `mtime` differences for the
+directory entries `dev/pts` and `dev/shm`. Two independently created containers
+from the same source image confirmed that Docker generates these timestamps per
+container. The comparison now ignores only those two directory timestamps;
+their type, permissions, ownership, xattrs and all other fields remain checked.
+No other path or file timestamp is exempted. Re-run the full comparison before
+using the candidate.
+
 Run `python experiments/image-compaction/test_compaction.py` before publishing.
 Production switching is a separate guarded release requiring fresh backups,
 health checks on all three sites, unchanged site state, rollback, actual MCP

@@ -20,6 +20,17 @@ def archive(files):
 
 
 class CompactionTests(unittest.TestCase):
+    def test_only_runtime_directory_mtime_is_ignored(self):
+        def directory(name,mtime,mode=0o755):
+            out=io.BytesIO()
+            with tarfile.open(fileobj=out,mode='w') as tf:
+                info=tarfile.TarInfo(name);info.type=tarfile.DIRTYPE;info.mode=mode;info.mtime=mtime;tf.addfile(info)
+            out.seek(0);return module.file_manifest(out)
+        self.assertEqual(directory('dev/pts',1),directory('dev/pts',2))
+        self.assertEqual(directory('dev/shm',1),directory('dev/shm',2))
+        self.assertNotEqual(directory('dev/pts',1),directory('dev/pts',2,0o700))
+        self.assertNotEqual(directory('etc',1),directory('etc',2))
+
     def test_config_and_platform_preserved(self):
         image={'Os':'linux','Architecture':'amd64','Config':{'User':'frappe','Env':['EXAMPLE=a'],
               'Entrypoint':['/bin/start'],'Cmd':['serve'],'Volumes':{'/data':{}},'WorkingDir':'/work','ArgsEscaped':True}}

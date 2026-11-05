@@ -54,8 +54,11 @@ def describe(member,stream):
             if not chunk:break
             h.update(chunk)
         digest=h.hexdigest()
+    # Docker creates these two virtual mount-point directories anew per container.
+    # Preserve all metadata checks except their observed per-container mtimes.
+    ephemeral=member.isdir() and member.name.removeprefix('./').rstrip('/') in ('dev/pts','dev/shm')
     meta={'name':member.name,'type':member.type.decode('latin1'),'mode':member.mode,
-          'uid':member.uid,'gid':member.gid,'size':member.size,'mtime':member.mtime,
+          'uid':member.uid,'gid':member.gid,'size':member.size,'mtime':None if ephemeral else member.mtime,
           'linkname':member.linkname,'devmajor':member.devmajor,'devminor':member.devminor,
           'pax':dict(sorted(member.pax_headers.items())),'sha256':digest}
     return json.dumps(meta,sort_keys=True,separators=(',',':'),ensure_ascii=True)
