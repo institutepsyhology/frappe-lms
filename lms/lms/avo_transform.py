@@ -35,6 +35,10 @@ CONFIRMED_TEXT_ONLY_ANSWER_FORMS = {
 # Owner requested replacing these particular legacy players with links.
 # Digests bind the decision to the verified source; originals remain private.
 CONFIRMED_DRIVE_AUDIO_LINKS = {
+    ('mv-centr', '234', '3866'): 'eadc8b61117adff696aa922db97a05e2bc02482d4a64c11b4c01a2fd9613b2dc',
+    ('mv-centr', '234', '4030'): 'c031903da0b8e7b31f19ea6dd98cfad00fb9b1808e0ce10eef89e94c8a137029',
+    ('mv-centr', '234', '3872'): '06418e87139fc880a981d57cae41c7490a3ebccfaf57cb628b4d24a1d25b6d91',
+    ('mv-centr', '236', '5724'): '983fbb61980d849d89f02869f11ecbef95a872cd92bd3199975ad4490407d63b',
     ('mv-centr', '236', '4468'): '365b89e868707f504cfccf8f810feaef856924d2e189152a280069825ea41ef3',
     ('mv-centr', '237', '7315'): 'd0d11f9427e8c29120a558da516c6e7caf664aabba5fedae41e2f4a4695cb2ec',
 }

@@ -15,9 +15,12 @@ class StaticFragmentTests(unittest.TestCase):
         make_html_block(transformed)
         for bad in (iframe.replace('drive.google.com','example.test'),iframe.replace('/preview','/edit'),
                     iframe.replace('width="640"','onload="alert(1)"'),
-                    audio.replace('drive.google.com','example.test'),audio+audio):
+                    audio.replace('drive.google.com','example.test'),audio+'<audio>unknown</audio>'):
             with self.assertRaises(ValueError):
                 replace_drive_audio(bad) if '<audio' in bad else make_html_block(bad)
+        self.assertEqual(replace_drive_audio(audio+audio).count('АУДИОЗАПИСЬ'),2)
+        self.assertIn('АУДИОЗАПИСЬ',replace_drive_audio(audio.replace('nodownload"','nodownload" title="hello world"')))
+        with self.assertRaises(ValueError):replace_drive_audio(audio.replace('nodownload"','nodownload" onclick="alert(1)"'))
 
     def test_preserves_only_known_safe_clipboard_stylesheet(self):
         html = ('<p style="text-align: center"><style type="text/css">'

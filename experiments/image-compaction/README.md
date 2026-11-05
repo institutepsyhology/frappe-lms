@@ -141,3 +141,14 @@ rendering and playback require independent checks. The guarded release uses
 `deploy_drive_media.py`, the same verified single-layer base and rollback
 checks as the preceding release. Real source HTML and file URLs stay private.
 
+# Drive media release verification, 2026-11-06
+
+The guarded release from commit `b40093a6` produced image
+`sha256:a35468a9202baba5982e0ff591663f2f4b70b1061ec591ea52f3b7ed6383d7dd`.
+Its 49 candidate tests and backup integrity checks passed; all three sites
+were healthy and their counts and release switches were unchanged. Actual MCP
+dry-runs accepted the three reviewed source lessons, while retaining warnings
+that frame rendering has not been verified. Backups were not restore-tested.
+The follow-up `deploy_drive_media_batch.py` also covers additional individually
+verified audio fields and reviewed inert formatting. Unknown files and formats
+continue to stop for review.
