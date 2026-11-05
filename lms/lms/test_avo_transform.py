@@ -10,6 +10,28 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_confirmed_empty_answer_form_is_omitted_but_source_and_task_survive(self):
+        import base64, hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        html = ('<div class="lesson-mission-wrapper"><div class="lesson-mission-text">Задание {name}</div>'
+                '<div class="lesson-send-answer-block"><form action="/answer" method="post" enctype="multipart/form-data">'
+                '<div class="answer-form"><div class="answer-form-content"><div><div class="answer-textarea-container">'
+                '</div></div></div></div></form></div></div>')
+        root={'name':'page','children':[{'name':'text','fields':{'html':html}}]}
+        payload=sample(root,'ape');payload.update(course_id=25,lesson_id=115)
+        digest=hashlib.sha256(html.encode()).hexdigest()
+        with patch.dict(module.CONFIRMED_TEXT_ONLY_ANSWER_FORMS,{('mv-centr','25','115'):digest}):
+            out=plan_import(payload)
+            self.assertTrue(out['ready'],out['issues'])
+            rendered=base64.b64decode(out['blocks'][0]['data']['encodedHtml']).decode()
+            self.assertIn('Задание {name}',rendered)
+            self.assertNotIn('<form',rendered)
+            self.assertEqual(root['children'][0]['fields']['html'],html)
+            self.assertIn('answer_form_omitted_at_user_request',out['warnings'])
+            payload['account']='iomp'
+            self.assertFalse(plan_import(payload)['ready'])
+
     def test_confirmed_concatenated_video_uses_only_second_without_changing_source(self):
         import hashlib
         from unittest.mock import patch

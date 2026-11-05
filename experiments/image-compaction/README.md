@@ -98,3 +98,11 @@ On 05.11.2026 that overlay was deployed from commit `75ed0219`: all 41 AVO
 tests passed, backups for all three sites were verified, services remained
 healthy, and the actual mv-centr MCP preview confirmed the owner-selected video.
 The image was rebuilt from the one-layer baseline, not stacked on prior releases.
+
+For two specifically identified and hash-checked source lessons, the owner chose
+to retain assignment text while omitting the empty answer form for now. The
+converter strips only that verified empty form, keeps the remaining HTML and
+original private snapshot, and emits a warning. Changed snapshots, nonempty
+forms and unapproved forms remain blocked. Empty answer placeholders are
+accepted only when they contain no answer text or links; this avoids copying
+student responses into course material.

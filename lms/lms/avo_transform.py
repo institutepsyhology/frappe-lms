@@ -6,7 +6,7 @@ import json
 import math
 import re
 from urllib.parse import parse_qs, urlsplit
-from lms.lms.avo_html_fragment import make_html_block
+from lms.lms.avo_html_fragment import make_html_block, strip_empty_answer_form
 
 MAX_BYTES = 16 * 1024 * 1024
 MAX_DEPTH = 100
@@ -24,6 +24,18 @@ ALLOWED_TAGS = {"p", "br", "strong", "b", "em", "i", "u", "s", "a", "ul", "ol", 
 CONFIRMED_CONCATENATED_YOUTUBE = {
     ('mv-centr', '19', '62'): '6c6f238d72d0cc9b3f85a2296c57456c8b0108de257af8ab497b8a7a2634e5b9',
 }
+# Explicit user decision for these exact snapshots: keep the assignment text
+# and omit the empty answer form for now. The original remains in the snapshot.
+CONFIRMED_TEXT_ONLY_ANSWER_FORMS = {
+    ('mv-centr', '25', '115'): '402edcfd7b360ce9d6c9b8c628457be2f7a14ad10e482601b43bb89ab851a53f',
+    ('mv-centr', '101', '464'): '9c36aafe11bc53c2562516276fbd033ec77af4b736dfccb60b60e17b264f1368',
+}
+
+
+def _sha256_text(value):
+    if not isinstance(value,str):return None
+    try:return hashlib.sha256(value.encode('utf-8')).hexdigest()
+    except UnicodeError:return None
 
 
 def _ape_spacer(node):
@@ -571,7 +583,7 @@ def plan_import(payload, image_urls=None):
                     pass
                 elif (fields.get('videoProvider') == 'youtube' and fields.get('videoProvider2') in (None, '', 'youtube', 'rutube')
                       and fields.get('videoSrc2') in (None, '') and isinstance(fields.get('videoSrc'),str)
-                      and CONFIRMED_CONCATENATED_YOUTUBE.get((account,course,lesson)) == hashlib.sha256(fields['videoSrc'].encode('utf-8')).hexdigest()
+                      and CONFIRMED_CONCATENATED_YOUTUBE.get((account,course,lesson)) == _sha256_text(fields['videoSrc'])
                       and re.fullmatch(r'https://youtu\.be/[A-Za-z0-9_-]{11}https://youtu\.be/[A-Za-z0-9_-]{11}',fields['videoSrc'])):
                     second = fields['videoSrc'][len('https://youtu.be/') + 11:]
                     single_video('youtube',second)
@@ -622,7 +634,21 @@ def plan_import(payload, image_urls=None):
                     try:
                         block = make_html_block(fields.get('html'))
                     except (ValueError, UnicodeError, RecursionError):
-                        issue('unsafe_or_unrecognized_html')
+                        source = fields.get('html')
+                        expected_hash = CONFIRMED_TEXT_ONLY_ANSWER_FORMS.get((account,course,lesson))
+                        confirmed = expected_hash is not None and expected_hash == _sha256_text(source)
+                        if confirmed:
+                            try:
+                                block = make_html_block(strip_empty_answer_form(source))
+                            except (ValueError, UnicodeError, RecursionError):
+                                issue('unsafe_or_unrecognized_html')
+                            else:
+                                if id(node) not in legacy_skip:
+                                    blocks.append(block)
+                                    for warning in ('ape_static_html_frame_unverified','answer_form_omitted_at_user_request'):
+                                        if warning not in plan['warnings']:plan['warnings'].append(warning)
+                        else:
+                            issue('unsafe_or_unrecognized_html')
                     else:
                         if id(node) not in legacy_skip:
                             blocks.append(block)

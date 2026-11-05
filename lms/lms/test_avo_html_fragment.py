@@ -1,9 +1,23 @@
 import base64
 import unittest
-from lms.lms.avo_html_fragment import make_html_block
+from lms.lms.avo_html_fragment import make_html_block, strip_empty_answer_form
 
 
 class StaticFragmentTests(unittest.TestCase):
+    def test_only_empty_answer_form_is_removed_without_touching_task_text(self):
+        html = ('<div class="lesson-mission-wrapper"><div class="lesson-mission-text">Задание {name}</div>'
+                '<div class="lesson-send-answer-block"><form action="/answer" method="post" '
+                'enctype="multipart/form-data"><div class="answer-form"><div class="answer-form-content">'
+                '<div><div class="answer-textarea-container"></div></div></div></div></form></div></div>')
+        result = strip_empty_answer_form(html)
+        self.assertIn('Задание {name}',result)
+        self.assertNotIn('<form',result)
+        make_html_block(result)
+        for bad in (html.replace('</form>','Личный ответ</form>'),
+                    html.replace('</form>','<input value="private"></form>'),
+                    html+html):
+            with self.assertRaises(ValueError):strip_empty_answer_form(bad)
+
     def test_preserves_reviewed_formatting_and_extension_attributes(self):
         html = ('<div class="lesson-mission-wrapper" style="margin: 0px 0px 10px; line-height: 1.1">'
                 '<span class="redactor-inline-converted" style="background-color: transparent; font-weight: 700">'
@@ -20,6 +34,17 @@ class StaticFragmentTests(unittest.TestCase):
                 '<a span="" href="https://example.test/material">Материал</a></p></div>')
         result = make_html_block(html)
         self.assertEqual(base64.b64decode(result['data']['encodedHtml']).decode('utf-8'), html)
+
+    def test_preserves_font_colour_and_only_empty_answers_placeholder(self):
+        html = ('<div class="xdget-lessonAnswers" data-xdget-id="123" id="answers">'
+                '<div class="row"><div class="col-md-12"> </div></div></div>'
+                '<p><font color="#3984c6">Текст</font></p>')
+        result = make_html_block(html)
+        self.assertEqual(base64.b64decode(result['data']['encodedHtml']).decode('utf-8'), html)
+        for html in ('<div class="xdget-lessonAnswers">Личный ответ</div>',
+                     '<div class="xdget-lessonAnswers"><a href="https://example.test">x</a></div>',
+                     '<font color="javascript:alert(1)">x</font>'):
+            with self.assertRaises(ValueError):make_html_block(html)
 
     def test_preserves_html_without_interpretation(self):
         html='<div class="lesson-mission-wrapper" style="font-size: 16px"><h4><a href="https://example.test/a?x=1&amp;y=2" target="_blank">Материалы</a></h4><hr><ul><li>Текст</li></ul></div>'
