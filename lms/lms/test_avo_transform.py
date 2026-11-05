@@ -10,6 +10,43 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_confirmed_concatenated_video_uses_only_second_without_changing_source(self):
+        import hashlib
+        from unittest.mock import patch
+        first = 'https://youtu.be/abcdefghijk'
+        second = 'https://youtu.be/zzzzzzzzzzz'
+        combined = first + second
+        node = {'name':'video','fields':{'videoProvider':'youtube','videoSrc':combined}}
+        payload = sample({'name':'page','children':[node]},'ape')
+        payload.update(course_id=19,lesson_id=62)
+        digest = hashlib.sha256(combined.encode()).hexdigest()
+        from lms.lms import avo_transform as module
+        with patch.dict(module.CONFIRMED_CONCATENATED_YOUTUBE, {('mv-centr','19','62'):digest}):
+            out = plan_import(payload)
+            self.assertTrue(out['ready'], out['issues'])
+            self.assertEqual(out['blocks'][0]['data']['youtube'], second)
+            self.assertIn('user_selected_second_youtube',out['warnings'])
+            self.assertEqual(node['fields']['videoSrc'], combined)
+            payload['account'] = 'iomp'
+            self.assertFalse(plan_import(payload)['ready'])
+            payload['account'] = 'mv-centr'
+            node['fields']['videoSrc'] = first + 'https://youtu.be/xxxxxxxxxxx'
+            self.assertFalse(plan_import(payload)['ready'])
+
+    def test_identical_video_slots_are_one_video_but_different_links_stop(self):
+        url = 'https://youtu.be/abcdefghijk'
+        fields = {'videoProvider':'youtube','videoSrc':url,'videoProvider2':'youtube','videoSrc2':url}
+        out = plan_import(sample({'name':'page','children':[{'name':'video','fields':fields}]},'ape'))
+        self.assertTrue(out['ready'], out['issues'])
+        self.assertEqual(len(out['blocks']), 1)
+        self.assertEqual(out['blocks'][0]['data']['youtube'], url)
+        self.assertEqual(out['blocks'][0]['data']['rutube'], '')
+        self.assertIn('duplicate_video_sources_combined', out['warnings'])
+        fields['videoSrc2'] = 'https://youtu.be/zzzzzzzzzzz'
+        out = plan_import(sample({'name':'page','children':[{'name':'video','fields':fields}]},'ape'))
+        self.assertFalse(out['ready'])
+        self.assertIn('video_pair_unsupported', out['issues'])
+
     def test_multicolumn_content_is_not_flattened_into_a_ready_import(self):
         root = {'name': 'page', 'children': [{'name': 'section', 'children': [
             {'name': 'column', 'children': [{'name': 'text', 'fields': {'html': '<p>Левая</p>'}}]},

@@ -10,9 +10,15 @@ from urllib.parse import urlsplit
 
 TAGS={'p','div','span','h1','h2','h3','h4','h5','h6','strong','b','em','i','u','s','a','hr','br','ul','ol','li','blockquote'}
 VOID={'br','hr'}
-ATTRS={'class','style','href','target','title'}
-CSS={'box-sizing','margin-top','border','color','font-family','font-size','border-bottom','padding'}
-CLASSES={'lesson-mission-wrapper','lesson-mission-text'}
+ATTRS={'class','style','href','target','title','savefrom_lm','savefrom_lm_index','dir','span','id','data-xdget-id'}
+CSS={'box-sizing','margin-top','border','color','font-family','font-size','border-bottom','padding',
+     'background-color','font-weight','text-decoration-line','margin','line-height','vertical-align',
+     'white-space','z-index','background','margin-right','margin-left','margin-bottom','background-image',
+     'background-position','background-size','background-repeat','background-attachment','background-origin',
+     'background-clip','position','min-height','padding-right','padding-left'}
+CLASSES={'lesson-mission-wrapper','lesson-mission-text','redactor-inline-converted','xdget-block',
+         'xdget-div','center-block','row-section','xdget-common-container','div','xdget-visible-to-bg-',
+         'xdget-lessonContent','row','content-row','col-md-12','xdget-lessonFiles','xdget-lessonMission'}
 CLASS=re.compile(r'^[A-Za-z0-9_ -]{1,160}$')
 CSS_VALUE=re.compile(r'^[\w\s#.,%()\'"+\-]{1,300}$',re.UNICODE)
 
@@ -34,6 +40,9 @@ def valid_style(value):
         key,val=(x.strip() for x in item.split(':',1))
         if key.lower() not in CSS or not CSS_VALUE.fullmatch(val):return False
         if re.search(r'(?:url|expression)\s*\(',val,re.I):return False
+        if key.lower()=='position' and val.lower() not in ('static','relative'):return False
+        if key.lower()=='background-image' and val.lower() not in ('none','initial'):return False
+        if key.lower()=='z-index' and (not val.isdigit() or int(val)>1000):return False
     return True
 
 
@@ -45,6 +54,12 @@ class StaticHTML(HTMLParser):
             if key not in ATTRS:raise ValueError('unsupported_attribute')
             if key=='href' and (tag!='a' or not valid_link(value)):raise ValueError('invalid_link')
             if key=='target' and (tag!='a' or value not in ('_blank','_self')):raise ValueError('invalid_target')
+            if key=='savefrom_lm' and (tag!='a' or value!='1'):raise ValueError('unsupported_attribute')
+            if key=='savefrom_lm_index' and (tag!='a' or not isinstance(value,str) or not re.fullmatch(r'[0-9]{1,6}',value)):raise ValueError('unsupported_attribute')
+            if key=='dir' and value not in ('ltr','rtl','auto'):raise ValueError('unsupported_attribute')
+            if key=='span' and (tag!='a' or value not in ('',None)):raise ValueError('unsupported_attribute')
+            if key=='data-xdget-id' and (tag!='div' or not isinstance(value,str) or not re.fullmatch(r'[0-9]{1,12}',value)):raise ValueError('unsupported_attribute')
+            if key=='id' and (not isinstance(value,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',value)):raise ValueError('unsupported_attribute')
             if key=='class' and (not isinstance(value,str) or not CLASS.fullmatch(value) or not set(value.split()).issubset(CLASSES)):raise ValueError('invalid_class')
             if key=='style' and not valid_style(value):raise ValueError('invalid_style')
         if tag=='a':

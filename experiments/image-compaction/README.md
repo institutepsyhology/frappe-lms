@@ -86,3 +86,10 @@ that recognized spacers are rejected with `spacer_renderer_not_installed`
 until the matching frontend renderer is installed. The three MCP connections
 responded after release. The guarded importer must remain in place until the
 full frontend release and its rendering checks have succeeded.
+
+The next guarded backend overlay adds narrowly validated static AVO HTML,
+recognition of two identical video slots, and the owner-confirmed choice for
+one exact concatenated source field. Source HTML and the original video field
+remain in the private snapshot. Unknown HTML, forms, unsupported layouts and
+unconfirmed video combinations still stop import; an HTML frame remains subject
+to a separate visual check.

@@ -1,6 +1,7 @@
 """Pure, conservative AVO lesson-to-EditorJS conversion; no I/O or execution."""
 from html import escape
 from html.parser import HTMLParser
+import hashlib
 import json
 import math
 import re
@@ -16,6 +17,13 @@ IMAGE_KEY = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
 PRIVATE_FILE = re.compile(r"^/private/files/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,180}$")
 ALLOWED_TAGS = {"p", "br", "strong", "b", "em", "i", "u", "s", "a", "ul", "ol", "li",
                 "h1", "h2", "h3", "h4", "blockquote", "code"}
+
+# Explicit owner decision: use only the second of two concatenated YouTube
+# links in this exact source field. A changed source digest requires review.
+# The original complete field remains in the private source snapshot.
+CONFIRMED_CONCATENATED_YOUTUBE = {
+    ('mv-centr', '19', '62'): '6c6f238d72d0cc9b3f85a2296c57456c8b0108de257af8ab497b8a7a2634e5b9',
+}
 
 
 def _ape_spacer(node):
@@ -561,6 +569,21 @@ def plan_import(payload, image_urls=None):
                                 {'provider': other.get('videoProvider'), 'url': other.get('videoSrc')}])
                 elif id(node) in legacy_skip:
                     pass
+                elif (fields.get('videoProvider') == 'youtube' and fields.get('videoProvider2') in (None, '', 'youtube', 'rutube')
+                      and fields.get('videoSrc2') in (None, '') and isinstance(fields.get('videoSrc'),str)
+                      and CONFIRMED_CONCATENATED_YOUTUBE.get((account,course,lesson)) == hashlib.sha256(fields['videoSrc'].encode('utf-8')).hexdigest()
+                      and re.fullmatch(r'https://youtu\.be/[A-Za-z0-9_-]{11}https://youtu\.be/[A-Za-z0-9_-]{11}',fields['videoSrc'])):
+                    second = fields['videoSrc'][len('https://youtu.be/') + 11:]
+                    single_video('youtube',second)
+                    if 'user_selected_second_youtube' not in plan['warnings']:
+                        plan['warnings'].append('user_selected_second_youtube')
+                elif (fields.get('videoProvider') in ('youtube','rutube')
+                      and fields.get('videoProvider2') == fields.get('videoProvider')
+                      and isinstance(fields.get('videoSrc'),str) and fields.get('videoSrc')
+                      and fields.get('videoSrc2') == fields.get('videoSrc')):
+                    single_video(fields['videoProvider'],fields['videoSrc'])
+                    if 'duplicate_video_sources_combined' not in plan['warnings']:
+                        plan['warnings'].append('duplicate_video_sources_combined')
                 elif fields.get('videoProvider2') in (None, '', 'youtube', 'rutube') and fields.get('videoSrc2') in (None, ''):
                     single_video(fields.get('videoProvider'), fields.get('videoSrc'))
                 else:
