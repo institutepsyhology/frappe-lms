@@ -133,8 +133,15 @@ def main():
               'backup_directory':str(backup_dir), 'ok':False}
     switched = False
     try:
-        command(['docker','build','--network=none','--pull=false','--tag',TAG,
-                 '-f',str(ROOT / 'experiments/image-compaction/Spacer.Containerfile'),str(ROOT)], timeout=1200)
+        build_log = backup_dir / 'build.log'
+        report['build_log'] = str(build_log)
+        fd = os.open(build_log, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, 'wb') as log:
+            result = subprocess.run(['docker','build','--progress=plain','--network=none','--pull=false','--tag',TAG,
+                '-f',str(ROOT / 'experiments/image-compaction/Spacer.Containerfile'),str(ROOT)],
+                stdout=log, stderr=subprocess.STDOUT, timeout=1200)
+        if result.returncode:
+            raise RuntimeError('docker_build_failed')
         image = command(['docker','image','inspect',TAG,'--format','{{.Id}}'])
         if not re.fullmatch(r'sha256:[0-9a-f]{64}', image) or image == OLD:
             raise RuntimeError('invalid_candidate_image')
