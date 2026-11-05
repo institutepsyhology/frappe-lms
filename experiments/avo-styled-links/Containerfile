@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=sha256:3d777da4a1255e0027aa50d8f164918ddc08eab0bef0640c873c3e7d766d1243
+ARG BASE_IMAGE=company-lms:avo-legacy-pairs-20261103
 FROM ${BASE_IMAGE}
 USER root
 COPY --chown=frappe:root lms/lms/avo_import.py lms/lms/avo_transform.py /home/frappe/frappe-bench/apps/lms/lms/lms/
