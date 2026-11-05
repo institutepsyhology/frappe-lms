@@ -9,3 +9,5 @@ Subsequently six more unpublished courses and twelve draft lessons were imported
 Two further unpublished courses and six draft lessons were subsequently imported after the same source and dry-run checks. MCP read-back confirmed their IDs, draft status and six private source attachments; the five-lesson course ordering was checked. Unsupported media and HTML cases were withheld for review. No lesson contents or private URLs are included in this report.
 
 One further unpublished course and three draft lessons were imported; their IDs, course association, order, draft state and private source attachments were read back through MCP. The guarded batch then stopped on repeated unsupported styled links; the source snapshots are retained locally for review.
+
+After deploying the styled-link fix, an additional unpublished course and draft lesson were imported and their account, source IDs, course association and private source attachment were read back. Formatting reconstruction is explicitly warned as incomplete. Another course still requires review for unsupported HTML containers; it was not imported.
