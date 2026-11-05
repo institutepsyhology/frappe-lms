@@ -10,6 +10,24 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_ape_link_style_is_removed_but_href_and_text_survive(self):
+        root={'name':'page','children':[{'name':'text','fields':{'html':'<p><a style="color:red" href="https://example.test/file?a=1&amp;b=2">Материал</a></p>'}}]}
+        out=plan_import(sample(root,'ape'))
+        self.assertTrue(out['ready'],out['issues'])
+        self.assertIn('ape_text_formatting_not_reconstructed',out['warnings'])
+        text=out['blocks'][0]['data']['text']
+        self.assertIn('href="https://example.test/file?a=1&amp;b=2"',text)
+        self.assertIn('Материал',text)
+        self.assertNotIn('style=',text)
+
+    def test_ape_link_active_attributes_and_unsafe_urls_rejected(self):
+        for bad in ('<a href="javascript:alert(1)" style="color:red">link</a>',
+                    '<a href="https://example.test" onclick="alert(1)" style="color:red">link</a>',
+                    '<a href="https://example.test" href="https://example.test/other" style="color:red">link</a>'):
+            out=plan_import(sample({'name':'page','children':[{'name':'text','fields':{'html':bad}}]},'ape'))
+            self.assertFalse(out['ready'])
+            self.assertIn('unsafe_or_unrecognized_html',out['issues'])
+
     def test_labelled_legacy_players_become_one_pair_for_each_account(self):
         def text_block(value):
             return {'name': 'text', 'fields': {'html': '<p><strong>' + value + '</strong></p>'}}

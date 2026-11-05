@@ -158,6 +158,10 @@ def _normalize_ape_text(value):
                 if attrs or tag == 'span':
                     self.changed = True
                 attrs = []
+            elif tag == 'a' and all(key in ('href', 'title', 'style') for key, _ in attrs):
+                if any(key == 'style' for key, _ in attrs):
+                    self.changed = True
+                    attrs = [(key, val) for key, val in attrs if key != 'style']
             elif attrs and not (tag == 'a' and all(key in ('href', 'title') for key, _ in attrs)):
                 raise ValueError('unsupported_attribute')
             if tag != 'br':
