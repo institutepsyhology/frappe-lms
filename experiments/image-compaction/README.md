@@ -76,5 +76,13 @@ alone is therefore not a demonstrated solution. The private server build log
 for the 3 GiB attempt is stored with its guarded release report under
 `/opt/company-lms/backups/avo-mcp-20261105T122827225846Z/`. Before retrying,
 investigate a genuinely lower-memory build or an appropriate separate builder,
-and compare and validate all frontend artifacts. Do not install the backend
-spacer converter without also installing and testing its frontend renderer.
+and compare and validate all frontend artifacts. Do not permit spacer imports
+without installing and testing the matching frontend renderer.
+
+The backend-only layout guard was installed from commit `3a1e109d` with a
+fresh verified backup and rollback checks. Actual MCP dry-runs confirmed that
+ordinary multi-column layouts are rejected rather than silently flattened, and
+that recognized spacers are rejected with `spacer_renderer_not_installed`
+until the matching frontend renderer is installed. The three MCP connections
+responded after release. The guarded importer must remain in place until the
+full frontend release and its rendering checks have succeeded.
