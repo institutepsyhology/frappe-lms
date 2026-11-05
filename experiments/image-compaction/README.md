@@ -66,3 +66,15 @@ additional layer and passed the AVO unit tests, backup and health checks. A
 read-only MCP import preview accepted a heading and reported its mismatched
 source setting. This does not establish full support for AVO columns, spacers,
 responsive layout, or browser rendering; those remain separate work.
+
+The 2026-11-05 spacer release is prepared and tested but not installed.
+The frontend unit test passed in an isolated container and the backend suite
+passed, but a full Vite build exhausted its 2 GiB and then 3 GiB Node heaps
+while the production services remained on the previous release. A separate
+2 GiB trial with minification disabled failed as well. Disabling minification
+alone is therefore not a demonstrated solution. The private server build log
+for the 3 GiB attempt is stored with its guarded release report under
+`/opt/company-lms/backups/avo-mcp-20261105T122827225846Z/`. Before retrying,
+investigate a genuinely lower-memory build or an appropriate separate builder,
+and compare and validate all frontend artifacts. Do not install the backend
+spacer converter without also installing and testing its frontend renderer.

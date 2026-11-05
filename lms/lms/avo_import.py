@@ -221,6 +221,12 @@ def import_lesson(payload: dict, images: dict | None = None, dry_run: bool = Tru
     _schema()
     prepared = _images(images)
     plan = _plan(payload, prepared)
+    # The converter is present before its frontend renderer. Fail closed until
+    # the matching renderer has been built, installed and verified on all sites.
+    if any(block.get('type') == 'lessonSpacer' for block in plan['blocks']):
+        if 'spacer_renderer_not_installed' not in plan['issues']:
+            plan['issues'].append('spacer_renderer_not_installed')
+        plan['ready'] = False
     result = {'account': plan['account'], 'course_id': plan['course_id'],
               'lesson_id': plan['lesson_id'], 'issues': plan['issues'], 'warnings': plan['warnings'],
               'ready': plan['ready'], 'dry_run': dry_run, 'source_complete': False}

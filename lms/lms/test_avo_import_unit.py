@@ -38,6 +38,18 @@ class Meta:
 
 
 class ImportTests(unittest.TestCase):
+    def test_spacer_cannot_be_imported_without_the_frontend_renderer(self):
+        p = payload()
+        p['format'] = 'ape'
+        p.pop('content')
+        from pathlib import Path
+        fixture = json.loads((Path(__file__).parent / 'testdata/avo_spacer.json').read_text(encoding='utf-8'))
+        p['ape'] = {'name': 'page', 'children': [fixture]}
+        with patch.object(module, '_take_lock', side_effect=AssertionError('lock taken')):
+            result = module.import_lesson(p, dry_run=False)
+        self.assertFalse(result['ready'])
+        self.assertIn('spacer_renderer_not_installed', result['issues'])
+
     def test_iomp_site_account_mapping_and_isolation(self):
         p = payload()
         p.update(account='iomp', source_origin='https://shop.iomp.ru')
