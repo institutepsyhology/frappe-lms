@@ -184,3 +184,12 @@ The follow-up verifies either exact original bytes or the exact output of
 Frappe's own EXIF transform. It does not change the site's privacy settings.
 Deploy using `deploy_image_exif.py` and record actual MCP read-back afterwards.
 Backups have not been restore-tested.
+# JPEG verification release, 2026-11-06
+
+Commit `a9936a08` produced image
+`sha256:47428fc1ce1a35c98bd22094cc3b883429f3a3c0475e8a661f51d3b02670f855`.
+Candidate tests, integrity checks on backups, service and all-site checks
+passed. Real MCP read-back confirmed the existing JPEG lesson with the exact
+Frappe EXIF transformation, as well as two other reviewed draft lessons.
+The image renderer, learner access and visual layout remain unverified; backup
+integrity was checked but restoration was not tested.
