@@ -32,6 +32,8 @@ ORIGIN = 'https://shop.mv-centr.ru'
 ACCOUNT = 'mv-centr'
 MAX_ERRORS = 3
 REPORT = DATA / 'ОТЧЁТ-перенос-mv-centr.md'
+# User-confirmed disposable test lesson. This is a lesson ID, not course 17.
+EXCLUDED_LESSONS = {17}
 
 
 class Stop(Exception):
@@ -138,6 +140,7 @@ class Journal:
                 'lesson_preflight':'Урок проверен', 'course_ready':'Курс готов к переносу',
                 'lesson_created':'Черновик урока создан', 'course_created':'Черновик курса создан',
                 'existing_structure_unverified':'Уже существует; проверена структура',
+                'lesson_excluded':'Исключён по указанию пользователя',
                 'stopped':'Работа остановлена', 'resumed':'Работа возобновлена'}
         lines=['# Перенос mv-centr во Frappe', '',
                'Состояние: '+('остановлено до разбора' if paused else 'готово к запуску')+f'; ошибок подряд: {errors}.',
@@ -265,7 +268,15 @@ def preview(client,payload):
 
 def import_course(client,journal,course,expected,apply):
     if expected is None: raise Review('manifest_changed')
+    excluded=[ident for ident in expected if ident in EXCLUDED_LESSONS]
+    if excluded and len(excluded)==len(expected):
+        for ident in excluded:journal.event(course,ident,'lesson_excluded',['user_excluded_test_lesson'])
+        return 'excluded'
     payloads=prepare_course(course,expected)
+    if excluded:
+        for ident in excluded:journal.event(course,ident,'lesson_excluded',['user_excluded_test_lesson'])
+        expected=[ident for ident in expected if ident not in EXCLUDED_LESSONS]
+        payloads=[p for p in payloads if p['lesson_id'] not in EXCLUDED_LESSONS]
     existing=outline(client,course)
     if existing != expected[:len(existing)] or len(existing)>len(expected):
         raise Review('course_order_conflict')
