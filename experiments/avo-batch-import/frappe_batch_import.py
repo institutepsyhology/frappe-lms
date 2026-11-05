@@ -306,6 +306,7 @@ def import_course(client,journal,course,expected,apply):
             journal.event(course,p['lesson_id'],'write_uncertain',['write_result_uncertain'])
             raise Stop('write_result_uncertain') from exc
         journal.event(course,p['lesson_id'],'lesson_created',verified['warnings'])
+        print(json.dumps({'course':course,'lesson':p['lesson_id'],'status':'draft_created'}),flush=True)
     if outline(client,course) != expected:raise Stop('final_order_mismatch')
     journal.event(course,None,'course_created');return 'created'
 
