@@ -10,6 +10,23 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_video_wrapper_preserves_separate_links_without_css(self):
+        html=('<div class="video_wrapper" style="text-align:center"><a href="https://example.test/a" target="_blank">Первый</a></div>'
+              '<div class="video_wrapper" style="text-align:center"><a href="https://example.test/b">Второй</a></div>')
+        out=plan_import(sample({'name':'page','children':[{'name':'text','fields':{'html':html}}]},'ape'))
+        self.assertTrue(out['ready'],out['issues'])
+        text=out['blocks'][0]['data']['text']
+        self.assertEqual(text,'<p><a href="https://example.test/a">Первый</a></p><p><a href="https://example.test/b">Второй</a></p>')
+        self.assertIn('ape_text_formatting_not_reconstructed',out['warnings'])
+
+    def test_unrecognized_wrapper_or_active_link_is_rejected(self):
+        for html in ('<div class="unknown"><a href="https://example.test">x</a></div>',
+                     '<div class="video_wrapper"><p>x</p></div>',
+                     '<a href="https://example.test" target="evil">x</a>',
+                     '<div class="video_wrapper" onclick="alert(1)">x</div>'):
+            out=plan_import(sample({'name':'page','children':[{'name':'text','fields':{'html':html}}]},'ape'))
+            self.assertFalse(out['ready'])
+
     def test_ape_link_style_is_removed_but_href_and_text_survive(self):
         root={'name':'page','children':[{'name':'text','fields':{'html':'<p><a style="color:red" href="https://example.test/file?a=1&amp;b=2">Материал</a></p>'}}]}
         out=plan_import(sample(root,'ape'))

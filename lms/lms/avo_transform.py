@@ -150,25 +150,36 @@ def _normalize_ape_text(value):
             self.parts, self.stack, self.changed = [], [], False
 
         def handle_starttag(self, tag, attrs):
-            if tag not in ALLOWED_TAGS | {'span'}:
+            if tag not in ALLOWED_TAGS | {'span', 'div'}:
                 raise ValueError('unsupported_html')
             if len({key for key, _ in attrs}) != len(attrs):
                 raise ValueError('duplicate_attribute')
-            if tag in ('p', 'span') and all(key == 'style' for key, _ in attrs):
+            if 'div' in self.stack and tag in ('div', 'p', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'blockquote'):
+                raise ValueError('nested_block_in_video_wrapper')
+            if tag == 'div':
+                values = dict(attrs)
+                if set(values) - {'class', 'style'} or values.get('class') != 'video_wrapper':
+                    raise ValueError('unsupported_div')
+                attrs = []
+                self.changed = True
+            elif tag in ('p', 'span') and all(key == 'style' for key, _ in attrs):
                 if attrs or tag == 'span':
                     self.changed = True
                 attrs = []
-            elif tag == 'a' and all(key in ('href', 'title', 'style') for key, _ in attrs):
-                if any(key == 'style' for key, _ in attrs):
+            elif tag == 'a' and all(key in ('href', 'title', 'style', 'target') for key, _ in attrs):
+                target = dict(attrs).get('target')
+                if target is not None and target not in ('_blank', '_self'):
+                    raise ValueError('unsupported_target')
+                if any(key in ('style', 'target') for key, _ in attrs):
                     self.changed = True
-                    attrs = [(key, val) for key, val in attrs if key != 'style']
+                    attrs = [(key, val) for key, val in attrs if key not in ('style', 'target')]
             elif attrs and not (tag == 'a' and all(key in ('href', 'title') for key, _ in attrs)):
                 raise ValueError('unsupported_attribute')
             if tag != 'br':
                 self.stack.append(tag)
             if tag != 'span':
                 attributes = ''.join(' ' + key + '="' + escape(val or '', quote=True) + '"' for key, val in attrs)
-                self.parts.append('<' + tag + attributes + '>')
+                self.parts.append('<' + ('p' if tag == 'div' else tag) + attributes + '>')
 
         def handle_startendtag(self, tag, attrs):
             self.handle_starttag(tag, attrs)
@@ -181,7 +192,7 @@ def _normalize_ape_text(value):
             if not self.stack or self.stack.pop() != tag:
                 raise ValueError('unbalanced_html')
             if tag != 'span':
-                self.parts.append('</' + tag + '>')
+                self.parts.append('</' + ('p' if tag == 'div' else tag) + '>')
 
         def handle_data(self, data): self.parts.append(data)
         def handle_entityref(self, name): self.parts.append('&' + name + ';')
