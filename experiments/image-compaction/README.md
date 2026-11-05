@@ -15,6 +15,13 @@ container. It checks source and running-image identities and free disk space and
 refuses an existing candidate tag. Temporary files are private on the server.
 The candidate is not deployed by this script.
 
+If OCI import creates a candidate but Docker does not immediately resolve its
+tag, do not overwrite any tag or switch services. Verify the image by its exact
+ID and configuration, assign a separate unused test tag, and run
+`verify_candidate.py` to resume the file-by-file comparison. Its image IDs and
+tag are pinned to this observed test, and it streams both filesystem exports
+into a private temporary index; it does not read production volumes.
+
 Run `python experiments/image-compaction/test_compaction.py` before publishing.
 Production switching is a separate guarded release requiring fresh backups,
 health checks on all three sites, unchanged site state, rollback, actual MCP
