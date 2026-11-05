@@ -678,9 +678,16 @@ def plan_import(payload, image_urls=None):
                 else:
                     entry({'type': 'image', 'image_key': node.get('id'), 'caption': ''})
             elif kind == "page":
-                known = {"commonFontName", "commonFontLink", "commonFontFamily", "headingFontName", "headingFontLink", "headingFontFamily", "fontPair"}
+                known = {"commonFontName", "commonFontLink", "commonFontFamily", "headingFontName", "headingFontLink", "headingFontFamily", "fontPair", "backgroundOverlayColor"}
                 if any(v not in (None, "", False, [], {}) for k, v in fields.items() if k not in known):
                     issue("unknown_page_fields")
+                overlay = fields.get('backgroundOverlayColor')
+                if overlay not in (None, '', False, {}):
+                    if (not isinstance(overlay,dict) or set(overlay) != {'enabled','r','g','b','a'}
+                            or overlay.get('enabled') is not False
+                            or any(type(overlay.get(k)) is not int or not 0 <= overlay[k] <= 255 for k in ('r','g','b'))
+                            or type(overlay.get('a')) not in (int,float) or not math.isfinite(overlay['a']) or not 0 <= overlay['a'] <= 1):
+                        issue('unsupported_background_overlay')
                 if fields and "ape_layout_settings_not_rendered" not in plan["warnings"]:
                     plan["warnings"].append("ape_layout_settings_not_rendered")
             elif kind in ("section", "column", "container"):

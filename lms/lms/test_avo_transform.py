@@ -10,6 +10,18 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_disabled_background_overlay_is_safe_but_enabled_is_not_ignored(self):
+        overlay={'enabled':False,'r':255,'g':255,'b':255,'a':0.6}
+        root={'name':'page','fields':{'backgroundOverlayColor':overlay},
+              'children':[{'name':'text','fields':{'html':'<p>Текст</p>'}}]}
+        out=plan_import(sample(root,'ape'))
+        self.assertTrue(out['ready'],out['issues'])
+        self.assertIn('ape_layout_settings_not_rendered',out['warnings'])
+        overlay['enabled']=True
+        self.assertIn('unsupported_background_overlay',plan_import(sample(root,'ape'))['issues'])
+        overlay['enabled']=False;overlay['r']=999
+        self.assertIn('unsupported_background_overlay',plan_import(sample(root,'ape'))['issues'])
+
     def test_owner_requested_flattening_applies_only_to_two_lessons(self):
         def column(title, youtube, rutube):
             return {'name':'column','children':[
