@@ -39,6 +39,15 @@ An identical retry verifies the saved snapshot, images and lesson before returni
 `already_imported`; changed content is never overwritten. The method serializes
 imports per site until the database transaction commits or rolls back.
 
+Where text cannot be represented by the ordinary safe text converter, narrowly
+validated static HTML can be preserved byte-for-byte as an `htmlBlock`. The
+validator rejects unrecognized markup and classes, active content, event
+handlers, unsafe links and unsupported CSS; this is not general raw HTML
+execution. A warning requires separate review of the iframe, layout and link
+behavior. Original styling may rely on external CSS that is not present in the
+frame. Original APE captures remain private and no complete equivalence is
+claimed. Large inputs still have finite size, depth, JSON-value and block limits.
+
 This source file and tests contain synthetic data only. Never commit actual
 lesson contents, students, screenshot bytes, authentication information, or
 private media links to GitHub.

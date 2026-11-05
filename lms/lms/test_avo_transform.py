@@ -10,6 +10,55 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_static_html_fragment_keeps_original_bytes_and_links(self):
+        import base64
+        html=('<div class="lesson-mission-wrapper" style="font-size: 14px"><h4><strong>'
+              '<a href="https://example.test/one?a=1&amp;b=2" target="_blank">АНКЕТА</a>'
+              '</strong></h4><hr><ul><li>До слова плату</li></ul></div>')
+        out=plan_import(sample({'name':'page','children':[{'name':'text','fields':{'html':html}}]},'ape'))
+        self.assertTrue(out['ready'],out['issues'])
+        self.assertEqual(out['blocks'][0]['type'],'htmlBlock')
+        self.assertEqual(base64.b64decode(out['blocks'][0]['data']['encodedHtml']).decode('utf-8'),html)
+        self.assertIn('ape_static_html_frame_unverified',out['warnings'])
+
+    def test_html_fallback_does_not_execute_active_content(self):
+        for html in ('<div><script>alert(1)</script></div>',
+                     '<div><a href="javascript:alert(1)">bad</a></div>',
+                     '<form action="https://example.test"><input name="x"></form>',
+                     '<div style="background:url(https://example.test)">x</div>'):
+            out=plan_import(sample({'name':'page','children':[{'name':'text','fields':{'html':html}}]},'ape'))
+            self.assertFalse(out['ready'])
+
+    def test_multiple_labelled_pairs_with_empty_second_provider_slot(self):
+        def text(value):return {'name':'text','fields':{'html':'<p>'+value+'</p>'}}
+        def video(provider,url):return {'name':'video','fields':{'videoProvider':provider,'videoSrc':url,'videoProvider2':'rutube','videoSrc2':''}}
+        sections=[]
+        for _ in range(10):
+            sections.append({'name':'section','children':[
+                {'name':'column','children':[text('ОСНОВНОЙ ПЛЕЕР'),video('youtube','https://youtu.be/abcdefghijk')]},
+                {'name':'column','children':[text('АЛЬТЕРНАТИВНЫЙ ПЛЕЕР'),video('rutube','https://rutube.ru/video/0123456789abcdef0123456789abcdef/')]},
+            ]})
+        out=plan_import(sample({'name':'page','children':sections},'ape'))
+        self.assertTrue(out['ready'],out['issues'])
+        self.assertEqual(sum(x['type']=='videoChoice' for x in out['blocks']),10)
+        sections[0]['children'][1]['children'][1]['fields']['videoProvider2']='unrecognized'
+        self.assertFalse(plan_import(sample({'name':'page','children':sections},'ape'))['ready'])
+
+    def test_larger_payload_keeps_a_finite_complexity_limit(self):
+        from lms.lms import avo_transform as transform
+        transform._bounded({'data':[0]*60000})
+        with self.assertRaisesRegex(ValueError,'input_structure_limit'):
+            transform._bounded({'data':[0]*200001})
+
+    def test_trim_surrounding_space_in_source_link_and_warn(self):
+        root={'name':'page','children':[{'name':'text','fields':{'html':'<p><a href=" https://example.test/file ">Материал</a></p>'}}]}
+        out=plan_import(sample(root,'ape'))
+        self.assertTrue(out['ready'],out['issues'])
+        self.assertIn('ape_text_formatting_not_reconstructed',out['warnings'])
+        self.assertIn('href="https://example.test/file"',out['blocks'][0]['data']['text'])
+        root['children'][0]['fields']['html']='<a href=" javascript:alert(1) ">bad</a>'
+        self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
     def test_video_wrapper_preserves_separate_links_without_css(self):
         html=('<div class="video_wrapper" style="text-align:center"><a href="https://example.test/a" target="_blank">Первый</a></div>'
               '<div class="video_wrapper" style="text-align:center"><a href="https://example.test/b">Второй</a></div>')

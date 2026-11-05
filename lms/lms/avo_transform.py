@@ -4,10 +4,11 @@ from html.parser import HTMLParser
 import json
 import re
 from urllib.parse import parse_qs, urlsplit
+from lms.lms.avo_html_fragment import make_html_block
 
 MAX_BYTES = 16 * 1024 * 1024
 MAX_DEPTH = 100
-MAX_NODES = 20000
+MAX_NODES = 150000  # JSON values, not lesson blocks; APE blocks remain capped separately.
 MAX_BLOCKS = 1000
 ACCOUNT = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 IMAGE_KEY = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
@@ -173,6 +174,15 @@ def _normalize_ape_text(value):
                 if any(key in ('style', 'target') for key, _ in attrs):
                     self.changed = True
                     attrs = [(key, val) for key, val in attrs if key not in ('style', 'target')]
+                cleaned = []
+                for key, val in attrs:
+                    if key == 'href' and isinstance(val, str):
+                        trimmed = val.strip(' \t\r\n')
+                        if trimmed != val:
+                            self.changed = True
+                        val = trimmed
+                    cleaned.append((key, val))
+                attrs = cleaned
             elif attrs and not (tag == 'a' and all(key in ('href', 'title') for key, _ in attrs)):
                 raise ValueError('unsupported_attribute')
             if tag != 'br':
@@ -248,7 +258,7 @@ def _legacy_player_pairs(root):
             return False
         fields = node.get('fields')
         return (isinstance(fields, dict) and fields.get('videoProvider') in ('youtube', 'rutube')
-                and fields.get('videoProvider2') in (None, '') and fields.get('videoSrc2') in (None, '')
+                and fields.get('videoProvider2') in (None, '', 'youtube', 'rutube') and fields.get('videoSrc2') in (None, '')
                 and _player_url(fields.get('videoSrc'), fields.get('videoProvider')))
 
     pending, sequence = [(root, None)], []
@@ -473,7 +483,7 @@ def plan_import(payload, image_urls=None):
                                 {'provider': other.get('videoProvider'), 'url': other.get('videoSrc')}])
                 elif id(node) in legacy_skip:
                     pass
-                elif fields.get('videoProvider2') in (None, '') and fields.get('videoSrc2') in (None, ''):
+                elif fields.get('videoProvider2') in (None, '', 'youtube', 'rutube') and fields.get('videoSrc2') in (None, ''):
                     single_video(fields.get('videoProvider'), fields.get('videoSrc'))
                 else:
                     video_pair([{"provider": fields.get("videoProvider"), "url": fields.get("videoSrc")},
@@ -488,7 +498,15 @@ def plan_import(payload, image_urls=None):
                     if id(node) not in legacy_skip:
                         paragraph(normalized)
                 except (ValueError, RecursionError):
-                    issue('unsafe_or_unrecognized_html')
+                    try:
+                        block = make_html_block(fields.get('html'))
+                    except (ValueError, UnicodeError, RecursionError):
+                        issue('unsafe_or_unrecognized_html')
+                    else:
+                        if id(node) not in legacy_skip:
+                            blocks.append(block)
+                            if 'ape_static_html_frame_unverified' not in plan['warnings']:
+                                plan['warnings'].append('ape_static_html_frame_unverified')
             elif kind == 'button':
                 allowed = {'anchor', 'html', 'icon', 'linkType', 'url', 'blank', 'toAnchor', 'event'}
                 if (fields.get('linkType') != 'url' or any(fields.get(k) not in (None, '', False) for k in ('anchor','icon','toAnchor','event'))

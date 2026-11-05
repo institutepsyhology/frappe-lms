@@ -1,0 +1,5 @@
+ARG BASE_IMAGE=company-lms:video-provider-0e67fa5
+FROM ${BASE_IMAGE}
+USER root
+COPY --chown=frappe:root lms/lms/avo_import.py lms/lms/avo_transform.py lms/lms/avo_html_fragment.py /home/frappe/frappe-bench/apps/lms/lms/lms/
+USER frappe

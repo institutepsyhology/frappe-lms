@@ -1,0 +1,5 @@
+# AVO static HTML fragments in Frappe lessons
+
+The converter can preserve a narrowly validated static HTML fragment byte for byte in the existing sandboxed `htmlBlock` EditorJS tool. It rejects scripts, forms, frames, event handlers, unknown classes, unsafe URLs, unsupported CSS and malformed structure. Rendering, link navigation and visual equivalence require independent checks; source snapshots remain private. The source limit remains bounded, now accounting for observed larger lessons; explicit legacy video pairs with an unused default second-provider field retain both URLs. Existing safeguards and stop-on-unknown behavior remain in place.
+
+The release verifies the running image and exact base-layer ancestry, builds a replacement backend overlay, runs candidate tests, verifies backups and health across the three sites and rolls back on failure. Publish one reviewed commit before deployment and record the resulting image and real MCP tests afterwards. Never commit actual lesson HTML, media links, users or credentials.
