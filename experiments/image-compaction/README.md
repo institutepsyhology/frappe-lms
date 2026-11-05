@@ -57,3 +57,12 @@ release with fresh backups and rollback. This does not cover frontend assets,
 schema changes, other backend modules or changes made outside that commit: for
 those, explicitly include and verify every affected artifact. Do not replace a
 running image with a partial overlay or assume this file covers every update.
+
+On 2026-11-05 the compact image was verified against 141,554 filesystem
+entries and installed on all three sites with verified database backups,
+unchanged counts/languages/access settings, service checks, and MCP checks.
+The following AVO heading release was rebuilt from that compact base with one
+additional layer and passed the AVO unit tests, backup and health checks. A
+read-only MCP import preview accepted a heading and reported its mismatched
+source setting. This does not establish full support for AVO columns, spacers,
+responsive layout, or browser rendering; those remain separate work.
