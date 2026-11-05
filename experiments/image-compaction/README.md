@@ -152,3 +152,12 @@ that frame rendering has not been verified. Backups were not restore-tested.
 The follow-up `deploy_drive_media_batch.py` also covers additional individually
 verified audio fields and reviewed inert formatting. Unknown files and formats
 continue to stop for review.
+# Additional Drive audio release verification, 2026-11-06
+
+Commit `a2a69e67` produced image
+`sha256:acd943046b5b42c98e83511cd4bd34b2f71a43a7115355c1d78cfeaef71d4f56`.
+Candidate tests, backup integrity checks and health checks passed; all three
+sites retained their counts and release switches during deployment. The
+reviewed audio sources are still matched by account, lesson and digest.
+File-page access was checked when reviewed, not continuously. Backups were
+not restore-tested; frame rendering and audio playback require visual checks.
