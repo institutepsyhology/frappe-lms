@@ -119,6 +119,11 @@ An exact known inert clipboard stylesheet is preserved; other stylesheets and
 unapproved multi-column layouts remain blocked. Visual rendering and playback
 still require separate verification.
 
+On 06.11.2026 the inactive overlay fix from `f90438bc` passed 47 tests and
+was deployed with verified backups. Actual MCP checks confirmed that a valid
+disabled overlay is accepted and an enabled one remains blocked for review.
+All three MCP connections responded after deployment.
+
 On 06.11.2026 the single-column overlay was deployed from `ff0c1af1` after
 46 AVO tests and verified backups. Both selected lessons were created as drafts;
 independent MCP read-back confirmed exactly 50 video pairs per lesson and
