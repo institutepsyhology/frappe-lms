@@ -13,8 +13,8 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 BASE = Path('/opt/company-lms')
 OLD = 'sha256:3d777da4a1255e0027aa50d8f164918ddc08eab0bef0640c873c3e7d766d1243'
-BASE_SHA = OLD
-BASE_TAG = 'company-lms:avo-legacy-pairs-20261103'
+BASE_SHA = 'sha256:d985d00e9ce5d032baf77aa8d5cdd6508a22b4194a66a600ba962c526c5ac94a'
+BASE_TAG = 'company-lms:video-provider-0e67fa5'
 TAG = 'company-lms:avo-styled-links-20261105'
 BACKEND = 'company-lms-backend-1'
 SITES = ('my-lk.mastervision.su', 'my-lk.iomp.ru', 'my-lk.mv-centr.ru')
@@ -100,6 +100,14 @@ def main():
         raise RuntimeError('unexpected_runtime_image')
     if command(['docker','image','inspect',BASE_TAG,'--format','{{.Id}}']) != BASE_SHA:
         raise RuntimeError('unexpected_base_image')
+    image_data = json.loads(command(['docker','image','inspect',OLD,BASE_TAG]))
+    current_layers = image_data[0]['RootFS']['Layers']
+    base_layers = image_data[1]['RootFS']['Layers']
+    if len(current_layers) != len(base_layers) + 1 or current_layers[:-1] != base_layers:
+        raise RuntimeError('unexpected_image_ancestry')
+    history = command(['docker','image','history','--no-trunc','--format','{{.CreatedBy}}',OLD]).splitlines()
+    if len(history) < 2 or not history[1].startswith('COPY ') or any(name not in history[1] for name in FILES):
+        raise RuntimeError('unexpected_overlay_contents')
     env = BASE / 'runtime/.env'
     original = env.read_bytes()
     lines = re.findall(rb'^LMS_IMAGE=(.+)$', original, re.M)

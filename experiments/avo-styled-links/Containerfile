@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=company-lms:avo-legacy-pairs-20261103
+ARG BASE_IMAGE=company-lms:video-provider-0e67fa5
 FROM ${BASE_IMAGE}
 USER root
 COPY --chown=frappe:root lms/lms/avo_import.py lms/lms/avo_transform.py /home/frappe/frappe-bench/apps/lms/lms/lms/
