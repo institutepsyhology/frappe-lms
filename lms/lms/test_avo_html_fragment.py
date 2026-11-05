@@ -1,9 +1,24 @@
 import base64
 import unittest
-from lms.lms.avo_html_fragment import make_html_block, strip_empty_answer_form
+from lms.lms.avo_html_fragment import make_html_block, strip_empty_answer_form, replace_drive_audio
 
 
 class StaticFragmentTests(unittest.TestCase):
+    def test_google_drive_image_preview_and_audio_link(self):
+        iframe='<iframe height="480" src="https://drive.google.com/file/d/abc_DEF-123/preview" width="640"></iframe>'
+        fragment='<p>Картинка</p>'+iframe+'<p>Задание</p>'
+        self.assertEqual(base64.b64decode(make_html_block(fragment)['data']['encodedHtml']).decode(),fragment)
+        audio='<audio controls="" controlslist="nodownload"><source src="https://drive.google.com/uc?export=view&amp;id=abc_DEF-123" /></audio>'
+        transformed=replace_drive_audio('<p>'+audio+'</p>')
+        self.assertIn('https://drive.google.com/file/d/abc_DEF-123/view',transformed)
+        self.assertNotIn('<audio',transformed)
+        make_html_block(transformed)
+        for bad in (iframe.replace('drive.google.com','example.test'),iframe.replace('/preview','/edit'),
+                    iframe.replace('width="640"','onload="alert(1)"'),
+                    audio.replace('drive.google.com','example.test'),audio+audio):
+            with self.assertRaises(ValueError):
+                replace_drive_audio(bad) if '<audio' in bad else make_html_block(bad)
+
     def test_preserves_only_known_safe_clipboard_stylesheet(self):
         html = ('<p style="text-align: center"><style type="text/css">'
                 '<!--td {border: 1px solid #ccc;}br {mso-data-placement:same-cell;}-->'

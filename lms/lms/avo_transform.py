@@ -6,7 +6,7 @@ import json
 import math
 import re
 from urllib.parse import parse_qs, urlsplit
-from lms.lms.avo_html_fragment import make_html_block, strip_empty_answer_form
+from lms.lms.avo_html_fragment import make_html_block, strip_empty_answer_form, split_reviewed_audio_links
 
 MAX_BYTES = 16 * 1024 * 1024
 MAX_DEPTH = 100
@@ -31,6 +31,12 @@ CONFIRMED_SINGLE_COLUMN_LESSONS = {('mv-centr', '117', '571'), ('mv-centr', '118
 CONFIRMED_TEXT_ONLY_ANSWER_FORMS = {
     ('mv-centr', '25', '115'): '402edcfd7b360ce9d6c9b8c628457be2f7a14ad10e482601b43bb89ab851a53f',
     ('mv-centr', '101', '464'): '9c36aafe11bc53c2562516276fbd033ec77af4b736dfccb60b60e17b264f1368',
+}
+# Owner requested replacing these particular legacy players with links.
+# Digests bind the decision to the verified source; originals remain private.
+CONFIRMED_DRIVE_AUDIO_LINKS = {
+    ('mv-centr', '236', '4468'): '365b89e868707f504cfccf8f810feaef856924d2e189152a280069825ea41ef3',
+    ('mv-centr', '237', '7315'): 'd0d11f9427e8c29120a558da516c6e7caf664aabba5fedae41e2f4a4695cb2ec',
 }
 
 
@@ -640,20 +646,32 @@ def plan_import(payload, image_urls=None):
                         block = make_html_block(fields.get('html'))
                     except (ValueError, UnicodeError, RecursionError):
                         source = fields.get('html')
-                        expected_hash = CONFIRMED_TEXT_ONLY_ANSWER_FORMS.get((account,course,lesson))
-                        confirmed = expected_hash is not None and expected_hash == _sha256_text(source)
-                        if confirmed:
+                        audio_hash = CONFIRMED_DRIVE_AUDIO_LINKS.get((account,course,lesson))
+                        if audio_hash is not None and audio_hash == _sha256_text(source):
                             try:
-                                block = make_html_block(strip_empty_answer_form(source))
+                                audio_blocks=split_reviewed_audio_links(source)
                             except (ValueError, UnicodeError, RecursionError):
                                 issue('unsafe_or_unrecognized_html')
                             else:
                                 if id(node) not in legacy_skip:
-                                    blocks.append(block)
-                                    for warning in ('ape_static_html_frame_unverified','answer_form_omitted_at_user_request'):
+                                    blocks.extend(audio_blocks)
+                                    for warning in ('ape_static_html_frame_unverified','user_requested_audio_link'):
                                         if warning not in plan['warnings']:plan['warnings'].append(warning)
                         else:
-                            issue('unsafe_or_unrecognized_html')
+                            expected_hash = CONFIRMED_TEXT_ONLY_ANSWER_FORMS.get((account,course,lesson))
+                            confirmed = expected_hash is not None and expected_hash == _sha256_text(source)
+                            if confirmed:
+                                try:
+                                    block = make_html_block(strip_empty_answer_form(source))
+                                except (ValueError, UnicodeError, RecursionError):
+                                    issue('unsafe_or_unrecognized_html')
+                                else:
+                                    if id(node) not in legacy_skip:
+                                        blocks.append(block)
+                                        for warning in ('ape_static_html_frame_unverified','answer_form_omitted_at_user_request'):
+                                            if warning not in plan['warnings']:plan['warnings'].append(warning)
+                            else:
+                                issue('unsafe_or_unrecognized_html')
                     else:
                         if id(node) not in legacy_skip:
                             blocks.append(block)

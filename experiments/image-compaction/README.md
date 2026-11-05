@@ -129,3 +129,15 @@ On 06.11.2026 the single-column overlay was deployed from `ff0c1af1` after
 independent MCP read-back confirmed exactly 50 video pairs per lesson and
 byte-for-byte equality of source addresses and their order. Playback and visual
 presentation remain unverified. No other lesson was authorized for flattening.
+# Google Drive media in reviewed AVO lessons, 2026-11-06
+
+The converter accepts only a constrained Google Drive preview iframe and
+transfers two owner-reviewed legacy audio fields as ordinary file links outside
+the sandboxed frame. The audio decisions are limited by account, course,
+lesson, and source digest; an altered field is stopped for review. The original
+snapshot is preserved, as are distinct links and their order. Other unknown
+embeds remain blocked. Actual file availability can change, and preview
+rendering and playback require independent checks. The guarded release uses
+`deploy_drive_media.py`, the same verified single-layer base and rollback
+checks as the preceding release. Real source HTML and file URLs stay private.
+

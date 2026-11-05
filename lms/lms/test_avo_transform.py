@@ -10,6 +10,28 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_confirmed_audio_replacement_preserves_other_content_and_children(self):
+        import base64, hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        html=('<p><a href="https://example.test/first">First audio</a></p>'
+              '<p><audio controls="" controlslist="nodownload"><source '
+              'src="https://drive.google.com/uc?export=view&amp;id=abcdefgh" /></audio></p>')
+        node={'name':'text','fields':{'html':html},'children':[{'name':'text','fields':{'html':'<p>Task</p>'}}]}
+        p=sample({'name':'page','children':[node]},'ape');p.update(course_id=237,lesson_id=7315)
+        with patch.dict(module.CONFIRMED_DRIVE_AUDIO_LINKS,{('mv-centr','237','7315'):hashlib.sha256(html.encode()).hexdigest()}):
+            out=plan_import(p)
+            self.assertTrue(out['ready'],out['issues'])
+            rendered=''.join(b['data']['text'] if b['type']=='paragraph' else base64.b64decode(b['data']['encodedHtml']).decode() for b in out['blocks'][:-1])
+            self.assertIn('https://example.test/first',rendered)
+            self.assertIn('https://drive.google.com/file/d/abcdefgh/view',rendered)
+            self.assertEqual(out['blocks'][-1]['data']['text'],'<p>Task</p>')
+            self.assertEqual(node['fields']['html'],html)
+            p['account']='iomp'
+            self.assertFalse(plan_import(p)['ready'])
+            p['account']='mv-centr';node['fields']['html']+='changed'
+            self.assertFalse(plan_import(p)['ready'])
+
     def test_disabled_background_overlay_is_safe_but_enabled_is_not_ignored(self):
         overlay={'enabled':False,'r':255,'g':255,'b':255,'a':0.6}
         root={'name':'page','fields':{'backgroundOverlayColor':overlay},
