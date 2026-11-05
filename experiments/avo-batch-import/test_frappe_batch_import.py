@@ -36,6 +36,20 @@ class Client:
 
 
 class BatchTests(unittest.TestCase):
+    def test_reviewed_image_requires_matching_source_and_bytes(self):
+        import base64
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); raw=b'fixture image'; (root/'image.jpg').write_bytes(raw)
+            source='https://example.test/image.jpg';p=payload(1)
+            p['ape']['children']=[{'name':'image','id':'picture','fields':{'imageSrc':source}}]
+            rule={(24,1,'picture'):(hashlib.sha256(source.encode()).hexdigest(),hashlib.sha256(raw).hexdigest(),'image.jpg')}
+            with patch.object(mod,'DATA',root),patch.object(mod,'REVIEWED_IMAGES',rule):
+                self.assertEqual(base64.b64decode(mod.prepared_images(p)['picture']),raw)
+                (root/'image.jpg').write_bytes(b'changed')
+                with self.assertRaisesRegex(mod.Review,'image_requires_preparation'):mod.prepared_images(p)
+                (root/'image.jpg').write_bytes(raw);p['ape']['children'][0]['fields']['imageSrc']+='changed'
+                with self.assertRaisesRegex(mod.Review,'image_requires_preparation'):mod.prepared_images(p)
+
     def test_outline_batches_reads_and_preserves_source_order(self):
         class OutlineClient:
             def __init__(self): self.groups=[]; self.omit=False; self.wrong_account=False

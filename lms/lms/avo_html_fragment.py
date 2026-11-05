@@ -16,7 +16,7 @@ CSS={'box-sizing','margin-top','border','color','font-family','font-size','borde
      'background-color','font-weight','text-decoration-line','margin','line-height','vertical-align',
      'white-space','z-index','background','margin-right','margin-left','margin-bottom','background-image',
      'background-position','background-size','background-repeat','background-attachment','background-origin',
-     'background-clip','position','min-height','padding-right','padding-left','width','overflow','padding-bottom','padding-top','max-width','flex','text-align'}
+     'background-clip','position','min-height','padding-right','padding-left','width','overflow','padding-bottom','padding-top','max-width','flex','text-align','float'}
 CLASSES={'lesson-mission-wrapper','lesson-mission-text','redactor-inline-converted','xdget-block',
          'xdget-div','center-block','row-section','xdget-common-container','div','xdget-visible-to-bg-',
          'xdget-lessonContent','row','content-row','col-md-12','xdget-lessonFiles','xdget-lessonMission',
@@ -52,6 +52,7 @@ def valid_style(value):
         if key.lower()=='overflow' and val.lower() not in ('hidden','auto','visible','scroll'):return False
         if key.lower()=='text-align' and val.lower() not in ('left','right','center','justify','start','end'):return False
         if key.lower()=='flex' and val!='1 1 100%':return False
+        if key.lower()=='float' and val.lower() not in ('left','right','none'):return False
     return True
 
 

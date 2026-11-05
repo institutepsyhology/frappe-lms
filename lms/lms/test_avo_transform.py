@@ -10,6 +10,35 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_reviewed_lesson_spacer_uses_html_when_renderer_unavailable(self):
+        import json,base64
+        from pathlib import Path
+        node=json.loads((Path(__file__).parent/'testdata/avo_spacer.json').read_text(encoding='utf-8'))
+        p=sample({'name':'page','children':[node]},'ape');p.update(course_id=258,lesson_id=1150)
+        out=plan_import(p);self.assertTrue(out['ready'],out['issues'])
+        self.assertEqual(out['blocks'][0]['type'],'htmlBlock')
+        self.assertIn('background-color:',base64.b64decode(out['blocks'][0]['data']['encodedHtml']).decode())
+        self.assertIn('ape_spacer_frame_approximation',out['warnings'])
+        p['course_id']=259
+        self.assertEqual(plan_import(p)['blocks'][0]['type'],'lessonSpacer')
+
+    def test_only_exact_confirmed_section_is_flattened(self):
+        import hashlib,json
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        section={'name':'section','fields':{'backgroundOverlayColor':{'enabled':False}},'children':[
+            {'name':'column','children':[{'name':'text','fields':{'html':'<p>First</p>'}}]},
+            {'name':'column','children':[{'name':'text','fields':{'html':'<p>Second</p>'}}]}]}
+        p=sample({'name':'page','children':[section]},'ape');p.update(course_id=258,lesson_id=1150)
+        digest=hashlib.sha256(json.dumps(section,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+        with patch.dict(module.CONFIRMED_SINGLE_COLUMN_SECTIONS,{('mv-centr','258','1150'):digest}):
+            out=plan_import(p);self.assertTrue(out['ready'],out['issues'])
+            self.assertEqual([x['data']['text'] for x in out['blocks']],['<p>First</p>','<p>Second</p>'])
+            section['children'][0]['children'][0]['fields']['html']='<p>Changed</p>'
+            self.assertIn('unsupported_multicolumn_layout',plan_import(p)['issues'])
+            p['account']='iomp'
+            self.assertIn('unsupported_multicolumn_layout',plan_import(p)['issues'])
+
     def test_confirmed_audio_replacement_preserves_other_content_and_children(self):
         import base64, hashlib
         from unittest.mock import patch

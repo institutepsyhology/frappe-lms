@@ -5,6 +5,7 @@ grants access. The event database contains identifiers and diagnostic codes,
 never lesson text, URLs, cookies, or authentication details.
 """
 import argparse
+import base64
 from contextlib import closing
 from datetime import datetime, timezone
 import hashlib
@@ -35,6 +36,10 @@ MAX_ERRORS = 3
 REPORT = DATA / 'ОТЧЁТ-перенос-mv-centr.md'
 # User-confirmed disposable test lesson. This is a lesson ID, not course 17.
 EXCLUDED_LESSONS = {17}
+# Only the verified image for this source snapshot; unknown images stop.
+REVIEWED_IMAGES = {(258,1150,'92ab32ec-5836-4443-998d-16b2ec13a2c0'):
+    ('44c98968db4973a119db3bbc00ca36392c1466e1b631596e1fff0ac4a2474ea2',
+     'eb781d7527cb12f817ae59ace8310ca3ab2f1c34c2e360813b9052f1cc6d2d33','mv-centr-image-1150.jpg')}
 
 
 class Stop(Exception):
@@ -279,8 +284,28 @@ def outline(client,course):
     return ids
 
 
-def preview(client,payload):
-    result=client.call('call_method',{'method':'lms.lms.avo_import.import_lesson','args':{'payload':payload,'dry_run':True}}).get('result')
+def prepared_images(payload):
+    pending=[payload['ape']]; images={}
+    while pending:
+        node=pending.pop()
+        if not isinstance(node,dict):continue
+        if node.get('name')=='image':
+            key=node.get('id'); match=REVIEWED_IMAGES.get((payload.get('course_id'),payload.get('lesson_id'),key))
+            source=node.get('fields',{}).get('imageSrc')
+            if not match or not isinstance(source,str) or hashlib.sha256(source.encode('utf-8')).hexdigest()!=match[0] or key in images:
+                raise Review('image_requires_preparation')
+            try: raw=(DATA/match[2]).read_bytes()
+            except OSError: raise Review('image_requires_preparation')
+            if len(raw)>5*1024*1024 or hashlib.sha256(raw).hexdigest()!=match[1]:raise Review('image_requires_preparation')
+            images[key]=base64.b64encode(raw).decode('ascii')
+        if isinstance(node.get('children'),list):pending.extend(node['children'])
+    return images
+
+
+def preview(client,payload,images=None):
+    args={'payload':payload,'dry_run':True}
+    if images:args['images']=images
+    result=client.call('call_method',{'method':'lms.lms.avo_import.import_lesson','args':args}).get('result')
     if not isinstance(result,dict) or result.get('account') != ACCOUNT or str(result.get('lesson_id')) != str(payload['lesson_id']) or str(result.get('course_id')) != str(payload['course_id']) or result.get('dry_run') is not True:
         raise Stop('preview_identity_invalid')
     for key in ('issues','warnings'):
@@ -305,17 +330,14 @@ def import_course(client,journal,course,expected,apply):
         raise Review('course_order_conflict')
     if existing == expected:
         journal.event(course,None,'existing_structure_unverified'); return 'already_present'
-    checks=[]
+    checks=[]; image_sets={}
     for p in payloads:
-        pending=[p['ape']]
-        while pending:
-            node=pending.pop()
-            if isinstance(node,dict):
-                if node.get('name')=='image':
-                    journal.event(course,p['lesson_id'],'lesson_needs_review',['image_requires_preparation'])
-                    raise Review('course_needs_review')
-                if isinstance(node.get('children'),list):pending.extend(node['children'])
-        result=preview(client,p)
+        try:images=prepared_images(p)
+        except Review:
+            journal.event(course,p['lesson_id'],'lesson_needs_review',['image_requires_preparation'])
+            raise Review('course_needs_review')
+        image_sets[p['lesson_id']]=images
+        result=preview(client,p,images)
         if result.get('ready') is not True:
             journal.event(course,p['lesson_id'],'lesson_needs_review',result['issues']);raise Review('course_needs_review')
         journal.event(course,p['lesson_id'],'lesson_preflight',result['warnings'])
@@ -332,9 +354,11 @@ def import_course(client,journal,course,expected,apply):
             journal.event(course,p['lesson_id'],'course_changed',['course_changed_during_import'])
             raise Stop('course_changed_during_import')
         try:
-            result=client.call('call_method',{'method':'lms.lms.avo_import.import_lesson','args':{'payload':p,'dry_run':False}}).get('result')
+            args={'payload':p,'dry_run':False}
+            if image_sets[p['lesson_id']]:args['images']=image_sets[p['lesson_id']]
+            result=client.call('call_method',{'method':'lms.lms.avo_import.import_lesson','args':args}).get('result')
             if not isinstance(result,dict) or result.get('action') != 'created':raise Stop('write_result_uncertain')
-            verified=preview(client,p)
+            verified=preview(client,p,image_sets[p['lesson_id']])
             if verified.get('action') != 'already_imported':raise Stop('readback_failed')
         except Exception as exc:
             journal.event(course,p['lesson_id'],'write_uncertain',['write_result_uncertain'])

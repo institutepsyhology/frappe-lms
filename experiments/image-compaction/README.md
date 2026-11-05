@@ -161,3 +161,15 @@ sites retained their counts and release switches during deployment. The
 reviewed audio sources are still matched by account, lesson and digest.
 File-page access was checked when reviewed, not continuously. Backups were
 not restore-tested; frame rendering and audio playback require visual checks.
+# Reviewed HTML and image, 2026-11-06
+
+The converter admits constrained static CSS float values and preserves reviewed
+HTML in private lesson snapshots. The user approved a single image-and-text
+section in one lesson to be flattened; the decision is bound to the account,
+course, lesson and complete section digest. That lesson's validated separators
+use sandboxed HTML frames until the native renderer is deployed; exact spacing
+needs visual verification. The batch client can send a locally prepared image
+only after checking both its source and content digests. The source image itself
+is private and is not included in this repository. Unknown images and changed
+sections remain blocked. Deploy with `deploy_reviewed_html.py` after publishing
+the matching commit and record checks afterwards.

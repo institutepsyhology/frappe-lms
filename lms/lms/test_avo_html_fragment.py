@@ -4,6 +4,12 @@ from lms.lms.avo_html_fragment import make_html_block, strip_empty_answer_form, 
 
 
 class StaticFragmentTests(unittest.TestCase):
+    def test_static_float_layout_preserves_html(self):
+        html='<div class="col-md-12" style="float: left; width: 862.444px">Текст</div>'
+        self.assertEqual(base64.b64decode(make_html_block(html)['data']['encodedHtml']).decode(),html)
+        for bad in ('float: url(https://bad.test)','float: expression(alert(1))','float: arbitrary'):
+            with self.assertRaises(ValueError):make_html_block('<div style="'+bad+'">x</div>')
+
     def test_google_drive_image_preview_and_audio_link(self):
         iframe='<iframe height="480" src="https://drive.google.com/file/d/abc_DEF-123/preview" width="640"></iframe>'
         fragment='<p>Картинка</p>'+iframe+'<p>Задание</p>'

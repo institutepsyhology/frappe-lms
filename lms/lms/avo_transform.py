@@ -2,6 +2,7 @@
 from html import escape
 from html.parser import HTMLParser
 import hashlib
+import base64
 import json
 import math
 import re
@@ -26,6 +27,9 @@ CONFIRMED_CONCATENATED_YOUTUBE = {
 }
 # The owner explicitly requested a single-column sequence for these lessons.
 CONFIRMED_SINGLE_COLUMN_LESSONS = {('mv-centr', '117', '571'), ('mv-centr', '118', '587')}
+# Owner approved flattening only this exact image-and-text section.
+CONFIRMED_SINGLE_COLUMN_SECTIONS = {('mv-centr','258','1150'):
+    '65769313d05a3037d67800d78caeb764452be7e932a96fe040df4bae1c67d625'}
 # Explicit user decision for these exact snapshots: keep the assignment text
 # and omit the empty answer form for now. The original remains in the snapshot.
 CONFIRMED_TEXT_ONLY_ANSWER_FORMS = {
@@ -541,7 +545,7 @@ def plan_import(payload, image_urls=None):
             issue('legacy_player_pair_unresolved')
         if legacy_first:
             plan['warnings'].append('legacy_player_labels_combined')
-        stack, count = [root], 0
+        stack, count, reviewed_section_nodes = [root], 0, set()
         while stack:
             node = stack.pop()
             count += 1
@@ -565,7 +569,12 @@ def plan_import(payload, image_urls=None):
                         and all(isinstance(items, list) and len(items) == 2 for items in pair_children)
                         and id(pair_children[0][0]) in legacy_skip and id(pair_children[0][1]) in legacy_first
                         and id(pair_children[1][0]) in legacy_skip and id(pair_children[1][1]) in legacy_skip)
-                    if not combined_pair and (account,course,lesson) in CONFIRMED_SINGLE_COLUMN_LESSONS:
+                    expected_section = CONFIRMED_SINGLE_COLUMN_SECTIONS.get((account,course,lesson))
+                    section_hash = _sha256_text(json.dumps(node,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False)) if expected_section else None
+                    reviewed_section = expected_section is not None and section_hash == expected_section
+                    if reviewed_section:
+                        reviewed_section_nodes.update([id(node)]+[id(column) for column in columns])
+                    if not combined_pair and (reviewed_section or (account,course,lesson) in CONFIRMED_SINGLE_COLUMN_LESSONS):
                         if 'user_requested_single_column' not in plan['warnings']:
                             plan['warnings'].append('user_requested_single_column')
                     elif not combined_pair:
@@ -618,7 +627,15 @@ def plan_import(payload, image_urls=None):
                                 {"provider": fields.get("videoProvider2"), "url": fields.get("videoSrc2")}])
             elif kind == 'spacer':
                 try:
-                    blocks.append({'type': 'lessonSpacer', 'data': _ape_spacer(node)})
+                    spacer=_ape_spacer(node)
+                    if (account,course,lesson)==('mv-centr','258','1150'):
+                        markup=('<div style="height:{height}px;width:{width}%;margin:{marginTop}px auto {marginBottom}px;'
+                                'background-color:{color}"></div>').format(**spacer)
+                        height=max(100,min(1600,round(spacer['height']+spacer['marginTop']+spacer['marginBottom']+20)))
+                        blocks.append({'type':'htmlBlock','data':{'encodedHtml':base64.b64encode(markup.encode()).decode(),'height':height}})
+                        if 'ape_spacer_frame_approximation' not in plan['warnings']:plan['warnings'].append('ape_spacer_frame_approximation')
+                    else:
+                        blocks.append({'type': 'lessonSpacer', 'data': spacer})
                 except ValueError:
                     issue('unsupported_spacer')
             elif kind == 'header':
@@ -713,7 +730,7 @@ def plan_import(payload, image_urls=None):
                 if fields and "ape_layout_settings_not_rendered" not in plan["warnings"]:
                     plan["warnings"].append("ape_layout_settings_not_rendered")
             elif kind in ("section", "column", "container"):
-                if any(v not in (None, "", False, [], {}) for v in fields.values()):
+                if id(node) not in reviewed_section_nodes and any(v not in (None, "", False, [], {}) for v in fields.values()):
                     issue("unsupported_container_fields")
             else:
                 issue("unknown_block")
