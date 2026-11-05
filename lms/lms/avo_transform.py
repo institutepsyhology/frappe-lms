@@ -2,6 +2,7 @@
 from html import escape
 from html.parser import HTMLParser
 import json
+import math
 import re
 from urllib.parse import parse_qs, urlsplit
 from lms.lms.avo_html_fragment import make_html_block
@@ -15,6 +16,70 @@ IMAGE_KEY = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
 PRIVATE_FILE = re.compile(r"^/private/files/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,180}$")
 ALLOWED_TAGS = {"p", "br", "strong", "b", "em", "i", "u", "s", "a", "ul", "ol", "li",
                 "h1", "h2", "h3", "h4", "blockquote", "code"}
+
+
+def _ape_spacer(node):
+    """Recognize a static separator only when every unrendered setting is default."""
+    fields = node.get('fields')
+    if not isinstance(fields, dict) or fields.get('anchor') not in ('', None):
+        raise ValueError('unsupported_spacer')
+    if fields.get('html') not in (None, '', 'Разделитель') or set(fields) - {'anchor', 'html'}:
+        raise ValueError('unsupported_spacer')
+    style = node.get('style')
+    if not isinstance(style, dict) or set(style) != {'lists'} or not isinstance(style['lists'], dict):
+        raise ValueError('unsupported_spacer')
+    lists = style['lists']
+    block = {'display': {'value': {'visible': 'block'}}}
+    content = {'justifyContent': {'value': {'type': 'center'}}}
+    radius = {f'border{corner}Radius': {'value': {'number': 0, 'units': 'px'}}
+              for corner in ('TopLeft', 'TopRight', 'BottomLeft', 'BottomRight')}
+    overlay = {'backgroundColor': {'value': {'enabled': False, 'r': 255, 'g': 255, 'b': 255, 'a': 0.6}}, **radius}
+    if lists.get('block') != block or lists.get('content') != content or lists.get('overlay') != overlay:
+        raise ValueError('unsupported_spacer')
+    for key, value in lists.items():
+        if key in ('block', 'content', 'overlay', 'spacer'):
+            continue
+        match = re.fullmatch(r'\$__max_width__\d+__(block|content|overlay|spacer)', key)
+        if not match or value != lists.get(match.group(1)):
+            raise ValueError('unsupported_spacer')
+    value = lists.get('spacer')
+    if not isinstance(value, dict):
+        raise ValueError('unsupported_spacer')
+    try:
+        def dimension(key, units, maximum):
+            raw = value[key]['value']
+            number = raw['number']
+            if (set(raw) != {'number', 'type', 'units'} or raw['type'] != 'fixed' or raw['units'] != units
+                    or type(number) not in (int, float) or not math.isfinite(number) or not 0 <= number <= maximum):
+                raise ValueError('unsupported_spacer')
+            return number
+        height, width = dimension('height', 'px', 500), dimension('width', '%', 100)
+        top, bottom = dimension('marginTop', 'px', 500), dimension('marginBottom', 'px', 500)
+        colour = value['backgroundColor']['value']
+        if (set(colour) != {'enabled', 'r', 'g', 'b', 'a'} or colour['enabled'] is not True or colour['a'] != 1
+                or any(type(colour[k]) is not int or not 0 <= colour[k] <= 255 for k in ('r', 'g', 'b'))):
+            raise ValueError('unsupported_spacer')
+        expected = {'backgroundColor': {'value': colour}, **radius,
+            **{f'border{side}Width': {'value': {'number': 0, 'type': 'fixed', 'units': 'px'}} for side in ('Top','Right','Bottom','Left')},
+            'borderStyle': {'value': {'type': 'solid'}},
+            **{f'border{side}Color': {'value': {'enabled': True, 'r': 0, 'g': 0, 'b': 0, 'a': 1}} for side in ('Top','Right','Bottom','Left')},
+            'opacity': {'value': {'number': 1}}, 'backgroundImage': {'value': {'url': ''}},
+            'backgroundSize': {'value': {'width': 100, 'type': 'auto', 'units': '%'}},
+            'backgroundRepeat': {'value': {'type': 'repeat'}}, 'backgroundAttachment': {'value': {'type': 'scroll'}},
+            'backgroundPosition': {'value': {'type': 'left-top'}}, '#__maskImage__after': {'value': {'url': ''}},
+            '#__maskSize__after': {'value': {'width': 100, 'type': 'auto', 'units': '%'}},
+            '#__maskRepeat__after': {'value': {'type': 'repeat'}}, '#__maskPosition__after': {'value': {'type': 'left-top'}},
+            '#__backgroundColor__after': {'value': {'enabled': True, 'r': 0, 'g': 0, 'b': 0, 'a': 1}}}
+        for key in ('height', 'width', 'marginTop', 'marginBottom'):
+            expected[key] = value[key]
+        for key in ('marginLeft', 'marginRight'):
+            expected[key] = {'value': {'number': 0, 'type': 'fixed', 'units': 'px'}}
+        if value != expected:
+            raise ValueError('unsupported_spacer')
+    except (KeyError, TypeError, OverflowError) as exc:
+        raise ValueError('unsupported_spacer') from exc
+    return {'height': height, 'width': width, 'marginTop': top, 'marginBottom': bottom,
+            'color': '#%02x%02x%02x' % (colour['r'], colour['g'], colour['b'])}
 
 
 def _bounded(value):
@@ -457,7 +522,20 @@ def plan_import(payload, image_urls=None):
             if not isinstance(fields, dict):
                 issue("invalid_fields")
                 continue
-            if node.get("style"):
+            if kind in ('page', 'section', 'container', 'column') and isinstance(node.get('children'), list):
+                children = node['children']
+                columns = [child for child in children if isinstance(child, dict) and child.get('name') == 'column']
+                if len(columns) > 1:
+                    # Explicit two-player alternatives are intentionally combined;
+                    # ordinary columns must not be silently flattened into a ready lesson.
+                    pair_children = [column.get('children') for column in columns]
+                    combined_pair = (len(columns) == len(children) == 2
+                        and all(isinstance(items, list) and len(items) == 2 for items in pair_children)
+                        and id(pair_children[0][0]) in legacy_skip and id(pair_children[0][1]) in legacy_first
+                        and id(pair_children[1][0]) in legacy_skip and id(pair_children[1][1]) in legacy_skip)
+                    if not combined_pair:
+                        issue('unsupported_multicolumn_layout')
+            if node.get("style") and kind != 'spacer':
                 if "ape_layout_settings_not_rendered" not in plan["warnings"]:
                     plan["warnings"].append("ape_layout_settings_not_rendered")
             extra_node_keys = set(node) - {"id", "name", "fields", "children", "style"}
@@ -488,6 +566,11 @@ def plan_import(payload, image_urls=None):
                 else:
                     video_pair([{"provider": fields.get("videoProvider"), "url": fields.get("videoSrc")},
                                 {"provider": fields.get("videoProvider2"), "url": fields.get("videoSrc2")}])
+            elif kind == 'spacer':
+                try:
+                    blocks.append({'type': 'lessonSpacer', 'data': _ape_spacer(node)})
+                except ValueError:
+                    issue('unsupported_spacer')
             elif kind == 'header':
                 allowed = {'anchor', 'html', 'format'}
                 markup = fields.get('html')

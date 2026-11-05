@@ -10,6 +10,31 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_multicolumn_content_is_not_flattened_into_a_ready_import(self):
+        root = {'name': 'page', 'children': [{'name': 'section', 'children': [
+            {'name': 'column', 'children': [{'name': 'text', 'fields': {'html': '<p>Левая</p>'}}]},
+            {'name': 'column', 'children': [{'name': 'text', 'fields': {'html': '<p>Правая</p>'}}]},
+        ]}]}
+        out = plan_import(sample(root, 'ape'))
+        self.assertFalse(out['ready'])
+        self.assertIn('unsupported_multicolumn_layout', out['issues'])
+
+    def test_spacer_preserves_dimensions_colour_and_rejects_unknown_variants(self):
+        import copy, json
+        from pathlib import Path
+        node = json.loads((Path(__file__).parent / 'testdata/avo_spacer.json').read_text(encoding='utf-8'))
+        root = {'name': 'page', 'children': [node]}
+        out = plan_import(sample(root, 'ape'))
+        self.assertTrue(out['ready'], out['issues'])
+        self.assertEqual(out['blocks'], [{'type': 'lessonSpacer', 'data': {
+            'height': 6, 'width': 100, 'marginTop': 10, 'marginBottom': 10, 'color': '#c8c8c8'}}])
+        changed = copy.deepcopy(node)
+        changed['style']['lists']['$__max_width__767__spacer']['height']['value']['number'] = 40
+        self.assertFalse(plan_import(sample({'name':'page','children':[changed]},'ape'))['ready'])
+        changed = copy.deepcopy(node)
+        changed['style']['lists']['spacer']['backgroundImage']['value']['url'] = 'https://example.test/image.png'
+        self.assertFalse(plan_import(sample({'name':'page','children':[changed]},'ape'))['ready'])
+
     def test_ape_header_keeps_visible_level_and_warns_if_setting_differs(self):
         root={'name':'page','children':[{'name':'header','fields':{'anchor':'','format':'h1','html':'<h2>Занятие <strong>1</strong></h2>'}}]}
         out=plan_import(sample(root,'ape'))
