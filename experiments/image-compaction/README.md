@@ -22,6 +22,11 @@ ID and configuration, assign a separate unused test tag, and run
 tag are pinned to this observed test, and it streams both filesystem exports
 into a private temporary index; it does not read production volumes.
 
+If the strict comparison reports a mismatch, `diagnose_candidate.py` repeats
+the isolated comparison and reports only difference categories and hashed path
+examples. Do not use the candidate for production until every difference has
+been explained and the verification strategy has been revised and rerun.
+
 Run `python experiments/image-compaction/test_compaction.py` before publishing.
 Production switching is a separate guarded release requiring fresh backups,
 health checks on all three sites, unchanged site state, rollback, actual MCP
