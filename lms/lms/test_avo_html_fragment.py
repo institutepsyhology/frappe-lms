@@ -4,6 +4,17 @@ from lms.lms.avo_html_fragment import make_html_block, strip_empty_answer_form
 
 
 class StaticFragmentTests(unittest.TestCase):
+    def test_preserves_only_known_safe_clipboard_stylesheet(self):
+        html = ('<p style="text-align: center"><style type="text/css">'
+                '<!--td {border: 1px solid #ccc;}br {mso-data-placement:same-cell;}-->'
+                '</style><strong>Текст</strong></p>')
+        result=make_html_block(html)
+        self.assertEqual(base64.b64decode(result['data']['encodedHtml']).decode(),html)
+        for bad in (html.replace('#ccc','url(https://bad.test)'),
+                    html.replace('text/css','text/javascript'),
+                    html.replace('text-align: center','text-align: expression(alert(1))')):
+            with self.assertRaises(ValueError):make_html_block(bad)
+
     def test_only_empty_answer_form_is_removed_without_touching_task_text(self):
         html = ('<div class="lesson-mission-wrapper"><div class="lesson-mission-text">Задание {name}</div>'
                 '<div class="lesson-send-answer-block"><form action="/answer" method="post" '

@@ -106,3 +106,15 @@ original private snapshot, and emits a warning. Changed snapshots, nonempty
 forms and unapproved forms remain blocked. Empty answer placeholders are
 accepted only when they contain no answer text or links; this avoids copying
 student responses into course material.
+
+Deployed from commit `be712f47` on 05.11.2026 with 44 AVO tests, verified
+database backups, and healthy services. Actual mv-centr MCP previews for both
+approved lessons confirmed that only the assignment text will be imported and
+the omission is recorded as a warning. The original snapshots stay private.
+
+The owner requested sequential single-column output only for two identified
+mv-centr lessons. Tests check account/course/lesson isolation and confirm all
+50 video pairs in each saved snapshot retain their order and both sources.
+An exact known inert clipboard stylesheet is preserved; other stylesheets and
+unapproved multi-column layouts remain blocked. Visual rendering and playback
+still require separate verification.

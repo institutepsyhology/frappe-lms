@@ -8,20 +8,21 @@ from html.parser import HTMLParser
 import re
 from urllib.parse import urlsplit
 
-TAGS={'p','div','span','h1','h2','h3','h4','h5','h6','strong','b','em','i','u','s','a','hr','br','ul','ol','li','blockquote','font'}
+TAGS={'p','div','span','h1','h2','h3','h4','h5','h6','strong','b','em','i','u','s','a','hr','br','ul','ol','li','blockquote','font','style'}
 VOID={'br','hr'}
-ATTRS={'class','style','href','target','title','savefrom_lm','savefrom_lm_index','dir','span','id','data-xdget-id','color'}
+ATTRS={'class','style','href','target','title','savefrom_lm','savefrom_lm_index','dir','span','id','data-xdget-id','color','type'}
 CSS={'box-sizing','margin-top','border','color','font-family','font-size','border-bottom','padding',
      'background-color','font-weight','text-decoration-line','margin','line-height','vertical-align',
      'white-space','z-index','background','margin-right','margin-left','margin-bottom','background-image',
      'background-position','background-size','background-repeat','background-attachment','background-origin',
-     'background-clip','position','min-height','padding-right','padding-left','width','overflow','padding-bottom'}
+     'background-clip','position','min-height','padding-right','padding-left','width','overflow','padding-bottom','text-align'}
 CLASSES={'lesson-mission-wrapper','lesson-mission-text','redactor-inline-converted','xdget-block',
          'xdget-div','center-block','row-section','xdget-common-container','div','xdget-visible-to-bg-',
          'xdget-lessonContent','row','content-row','col-md-12','xdget-lessonFiles','xdget-lessonMission',
          'xdget-lessonAnswers','self-answers','lesson-send-answer-block'}
 CLASS=re.compile(r'^[A-Za-z0-9_ -]{1,160}$')
 CSS_VALUE=re.compile(r'^[\w\s#.,%()\'"+\-]{1,300}$',re.UNICODE)
+SAFE_CLIPBOARD_CSS='<!--td {border: 1px solid #ccc;}br {mso-data-placement:same-cell;}-->'
 
 
 def valid_link(value):
@@ -45,13 +46,15 @@ def valid_style(value):
         if key.lower()=='background-image' and val.lower() not in ('none','initial'):return False
         if key.lower()=='z-index' and (not val.isdigit() or int(val)>1000):return False
         if key.lower()=='overflow' and val.lower() not in ('hidden','auto','visible','scroll'):return False
+        if key.lower()=='text-align' and val.lower() not in ('left','right','center','justify','start','end'):return False
     return True
 
 
 class StaticHTML(HTMLParser):
-    def __init__(self):super().__init__(convert_charrefs=True);self.stack=[];self.links=0;self.answers_depth=None
+    def __init__(self):super().__init__(convert_charrefs=True);self.stack=[];self.links=0;self.answers_depth=None;self.stylesheet=None
     def handle_starttag(self,tag,attrs):
         if tag not in TAGS or len({k for k,v in attrs})!=len(attrs):raise ValueError('unsupported_html')
+        if self.stylesheet is not None:raise ValueError('unsupported_html')
         if self.answers_depth is not None and (tag not in ('div','p','span','br') or any(k not in ('class','style') for k,v in attrs)):
             raise ValueError('answers_not_empty')
         for key,value in attrs:
@@ -65,11 +68,15 @@ class StaticHTML(HTMLParser):
             if key=='data-xdget-id' and (tag!='div' or not isinstance(value,str) or not re.fullmatch(r'[0-9]{1,12}',value)):raise ValueError('unsupported_attribute')
             if key=='id' and (not isinstance(value,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',value)):raise ValueError('unsupported_attribute')
             if key=='color' and (tag!='font' or not isinstance(value,str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',value)):raise ValueError('unsupported_attribute')
+            if key=='type' and (tag!='style' or value!='text/css'):raise ValueError('unsupported_attribute')
             if key=='class' and (not isinstance(value,str) or not CLASS.fullmatch(value) or not set(value.split()).issubset(CLASSES)):raise ValueError('invalid_class')
             if key=='style' and not valid_style(value):raise ValueError('invalid_style')
         if tag=='a':
             if sum(k=='href' for k,v in attrs)!=1:raise ValueError('missing_link')
             self.links+=1
+        if tag=='style':
+            if dict(attrs)!={'type':'text/css'}:raise ValueError('unsupported_attribute')
+            self.stylesheet=''
         if {'xdget-lessonAnswers','self-answers'} & set(dict(attrs).get('class','').split()):
             if tag!='div' or self.answers_depth is not None:raise ValueError('answers_not_empty')
             self.answers_depth=len(self.stack)+1
@@ -79,10 +86,16 @@ class StaticHTML(HTMLParser):
         if tag not in VOID:self.handle_endtag(tag)
     def handle_endtag(self,tag):
         if tag in VOID:return
+        if tag=='style':
+            if self.stylesheet != SAFE_CLIPBOARD_CSS:raise ValueError('unsupported_stylesheet')
+            self.stylesheet=None
         if not self.stack or self.stack.pop()!=tag:raise ValueError('unbalanced_html')
         if self.answers_depth is not None and len(self.stack)<self.answers_depth:self.answers_depth=None
     def handle_data(self,data):
         if self.answers_depth is not None and data.strip():raise ValueError('answers_not_empty')
+        if self.stylesheet is not None:
+            self.stylesheet+=data
+            if len(self.stylesheet)>len(SAFE_CLIPBOARD_CSS):raise ValueError('unsupported_stylesheet')
     def handle_comment(self,data):raise ValueError('unsupported_html')
     def handle_decl(self,decl):raise ValueError('unsupported_html')
     def handle_pi(self,data):raise ValueError('unsupported_html')

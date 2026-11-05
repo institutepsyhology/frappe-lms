@@ -24,6 +24,8 @@ ALLOWED_TAGS = {"p", "br", "strong", "b", "em", "i", "u", "s", "a", "ul", "ol", 
 CONFIRMED_CONCATENATED_YOUTUBE = {
     ('mv-centr', '19', '62'): '6c6f238d72d0cc9b3f85a2296c57456c8b0108de257af8ab497b8a7a2634e5b9',
 }
+# The owner explicitly requested a single-column sequence for these lessons.
+CONFIRMED_SINGLE_COLUMN_LESSONS = {('mv-centr', '117', '571'), ('mv-centr', '118', '587')}
 # Explicit user decision for these exact snapshots: keep the assignment text
 # and omit the empty answer form for now. The original remains in the snapshot.
 CONFIRMED_TEXT_ONLY_ANSWER_FORMS = {
@@ -553,7 +555,10 @@ def plan_import(payload, image_urls=None):
                         and all(isinstance(items, list) and len(items) == 2 for items in pair_children)
                         and id(pair_children[0][0]) in legacy_skip and id(pair_children[0][1]) in legacy_first
                         and id(pair_children[1][0]) in legacy_skip and id(pair_children[1][1]) in legacy_skip)
-                    if not combined_pair:
+                    if not combined_pair and (account,course,lesson) in CONFIRMED_SINGLE_COLUMN_LESSONS:
+                        if 'user_requested_single_column' not in plan['warnings']:
+                            plan['warnings'].append('user_requested_single_column')
+                    elif not combined_pair:
                         issue('unsupported_multicolumn_layout')
             if node.get("style") and kind != 'spacer':
                 if "ape_layout_settings_not_rendered" not in plan["warnings"]:

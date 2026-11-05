@@ -10,6 +10,27 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_owner_requested_flattening_applies_only_to_two_lessons(self):
+        def column(title, youtube, rutube):
+            return {'name':'column','children':[
+                {'name':'text','fields':{'html':'<p>'+title+'</p>'}},
+                {'name':'video','fields':{'videoProvider':'youtube','videoSrc':youtube,
+                    'videoProvider2':'rutube','videoSrc2':rutube}}]}
+        a='https://youtu.be/abcdefghijk';b='https://youtu.be/zzzzzzzzzzz'
+        r='https://rutube.ru/video/0123456789abcdef0123456789abcdef/'
+        root={'name':'page','children':[{'name':'section','children':[column('Первое',a,r),column('Второе',b,r)]}]}
+        for course,lesson in ((117,571),(118,587)):
+            p=sample(root,'ape');p.update(course_id=course,lesson_id=lesson)
+            out=plan_import(p)
+            self.assertTrue(out['ready'],out['issues'])
+            self.assertEqual([x['type'] for x in out['blocks']],['paragraph','videoChoice','paragraph','videoChoice'])
+            self.assertEqual([x['data']['youtube'] for x in out['blocks'] if x['type']=='videoChoice'],[a,b])
+            self.assertIn('user_requested_single_column',out['warnings'])
+            p['account']='iomp'
+            self.assertIn('unsupported_multicolumn_layout',plan_import(p)['issues'])
+        p=sample(root,'ape');p.update(course_id=117,lesson_id=572)
+        self.assertIn('unsupported_multicolumn_layout',plan_import(p)['issues'])
+
     def test_confirmed_empty_answer_form_is_omitted_but_source_and_task_survive(self):
         import base64, hashlib
         from unittest.mock import patch
