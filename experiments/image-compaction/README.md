@@ -48,3 +48,12 @@ switch, verifies fresh database backups, saves the original runtime settings,
 and rolls back if service, site, count, language, or release-setting checks
 fail. It changes no lesson or course data. It is deliberately pinned and must
 not be reused with different images without a new review and verification.
+
+For later changes limited to the three AVO backend modules, the reviewed
+`Backend.Containerfile` gives every build the same verified one-layer parent
+and copies all three current modules together. Build only from a reviewed Git
+commit, verify module hashes and tests in the resulting image, and use a guarded
+release with fresh backups and rollback. This does not cover frontend assets,
+schema changes, other backend modules or changes made outside that commit: for
+those, explicitly include and verify every affected artifact. Do not replace a
+running image with a partial overlay or assume this file covers every update.

@@ -10,6 +10,21 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_ape_header_keeps_visible_level_and_warns_if_setting_differs(self):
+        root={'name':'page','children':[{'name':'header','fields':{'anchor':'','format':'h1','html':'<h2>Занятие <strong>1</strong></h2>'}}]}
+        out=plan_import(sample(root,'ape'))
+        self.assertTrue(out['ready'],out['issues'])
+        self.assertEqual(out['blocks'][0],{'type':'header','data':{'text':'Занятие <strong>1</strong>','level':2}})
+        self.assertIn('ape_heading_format_mismatch',out['warnings'])
+
+    def test_ape_header_rejects_unrecognized_or_active_markup(self):
+        for fields in ({'format':'h1','anchor':'name','html':'<h2>text</h2>'},
+                       {'format':'h1','anchor':'','html':'<h2><script>alert(1)</script></h2>'},
+                       {'format':'h1','anchor':'','html':'<h2><p>nested</p></h2>'},
+                       {'format':'h1','anchor':'','html':'<h2>one</h2><h2>two</h2>'}):
+            out=plan_import(sample({'name':'page','children':[{'name':'header','fields':fields}]},'ape'))
+            self.assertFalse(out['ready'])
+
     def test_static_html_fragment_keeps_original_bytes_and_links(self):
         import base64
         html=('<div class="lesson-mission-wrapper" style="font-size: 14px"><h4><strong>'

@@ -488,6 +488,21 @@ def plan_import(payload, image_urls=None):
                 else:
                     video_pair([{"provider": fields.get("videoProvider"), "url": fields.get("videoSrc")},
                                 {"provider": fields.get("videoProvider2"), "url": fields.get("videoSrc2")}])
+            elif kind == 'header':
+                allowed = {'anchor', 'html', 'format'}
+                markup = fields.get('html')
+                source_format = fields.get('format')
+                match = re.fullmatch(r'\s*<h([1-4])>(.*?)</h\1>\s*', markup, re.I | re.S) if isinstance(markup, str) else None
+                if (fields.get('anchor') or any(v not in (None, '', False, [], {}) for k, v in fields.items() if k not in allowed)
+                        or source_format not in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6') or not match
+                        or not _safe_html(markup) or not _safe_html(match.group(2))
+                        or re.search(r'<\s*(?:br|p|h[1-6]|ul|ol|li|blockquote)\b', match.group(2), re.I)):
+                    issue('unsupported_header')
+                else:
+                    level = int(match.group(1))
+                    blocks.append({'type': 'header', 'data': {'text': match.group(2), 'level': level}})
+                    if source_format != 'h' + str(level) and 'ape_heading_format_mismatch' not in plan['warnings']:
+                        plan['warnings'].append('ape_heading_format_mismatch')
             elif kind == "text":
                 if fields.get("anchor") or any(v not in (None, "", False, [], {}) for k, v in fields.items() if k not in ("html", "anchor")):
                     issue("unsupported_text_settings")
