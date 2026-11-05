@@ -240,18 +240,38 @@ def outline(client,course):
     if not rows:return []
     row=rows[0]
     if row.get('published') != 0:raise Review('course_not_draft')
-    doc=client.call('get_document',{'doctype':'LMS Course','name':row['name']})
+    course_name=row['name']
+    doc=client.call('get_document',{'doctype':'LMS Course','name':course_name})
     chapters=doc.get('chapters')
     if not isinstance(chapters,list) or len(chapters)!=1:raise Review('course_chapters_ambiguous')
     chapter=client.call('get_document',{'doctype':'Course Chapter','name':chapters[0]['chapter']})
-    if chapter.get('course') != row['name'] or chapter.get('is_scorm_package'):raise Review('course_chapter_invalid')
+    if chapter.get('course') != course_name or chapter.get('is_scorm_package'):raise Review('course_chapter_invalid')
     lessons=chapter.get('lessons')
     if not isinstance(lessons,list):raise Review('course_outline_invalid')
-    ids=[]
+    names=[]
     for position,item in enumerate(lessons,1):
-        if item.get('idx') != position:raise Review('course_outline_invalid')
-        lesson=client.call('get_document',{'doctype':'Course Lesson','name':item['lesson']})
-        if lesson.get('custom_avo_account') != ACCOUNT or lesson.get('course') != row['name'] or lesson.get('chapter') != chapter.get('name') or not lesson.get('is_draft') or lesson.get('include_in_preview'):
+        if (not isinstance(item,dict) or item.get('idx') != position or
+                not isinstance(item.get('lesson'),str) or not item['lesson']):
+            raise Review('course_outline_invalid')
+        names.append(item['lesson'])
+    if len(set(names)) != len(names):raise Review('course_outline_invalid')
+    by_name={}
+    for offset in range(0,len(names),100):
+        group=names[offset:offset+100]
+        result=client.call('list_documents',{'doctype':'Course Lesson',
+            'fields':['name','custom_avo_id','custom_avo_account','course','chapter','is_draft','include_in_preview'],
+            'filters':[['name','in',group]],'limit':len(group)})
+        rows=result.get('documents')
+        if not isinstance(rows,list) or result.get('has_next_page') or len(rows)!=len(group):
+            raise Review('course_outline_invalid')
+        for row in rows:
+            if not isinstance(row,dict) or row.get('name') not in group or row['name'] in by_name:
+                raise Review('course_outline_invalid')
+            by_name[row['name']]=row
+    ids=[]
+    for name in names:
+        lesson=by_name[name]
+        if lesson.get('custom_avo_account') != ACCOUNT or lesson.get('course') != course_name or lesson.get('chapter') != chapter.get('name') or not lesson.get('is_draft') or lesson.get('include_in_preview'):
             raise Review('existing_lesson_not_safe')
         try:ident=int(lesson['custom_avo_id'])
         except (TypeError,ValueError,KeyError):raise Review('existing_lesson_invalid')

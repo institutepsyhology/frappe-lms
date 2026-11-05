@@ -36,6 +36,27 @@ class Client:
 
 
 class BatchTests(unittest.TestCase):
+    def test_outline_batches_reads_and_preserves_source_order(self):
+        class OutlineClient:
+            def __init__(self): self.groups=[]; self.omit=False; self.wrong_account=False
+            def call(self,name,args):
+                if name=='get_document':
+                    if args['doctype']=='LMS Course': return {'chapters':[{'chapter':'chapter'}]}
+                    return {'name':'chapter','course':'course','is_scorm_package':0,
+                            'lessons':[{'idx':i,'lesson':str(i)} for i in range(1,202)]}
+                if args['doctype']=='LMS Course': return {'documents':[{'name':'course','published':0}]}
+                group=args['filters'][0][2]; self.groups.append(group)
+                docs=[{'name':n,'custom_avo_id':n,'custom_avo_account':'other' if self.wrong_account else mod.ACCOUNT,
+                       'course':'course','chapter':'chapter','is_draft':1,'include_in_preview':0} for n in reversed(group)]
+                return {'documents':docs[:-1] if self.omit else docs,'has_next_page':False}
+        client=OutlineClient()
+        self.assertEqual(mod.outline(client,21),list(range(1,202)))
+        self.assertEqual([len(g) for g in client.groups],[100,100,1])
+        client.omit=True
+        with self.assertRaisesRegex(mod.Review,'course_outline_invalid'):mod.outline(client,21)
+        client.omit=False; client.wrong_account=True
+        with self.assertRaisesRegex(mod.Review,'existing_lesson_not_safe'):mod.outline(client,21)
+
     def test_catalog_course_with_missing_manifest_is_not_silently_skipped(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
