@@ -173,3 +173,14 @@ only after checking both its source and content digests. The source image itself
 is private and is not included in this repository. Unknown images and changed
 sections remain blocked. Deploy with `deploy_reviewed_html.py` after publishing
 the matching commit and record checks afterwards.
+# Reviewed HTML release and image verification, 2026-11-06
+
+Commit `b4a25fd5` produced image
+`sha256:4d4eeaf40565aea568e8ae1874df30a17176832102a4114ed450db19fcc7bdc0`.
+Candidate tests and backup-integrity checks passed and all three sites were
+healthy. An image import exposed that Frappe can strip JPEG EXIF metadata on
+save, so exact original-byte comparison incorrectly rejected the saved draft.
+The follow-up verifies either exact original bytes or the exact output of
+Frappe's own EXIF transform. It does not change the site's privacy settings.
+Deploy using `deploy_image_exif.py` and record actual MCP read-back afterwards.
+Backups have not been restore-tested.

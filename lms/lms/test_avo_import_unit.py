@@ -38,6 +38,16 @@ class Meta:
 
 
 class ImportTests(unittest.TestCase):
+    def test_saved_jpeg_must_match_original_or_exact_frappe_exif_transform(self):
+        import hashlib
+        image={'name':'avo-example.jpg','bytes':b'original','sha256':hashlib.sha256(b'original').hexdigest()}
+        with patch.object(module,'_stripped_jpeg',return_value=b'normalized'):
+            self.assertTrue(module._image_matches(image,b'original'))
+            self.assertTrue(module._image_matches(image,b'normalized'))
+            self.assertFalse(module._image_matches(image,b'different'))
+            image['name']='avo-example.png'
+            self.assertFalse(module._image_matches(image,b'normalized'))
+
     def test_spacer_cannot_be_imported_without_the_frontend_renderer(self):
         p = payload()
         p['format'] = 'ape'

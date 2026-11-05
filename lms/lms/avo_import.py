@@ -124,6 +124,19 @@ def _attached(lesson, filename):
     return frappe.get_doc('File', rows[0]['name'])
 
 
+def _stripped_jpeg(raw):
+    from frappe.utils.image import strip_exif_data
+    return strip_exif_data(raw, 'image/jpeg')
+
+
+def _image_matches(image, saved):
+    if hashlib.sha256(saved).hexdigest() == image['sha256']:
+        return True
+    # Frappe may strip JPEG EXIF and apply orientation during File insertion.
+    # Compare exact bytes produced by the same transformation, not just pixels.
+    return image['name'].endswith('.jpg') and saved == _stripped_jpeg(image['bytes'])
+
+
 def _lookup(plan, fingerprint, payload, images):
     courses = _matching('LMS Course', plan['account'], plan['course_id'])
     lessons = _matching('Course Lesson', plan['account'], plan['lesson_id'])
@@ -150,7 +163,7 @@ def _lookup(plan, fingerprint, payload, images):
         urls = {}
         for key, image in images.items():
             saved_image = _attached(lesson.name, image['name'])
-            if hashlib.sha256(saved_image.get_content(encodings=[])).hexdigest() != image['sha256']:
+            if not _image_matches(image, saved_image.get_content(encodings=[])):
                 raise ValueError('existing_lesson_conflict')
             urls[key] = saved_image.file_url
         expected = plan_import(payload, urls)
