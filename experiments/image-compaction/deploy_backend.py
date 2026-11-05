@@ -19,10 +19,12 @@ TAG = 'company-lms:avo-heading-20261105'
 BACKEND = 'company-lms-backend-1'
 SITES = ('my-lk.mastervision.su', 'my-lk.iomp.ru', 'my-lk.mv-centr.ru')
 FILES = ('lms/lms/avo_import.py', 'lms/lms/avo_transform.py', 'lms/lms/avo_html_fragment.py')
+# The previous release was deployed with CRLF endings. These hashes were
+# verified against Git commit 9397a92b with LF converted to CRLF, byte for byte.
 BASE_HASHES = {
-    'lms/lms/avo_import.py': 'ebe01b69bda5ac085ec0c54c828b280a28e7253a384017bc35ef0c34eaba4115',
-    'lms/lms/avo_transform.py': '54b2e49081e5287998ea949be35f7170ee5c7302a8888993fb1dc4d4443f0d21',
-    'lms/lms/avo_html_fragment.py': 'a87b08f692781bc0d5ddb7d451e72bb9a5795263bcea69cafb4ddd4473562f8f',
+    'lms/lms/avo_import.py': '6a88fefbaebc8a24721135e8ab78aaf84987db3113de09aab34a3bd39a099869',
+    'lms/lms/avo_transform.py': 'baf6cc2b22118c5f890365a6fc23a7365b753768b21e4c3ff5f9cd417b5e5f9b',
+    'lms/lms/avo_html_fragment.py': '0aa301b2fbde9ecb898b1d7e6e327ad7667c0c525f7596116bcd5174fe7d3bd1',
 }
 
 BACKUP = r'''
