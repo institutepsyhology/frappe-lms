@@ -1,4 +1,7 @@
 import tempfile
+import hashlib
+import json
+import sqlite3
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -33,6 +36,29 @@ class Client:
 
 
 class BatchTests(unittest.TestCase):
+    def test_catalog_course_with_missing_manifest_is_not_silently_skipped(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            def db(name, statements):
+                c=sqlite3.connect(root/name)
+                for sql,args in statements:c.execute(sql,args)
+                c.commit();c.close()
+            db('mv-centr-captures.sqlite', [('create table capture_meta(singleton integer,account text,origin text)',()),
+                ('insert into capture_meta values(1,?,?)',(mod.ACCOUNT,mod.ORIGIN))])
+            db('mv-centr-queue.sqlite',[('create table queue_meta(singleton integer,origin text)',()),
+                ('insert into queue_meta values(1,?)',(mod.ORIGIN,))])
+            raw='[101]';digest=hashlib.sha256(raw.encode()).hexdigest()
+            db('mv-centr-course-manifests.sqlite', [('create table manifest_meta(singleton integer,account text,origin text)',()),
+                ('insert into manifest_meta values(1,?,?)',(mod.ACCOUNT,mod.ORIGIN)),
+                ('create table course_manifests(id integer,course_id integer,lesson_ids text,sha256 text,state text)',()),
+                ('insert into course_manifests values(1,11,?,?,?)',(raw,digest,'accepted'))])
+            db('mv-centr-course-catalog.sqlite',[('create table catalog_meta(singleton integer,account text,origin text)',()),
+                ('insert into catalog_meta values(1,?,?)',(mod.ACCOUNT,mod.ORIGIN)),
+                ('create table catalog_pages(run_id text,page integer,total integer,start integer,end integer,course_ids text,observed_at text)',()),
+                ('insert into catalog_pages values(?,?,?,?,?,?,?)',('run',1,2,1,2,json.dumps([10,11]),'2026'))])
+            with patch.object(mod,'DATA',root):
+                self.assertEqual(mod.course_ids(),[(10,None),(11,[101])])
+
     def test_test_lesson_17_is_excluded_without_excluding_course_17(self):
         client=Client();journal=Journal()
         with patch.object(mod,'prepare_course',side_effect=AssertionError('should not fetch')):

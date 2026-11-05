@@ -5,6 +5,7 @@ grants access. The event database contains identifiers and diagnostic codes,
 never lesson text, URLs, cookies, or authentication details.
 """
 import argparse
+from contextlib import closing
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -49,17 +50,17 @@ def readonly(path):
 
 
 def course_ids(start=1, selected=None):
-    with readonly(DATA / 'mv-centr-captures.sqlite') as db:
+    with closing(readonly(DATA / 'mv-centr-captures.sqlite')) as db:
         if db.execute('select account,origin from capture_meta where singleton=1').fetchone() != (ACCOUNT, ORIGIN):
             raise Stop('wrong_capture_account')
-    with readonly(DATA / 'mv-centr-queue.sqlite') as db:
+    with closing(readonly(DATA / 'mv-centr-queue.sqlite')) as db:
         if db.execute('select origin from queue_meta where singleton=1').fetchone() != (ORIGIN,):
             raise Stop('wrong_queue_account')
-    with readonly(DATA / 'mv-centr-course-manifests.sqlite') as db:
+    with closing(readonly(DATA / 'mv-centr-course-manifests.sqlite')) as db:
         if db.execute('select account,origin from manifest_meta where singleton=1').fetchone() != (ACCOUNT, ORIGIN):
             raise Stop('wrong_manifest_account')
         rows = db.execute('select course_id,lesson_ids,sha256,state from course_manifests order by course_id,id').fetchall()
-    with readonly(DATA / 'mv-centr-course-catalog.sqlite') as db:
+    with closing(readonly(DATA / 'mv-centr-course-catalog.sqlite')) as db:
         if db.execute('select account,origin from catalog_meta where singleton=1').fetchone() != (ACCOUNT, ORIGIN):
             raise Stop('wrong_catalog_account')
         runs = db.execute('select run_id,max(observed_at) from catalog_pages group by run_id order by max(observed_at) desc').fetchall()
@@ -80,10 +81,12 @@ def course_ids(start=1, selected=None):
             raise Stop('manifest_integrity_error')
         grouped.setdefault(cid, []).append((json.loads(raw), state))
     result = []
-    for cid in sorted(set(catalog).intersection(grouped)):
+    for cid in sorted(catalog):
         if cid < start or (selected is not None and cid != selected):
             continue
-        variants = grouped[cid]
+        variants = grouped.get(cid, [])
+        if not variants:
+            result.append((cid, None)); continue
         accepted = [v for v,s in variants if s == 'accepted']
         if len(accepted) != 1 or any(s != 'accepted' for _,s in variants):
             result.append((cid, None)); continue
@@ -267,7 +270,7 @@ def preview(client,payload):
 
 
 def import_course(client,journal,course,expected,apply):
-    if expected is None: raise Review('manifest_changed')
+    if expected is None: raise Review('manifest_missing_or_changed')
     excluded=[ident for ident in expected if ident in EXCLUDED_LESSONS]
     if excluded and len(excluded)==len(expected):
         for ident in excluded:journal.event(course,ident,'lesson_excluded',['user_excluded_test_lesson'])

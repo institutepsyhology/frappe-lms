@@ -93,3 +93,8 @@ one exact concatenated source field. Source HTML and the original video field
 remain in the private snapshot. Unknown HTML, forms, unsupported layouts and
 unconfirmed video combinations still stop import; an HTML frame remains subject
 to a separate visual check.
+
+On 05.11.2026 that overlay was deployed from commit `75ed0219`: all 41 AVO
+tests passed, backups for all three sites were verified, services remained
+healthy, and the actual mv-centr MCP preview confirmed the owner-selected video.
+The image was rebuilt from the one-layer baseline, not stacked on prior releases.
