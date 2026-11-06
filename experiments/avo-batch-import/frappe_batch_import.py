@@ -162,14 +162,14 @@ class Journal:
         temp.write_text('\n'.join(lines)+'\n',encoding='utf-8')
         os.replace(temp,REPORT)
         # Only the latest course outcome counts: historical failures must not
-        # reappear after a successful transfer. The preflight currently stops
-        # at the first issue, so later lessons can still need review.
+        # reappear after a successful transfer. Collect each lesson issue found
+        # during that preflight; no lesson is written if any still need review.
         latest = {}
         events = self.db.execute('select id,course_id,lesson_id,status,codes from events order by id').fetchall()
         pending = {}
         for ident,cid,lid,status,codes in events:
             if cid is None: continue
-            if status == 'lesson_needs_review': pending[cid] = (lid, json.loads(codes))
+            if status == 'lesson_needs_review': pending.setdefault(cid,[]).append((lid, json.loads(codes)))
             if status in ('course_needs_review','course_created','course_ready','existing_structure_unverified'):
                 latest[cid] = (ident,status,json.loads(codes),pending.get(cid))
                 pending.pop(cid,None)
@@ -196,15 +196,15 @@ class Journal:
             'unknown_block':'неизвестный тип блока',
             'reviewed_source_changed':'исходный урок изменился после согласования'})
         lines = ['# Проблемные уроки MV-Centr', '',
-                 'Для каждого курса показана первая найденная проблема; после её исправления могут обнаружиться другие.', '',
+                 'Для каждого курса показаны проблемы последней проверки; при изменении исходных данных могут обнаружиться другие.', '',
                  '| Курс АВО | Урок АВО | Причина |', '| --- | --- | --- |']
         for cid,(_,status,codes,detail) in sorted(latest.items()):
             if status != 'course_needs_review': continue
-            lid,issues = detail if detail else (None,codes)
             course_link = f'[№ {cid}](https://shop.mv-centr.ru/shop/training/admin/update?id={cid}&lg=ru#training_lessons)'
-            lesson_link = f'[№ {lid}](https://shop.mv-centr.ru/shop/training/traininglessons/admin/update?id={lid}&lg=ru)' if lid else 'Не определён'
-            reason = ', '.join(descriptions.get(code,code) for code in issues)
-            lines.append(f'| {course_link} | {lesson_link} | {reason} |')
+            for lid,issues in detail or [(None,codes)]:
+                lesson_link = f'[№ {lid}](https://shop.mv-centr.ru/shop/training/traininglessons/admin/update?id={lid}&lg=ru)' if lid else 'Не определён'
+                reason = ', '.join(descriptions.get(code,code) for code in issues)
+                lines.append(f'| {course_link} | {lesson_link} | {reason} |')
         temp=PROBLEMS_REPORT.with_name(PROBLEMS_REPORT.name+'.tmp')
         temp.write_text('\n'.join(lines)+'\n',encoding='utf-8')
         os.replace(temp,PROBLEMS_REPORT)
@@ -388,7 +388,7 @@ def import_course(client,journal,course,expected,apply):
         raise Review('course_order_conflict')
     if existing == expected:
         journal.event(course,None,'existing_structure_unverified'); return 'already_present'
-    checks=[]; image_sets={}
+    checks=[]; image_sets={}; needs_review=False
     for p in payloads:
         # The live schema was widened to 512. The server also checks the
         # sanitized title against its actual site metadata before writing.
@@ -397,17 +397,18 @@ def import_course(client,journal,course,expected,apply):
         if len(p['lesson_title'])>512:too_long.append('lesson_title_exceeds_frappe_limit')
         if too_long:
             journal.event(course,p['lesson_id'],'lesson_needs_review',too_long)
-            raise Review('course_needs_review')
+            needs_review=True; continue
         try:images=prepared_images(p)
         except Review:
             journal.event(course,p['lesson_id'],'lesson_needs_review',['image_requires_preparation'])
-            raise Review('course_needs_review')
+            needs_review=True; continue
         image_sets[p['lesson_id']]=images
         result=preview(client,p,images)
         if result.get('ready') is not True:
-            journal.event(course,p['lesson_id'],'lesson_needs_review',result['issues']);raise Review('course_needs_review')
+            journal.event(course,p['lesson_id'],'lesson_needs_review',result['issues']);needs_review=True;continue
         journal.event(course,p['lesson_id'],'lesson_preflight',result['warnings'])
         checks.append(result)
+    if needs_review: raise Review('course_needs_review')
     if any(r.get('action') != 'already_imported' for r in checks[:len(existing)]):
         raise Review('existing_lesson_conflict')
     if any(r.get('action') == 'already_imported' for r in checks[len(existing):]):

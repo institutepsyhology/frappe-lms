@@ -123,6 +123,16 @@ class BatchTests(unittest.TestCase):
         self.assertEqual(client.writes,[])
         self.assertIn((24,2,'lesson_needs_review',['unknown_block']),journal.events)
 
+    def test_preflight_reports_all_problem_lessons_before_any_write(self):
+        class MultipleProblems(Client):
+            def call(self,name,args):
+                self.unsupported=args['args']['payload']['lesson_id']
+                return super().call(name,args)
+        client=MultipleProblems();journal=Journal()
+        with self.assertRaisesRegex(mod.Review,'course_needs_review'):self.run_course(client,journal)
+        self.assertEqual(client.writes,[])
+        self.assertEqual([e[1] for e in journal.events if e[2]=='lesson_needs_review'],[1,2])
+
     def test_draft_import_preserves_order_and_rechecks_each_lesson(self):
         client=Client();journal=Journal();self.run_course(client,journal)
         self.assertEqual(client.writes,[1,2]);self.assertEqual(client.existing,[1,2])
