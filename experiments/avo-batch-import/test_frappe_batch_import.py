@@ -37,7 +37,7 @@ class Client:
 
 class BatchTests(unittest.TestCase):
     def test_long_course_title_is_reported_before_writes(self):
-        client=Client();journal=Journal();p=payload(1);p['course_title']='x'*513
+        client=Client();journal=Journal();p=payload(1);p['course_title']='x'*141
         with patch.object(mod,'prepare_course',return_value=[p]),patch.object(mod,'outline',return_value=[]):
             with self.assertRaisesRegex(mod.Review,'course_needs_review'):mod.import_course(client,journal,24,[1],True)
         self.assertEqual(client.writes,[])
@@ -153,12 +153,13 @@ class BatchTests(unittest.TestCase):
         self.assertEqual(client.writes,[])
         self.assertIn((24,2,'lesson_needs_review',['image_requires_preparation']),journal.events)
 
-    def test_three_failures_pause_and_explicit_resume_clears(self):
+    def test_ten_failures_pause_and_explicit_resume_clears(self):
         with tempfile.TemporaryDirectory() as directory:
             j=mod.Journal(Path(directory)/'events.sqlite')
             try:
-                self.assertFalse(j.failure());self.assertFalse(j.failure());self.assertTrue(j.failure())
-                self.assertEqual(j.state(),(1,3));j.resume();self.assertEqual(j.state(),(0,0))
+                for _ in range(9):self.assertFalse(j.failure())
+                self.assertTrue(j.failure())
+                self.assertEqual(j.state(),(1,10));j.resume();self.assertEqual(j.state(),(0,0))
             finally:j.close()
 
 

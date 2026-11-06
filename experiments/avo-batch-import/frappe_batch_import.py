@@ -32,7 +32,7 @@ DATA = ROOT / 'exports/lesson-content'
 SITE = 'my-lk.mv-centr.ru'
 ORIGIN = 'https://shop.mv-centr.ru'
 ACCOUNT = 'mv-centr'
-MAX_ERRORS = 3
+MAX_ERRORS = 10
 REPORT = DATA / 'ОТЧЁТ-перенос-mv-centr.md'
 # User-confirmed disposable test lesson. This is a lesson ID, not course 17.
 EXCLUDED_LESSONS = {17}
@@ -336,10 +336,10 @@ def import_course(client,journal,course,expected,apply):
         journal.event(course,None,'existing_structure_unverified'); return 'already_present'
     checks=[]; image_sets={}
     for p in payloads:
-        # The backend performs the per-site schema check before any write.
+        # The live schema is still limited to 140 until the 512 migration ships.
         too_long=[]
-        if len(p['course_title'])>512:too_long.append('course_title_exceeds_frappe_limit')
-        if len(p['lesson_title'])>512:too_long.append('lesson_title_exceeds_frappe_limit')
+        if len(p['course_title'])>140:too_long.append('course_title_exceeds_frappe_limit')
+        if len(p['lesson_title'])>140:too_long.append('lesson_title_exceeds_frappe_limit')
         if too_long:
             journal.event(course,p['lesson_id'],'lesson_needs_review',too_long)
             raise Review('course_needs_review')
