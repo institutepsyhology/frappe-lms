@@ -41,6 +41,16 @@ CONFIRMED_OMIT_EMPTY_BUTTONS = {('mv-centr','952','9422'):
 # The owner selected content for these exact MV-Centr captures. If a capture
 # changes, do not apply the decision to the new contents without review.
 REVIEWED_SELECTIONS = {
+    ('mv-centr','958','9498'): ('96ae2cf24d8dccb4eb0d84e86e8b1d57e6bc7fcffcd53c473c5463b35dae4bea','videos',0),
+    ('mv-centr','889','8585'): ('e068b329730df74ac7c9973d2757412deafef7c6167e1530c2a31eff35154e2b','videos',6),
+    ('mv-centr','889','8586'): ('ea5a41f7512533fae1c9041f969cd67f8e085c8b4cac21aaacf4c8e512535b9b','videos',6),
+    ('mv-centr','889','8587'): ('f2f15eef89da15be41b35af24e880eac9021d2b1ed4e483cdf9137a79b5f6f7c','videos',6),
+    ('mv-centr','889','8588'): ('18514fe5d53e521112617c17402df1f3eda45e524481ef3be28522e9ecc9b582','videos',6),
+    ('mv-centr','889','8589'): ('3e87d11c6fa590061902bc116a449d61d078b1637c1967a809c2584d5fdf4150','videos',5),
+    ('mv-centr','889','8590'): ('87e1278a1ea25678afc684f2124676b43d1ae4dd0ab91cf8c6f2c5b269b566c5','videos',6),
+    ('mv-centr','889','8591'): ('18c0d56a0e302212a75301d261aa917f32ac5378f3ed35a6a675f02dc5889aee','videos',6),
+    ('mv-centr','889','8595'): ('b5772002cfd90a805f839bbabf8f3ed96f8086ee8b7a189dbd68f61f2b32d3b7','videos',8),
+    ('mv-centr','889','8745'): ('692cf0857498bac3a59021d6e0d0da617d0e3471c3945add1d83c6940f73559d','videos',4),
     ('mv-centr','958','9497'): ('f322cbf9b57f4e63cc6ebd0d1fa858a966d30a721a72cef5fc6965df46882abf','videos',0),
     ('mv-centr','889','8584'): ('dfc6bd4cfbb0481dc6c9d99e38951a43ccd59f24d00aa4515ecf912c187c3341','videos',6),
     ('mv-centr','951','9401'): ('54a8b35b7ebabbee601cce7d601283899c85f9c72e972af564b7c49cf372a8b1','videos',2),
