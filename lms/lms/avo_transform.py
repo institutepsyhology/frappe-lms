@@ -826,18 +826,20 @@ def plan_import(payload, image_urls=None):
             elif kind == 'button':
                 allowed = {'anchor', 'html', 'icon', 'linkType', 'url', 'blank', 'toAnchor', 'event'}
                 button_url = fields.get('url')
-                if selection and isinstance(button_url,str): button_url = button_url.strip()
+                if isinstance(button_url,str): button_url = button_url.strip()
+                label = fields.get('html')
+                if isinstance(label,str): label = re.sub(r'<br\s*/?>', ' ', label, flags=re.I).strip()
                 if (fields.get('linkType') != 'url' or any(fields.get(k) not in (None, '', False) for k in ('anchor','icon','toAnchor','event'))
                         or any(v not in (None, '', False, [], {}) for k, v in fields.items() if k not in allowed)
-                        or not isinstance(fields.get('html'), str) or '<' in fields['html'] or '>' in fields['html']
+                        or not isinstance(label, str) or '<' in label or '>' in label
                         or not _url(button_url)):
                     issue('unsupported_button')
                 else:
                     if selection and selection[0] == 'videos':
-                        blocks.append({'type':'lessonButton','data':{'text':fields['html'],'url':button_url,
+                        blocks.append({'type':'lessonButton','data':{'text':label,'url':button_url,
                             'size':'medium','background':'#2563eb','color':'#ffffff','newTab':bool(fields.get('blank'))}})
                     else:
-                        paragraph('<a href="' + escape(fields['url'], quote=True) + '">' + escape(fields['html']) + '</a>')
+                        paragraph('<a href="' + escape(button_url, quote=True) + '">' + escape(label) + '</a>')
                         if fields.get('blank') and 'ape_button_new_tab_not_reconstructed' not in plan['warnings']:
                             plan['warnings'].append('ape_button_new_tab_not_reconstructed')
             elif kind == 'image':

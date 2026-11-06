@@ -110,6 +110,19 @@ class TransformTests(unittest.TestCase):
             self.assertIn('reviewed_source_changed',plan_import(p)['issues'])
             self.assertIsNone(module.reviewed_selection(original,'iomp',123,456))
 
+    def test_button_whitespace_and_line_break_are_normalized_without_changing_source(self):
+        import copy
+        node={'name':'button','fields':{'linkType':'url','html':'Аудиозапись<br>',
+             'url':' https://example.test/audio ', 'blank':True}}
+        root={'name':'page','children':[node]}; original=copy.deepcopy(root)
+        out=plan_import(sample(root,'ape'))
+        self.assertTrue(out['ready'],out['issues'])
+        self.assertEqual(out['blocks'][0]['data']['text'],
+            '<a href="https://example.test/audio">Аудиозапись</a>')
+        self.assertEqual(root,original)
+        node['fields']['html']='<script>bad</script>'
+        self.assertIn('unsupported_button',plan_import(sample(root,'ape'))['issues'])
+
     def test_spacer_is_omitted_even_for_previously_reviewed_lessons(self):
         import json
         from pathlib import Path
