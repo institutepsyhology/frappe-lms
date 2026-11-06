@@ -23,7 +23,7 @@ FILES = BASE_FILES + ('lms/lms/avo_title_schema.py', 'lms/lms/doctype/lms_course
 EXPECTED_LIVE_SCHEMA_FILES = {
     'lms/lms/doctype/lms_course/lms_course.py': '46afb5d8641ff009158635feed8d4b46cc3499c78707afcf68875550b7d2189e',
     'lms/lms/doctype/lms_course/lms_course.json': '9078fbcc1f1278e34480aafd5bc307873bd90571a284fa8b65d5feb561797737',
-    'lms/lms/doctype/course_lesson/course_lesson.json': '24cdd0fc3666ca67409e07ba3b84f848a7ddffe4e84394216d47f734c14886de1',
+    'lms/lms/doctype/course_lesson/course_lesson.json': '24cdd0fc3666ca67409e07ba3baf848a7ddffe4e84394216d47f734c14886de1',
 }
 # The previous release was deployed with CRLF endings. These hashes were
 # verified against Git commit 9397a92b with LF converted to CRLF, byte for byte.
