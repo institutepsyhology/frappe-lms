@@ -82,7 +82,7 @@ class ImportTests(unittest.TestCase):
             image['name']='avo-example.png'
             self.assertFalse(module._image_matches(image,b'normalized'))
 
-    def test_spacer_cannot_be_imported_without_the_frontend_renderer(self):
+    def test_only_spacer_is_empty_and_cannot_be_imported(self):
         p = payload()
         p['format'] = 'ape'
         p.pop('content')
@@ -92,7 +92,8 @@ class ImportTests(unittest.TestCase):
         with patch.object(module, '_take_lock', side_effect=AssertionError('lock taken')):
             result = module.import_lesson(p, dry_run=False)
         self.assertFalse(result['ready'])
-        self.assertIn('spacer_renderer_not_installed', result['issues'])
+        self.assertIn('empty_lesson', result['issues'])
+        self.assertNotIn('spacer_renderer_not_installed', result['issues'])
 
     def test_iomp_site_account_mapping_and_isolation(self):
         p = payload()

@@ -87,17 +87,38 @@ class TransformTests(unittest.TestCase):
             p['account']='iomp'
             self.assertNotEqual(plan_import(p)['blocks'][0]['type'],'htmlBlock')
 
-    def test_reviewed_lesson_spacer_uses_html_when_renderer_unavailable(self):
-        import json,base64
+    def test_owner_selection_preserves_source_and_is_bound_to_account_and_capture(self):
+        import copy, hashlib, json
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        root={'name':'page','children':[
+            {'name':'text','fields':{'html':'<p>Remove this</p>'}},
+            {'name':'video','fields':{'videoProvider':'youtube','videoSrc':'https://youtu.be/abcdefghijk'}},
+            {'name':'button','fields':{'linkType':'url','html':'Audio','url':'https://example.test/audio','blank':True}},
+            {'name':'button','fields':{'linkType':'url','html':'Omit','url':'https://example.test/other'}}]}
+        original=copy.deepcopy(root)
+        digest=hashlib.sha256(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+        p=sample(root,'ape');p.update(course_id=123,lesson_id=456)
+        with patch.dict(module.REVIEWED_SELECTIONS,{('mv-centr','123','456'):(digest,'videos',1)}):
+            out=plan_import(p)
+            self.assertTrue(out['ready'],out['issues'])
+            self.assertEqual([b['type'] for b in out['blocks']],['videoChoice','lessonButton'])
+            self.assertEqual(out['blocks'][1]['data']['text'],'Audio')
+            self.assertEqual(root,original)
+            root['children'][0]['fields']['html']='<p>Changed</p>'
+            self.assertIn('reviewed_source_changed',plan_import(p)['issues'])
+            self.assertIsNone(module.reviewed_selection(original,'iomp',123,456))
+
+    def test_spacer_is_omitted_even_for_previously_reviewed_lessons(self):
+        import json
         from pathlib import Path
         node=json.loads((Path(__file__).parent/'testdata/avo_spacer.json').read_text(encoding='utf-8'))
-        p=sample({'name':'page','children':[node]},'ape');p.update(course_id=258,lesson_id=1150)
+        p=sample({'name':'page','children':[node,{'name':'text','fields':{'html':'<p>Содержание</p>'}}]},'ape');p.update(course_id=258,lesson_id=1150)
         out=plan_import(p);self.assertTrue(out['ready'],out['issues'])
-        self.assertEqual(out['blocks'][0]['type'],'htmlBlock')
-        self.assertIn('background-color:',base64.b64decode(out['blocks'][0]['data']['encodedHtml']).decode())
-        self.assertIn('ape_spacer_frame_approximation',out['warnings'])
+        self.assertEqual([b['type'] for b in out['blocks']],['paragraph'])
+        self.assertIn('user_omitted_separators',out['warnings'])
         p['course_id']=259
-        self.assertEqual(plan_import(p)['blocks'][0]['type'],'lessonSpacer')
+        self.assertEqual([b['type'] for b in plan_import(p)['blocks']],['paragraph'])
 
     def test_only_exact_confirmed_section_is_flattened(self):
         import hashlib,json
@@ -239,21 +260,20 @@ class TransformTests(unittest.TestCase):
         self.assertFalse(out['ready'])
         self.assertIn('unsupported_multicolumn_layout', out['issues'])
 
-    def test_spacer_preserves_dimensions_colour_and_rejects_unknown_variants(self):
+    def test_spacer_variants_are_ignored_but_empty_lesson_still_requires_review(self):
         import copy, json
         from pathlib import Path
         node = json.loads((Path(__file__).parent / 'testdata/avo_spacer.json').read_text(encoding='utf-8'))
         root = {'name': 'page', 'children': [node]}
         out = plan_import(sample(root, 'ape'))
-        self.assertTrue(out['ready'], out['issues'])
-        self.assertEqual(out['blocks'], [{'type': 'lessonSpacer', 'data': {
-            'height': 6, 'width': 100, 'marginTop': 10, 'marginBottom': 10, 'color': '#c8c8c8'}}])
+        self.assertIn('empty_lesson', out['issues'])
+        self.assertEqual(out['blocks'], [])
         changed = copy.deepcopy(node)
         changed['style']['lists']['$__max_width__767__spacer']['height']['value']['number'] = 40
-        self.assertFalse(plan_import(sample({'name':'page','children':[changed]},'ape'))['ready'])
+        self.assertNotIn('unsupported_spacer',plan_import(sample({'name':'page','children':[changed]},'ape'))['issues'])
         changed = copy.deepcopy(node)
         changed['style']['lists']['spacer']['backgroundImage']['value']['url'] = 'https://example.test/image.png'
-        self.assertFalse(plan_import(sample({'name':'page','children':[changed]},'ape'))['ready'])
+        self.assertNotIn('unsupported_spacer',plan_import(sample({'name':'page','children':[changed]},'ape'))['issues'])
 
     def test_ape_header_keeps_visible_level_and_warns_if_setting_differs(self):
         root={'name':'page','children':[{'name':'header','fields':{'anchor':'','format':'h1','html':'<h2>Занятие <strong>1</strong></h2>'}}]}

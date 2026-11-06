@@ -36,6 +36,27 @@ CONFIRMED_HTML_FIELDS = {('mv-centr','258','1151'):
     ('mv-centr','447','2608'):'40c2aefc41caa2cde7ac583ff753e3eeba135257f2b1e6782fea1e573a63415d'}
 CONFIRMED_OMIT_HEADERS = {('mv-centr','447','2608'):
     'fcc9b9dfb972f67fa3e47b266af9ad5345f3e5593aa2a9f9b7163181c4ac16bf'}
+# The owner selected content for these exact MV-Centr captures. If a capture
+# changes, do not apply the decision to the new contents without review.
+REVIEWED_SELECTIONS = {
+    ('mv-centr','899','8699'): ('d0142121f66f647b08af1124424bdd88528c350e686526d149a33966eaa87194','placeholder',0),
+    ('mv-centr','893','8621'): ('f0f0dd08db2fc79204a9e812610df544d3f26bd9badc36edfb31cf5407381253','placeholder',0),
+    ('mv-centr','899','8651'): ('0164750455a3ad1ce304adc9696fd7ed6d16db55e2acc2c71a53e912746fa890','welcome',0),
+    ('mv-centr','896','8627'): ('b1e12c28b0e256f11b33d1b381ba12336cb43149c4caa872b452514efded2eee','videos',0),
+    ('mv-centr','895','8624'): ('08892c679345238213fd0159861fa0cff65ce9ddfa7c1e1611d4ce0fb14cb73e','videos',0),
+    ('mv-centr','892','8610'): ('afef3165d49134c1203f8a6bf17ec6386bd1bddcf068f74840168153159b5d6b','videos',0),
+    ('mv-centr','894','8617'): ('44f867c6bc8e4f8ab40a3acfeb49761b6872efcd26175b87200eb882d2843ab6','videos',1),
+    ('mv-centr','893','8648'): ('1bb9b4b0483d807ec94c0864e5bba16baaf6e59e8df561ad3a16ac8634c3eaf2','videos',0),
+    ('mv-centr','891','8609'): ('1bb9b4b0483d807ec94c0864e5bba16baaf6e59e8df561ad3a16ac8634c3eaf2','videos',0),
+    ('mv-centr','890','8607'): ('9190f4e80e8426962208170a9970ebbec723baf1f7b438832bb9e5de199aeaee','videos',0),
+    ('mv-centr','889','8579'): ('0e665433a4414fff819b4255278f7abd8b95d0c49dc3907d27c68bfd1d0c3fe2','videos',4),
+}
+
+def reviewed_selection(root, account, course, lesson):
+    rule = REVIEWED_SELECTIONS.get((str(account),str(course),str(lesson)))
+    if not rule: return None
+    digest = _sha256_text(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False))
+    return rule[1:] if digest == rule[0] else None
 # Explicit user decision for these exact snapshots: keep the assignment text
 # and omit the empty answer form for now. The original remains in the snapshot.
 CONFIRMED_TEXT_ONLY_ANSWER_FORMS = {
@@ -606,12 +627,19 @@ def plan_import(payload, image_urls=None):
         root = payload.get("ape")
         if not isinstance(root, dict) or root.get("name") != "page":
             raise ValueError("invalid_ape_root")
+        selection = reviewed_selection(root,account,course,lesson)
+        if (account,course,lesson) in REVIEWED_SELECTIONS and selection is None:
+            issue('reviewed_source_changed')
+        if selection and selection[0] in ('placeholder','welcome'):
+            paragraph('<p>Урок в разработке.</p>' if selection[0] == 'placeholder' else '<p>Добро пожаловать на курс!</p>')
+            plan['warnings'].append('user_requested_replacement')
+            root = {'name':'page','children':[]}
         legacy_first, legacy_skip, legacy_unmatched = _legacy_player_pairs(root)
         if legacy_unmatched:
             issue('legacy_player_pair_unresolved')
         if legacy_first:
             plan['warnings'].append('legacy_player_labels_combined')
-        stack, count, reviewed_section_nodes = [root], 0, set()
+        stack, count, reviewed_section_nodes, selected_buttons = [root], 0, set(), 0
         while stack:
             node = stack.pop()
             count += 1
@@ -624,6 +652,20 @@ def plan_import(payload, image_urls=None):
                 if 'owner_omitted_placeholder_greeting' not in plan['warnings']:plan['warnings'].append('owner_omitted_placeholder_greeting')
                 continue
             kind, fields = node["name"], node.get("fields", {})
+            # Decorative separators contain no lesson material. Ignore them
+            # before validating their settings, while preserving the raw AVO snapshot.
+            if kind == 'spacer':
+                if 'user_omitted_separators' not in plan['warnings']: plan['warnings'].append('user_omitted_separators')
+                children = node.get('children', [])
+                if isinstance(children,list): stack.extend(reversed(children))
+                else: issue('invalid_children')
+                continue
+            if selection and selection[0] == 'videos':
+                if kind == 'button':
+                    selected_buttons += 1
+                    if selected_buttons > selection[1]: continue
+                elif kind not in ('page','section','container','column','video'):
+                    continue
             if not isinstance(fields, dict):
                 issue("invalid_fields")
                 continue
@@ -646,7 +688,7 @@ def plan_import(payload, image_urls=None):
                     if not combined_pair and (reviewed_section or (account,course,lesson) in CONFIRMED_SINGLE_COLUMN_LESSONS):
                         if 'user_requested_single_column' not in plan['warnings']:
                             plan['warnings'].append('user_requested_single_column')
-                    elif not combined_pair:
+                    elif not combined_pair and not (selection and selection[0] == 'videos'):
                         issue('unsupported_multicolumn_layout')
             if node.get("style") and kind != 'spacer':
                 if "ape_layout_settings_not_rendered" not in plan["warnings"]:
@@ -694,19 +736,6 @@ def plan_import(payload, image_urls=None):
                 else:
                     video_pair([{"provider": fields.get("videoProvider"), "url": fields.get("videoSrc")},
                                 {"provider": fields.get("videoProvider2"), "url": fields.get("videoSrc2")}])
-            elif kind == 'spacer':
-                try:
-                    spacer=_ape_spacer(node)
-                    if (account,course,lesson) in (('mv-centr','258','1150'),('mv-centr','258','1151')):
-                        markup=('<div style="height:{height}px;width:{width}%;margin:{marginTop}px auto {marginBottom}px;'
-                                'background-color:{color}"></div>').format(**spacer)
-                        height=max(100,min(1600,round(spacer['height']+spacer['marginTop']+spacer['marginBottom']+20)))
-                        blocks.append({'type':'htmlBlock','data':{'encodedHtml':base64.b64encode(markup.encode()).decode(),'height':height}})
-                        if 'ape_spacer_frame_approximation' not in plan['warnings']:plan['warnings'].append('ape_spacer_frame_approximation')
-                    else:
-                        blocks.append({'type': 'lessonSpacer', 'data': spacer})
-                except ValueError:
-                    issue('unsupported_spacer')
             elif kind == 'header':
                 allowed = {'anchor', 'html', 'format'}
                 markup = fields.get('html')
@@ -792,9 +821,13 @@ def plan_import(payload, image_urls=None):
                         or not _url(fields.get('url'))):
                     issue('unsupported_button')
                 else:
-                    paragraph('<a href="' + escape(fields['url'], quote=True) + '">' + escape(fields['html']) + '</a>')
-                    if fields.get('blank') and 'ape_button_new_tab_not_reconstructed' not in plan['warnings']:
-                        plan['warnings'].append('ape_button_new_tab_not_reconstructed')
+                    if selection and selection[0] == 'videos':
+                        blocks.append({'type':'lessonButton','data':{'text':fields['html'],'url':fields['url'],
+                            'size':'medium','background':'#2563eb','color':'#ffffff','newTab':bool(fields.get('blank'))}})
+                    else:
+                        paragraph('<a href="' + escape(fields['url'], quote=True) + '">' + escape(fields['html']) + '</a>')
+                        if fields.get('blank') and 'ape_button_new_tab_not_reconstructed' not in plan['warnings']:
+                            plan['warnings'].append('ape_button_new_tab_not_reconstructed')
             elif kind == 'image':
                 allowed = {'anchor', 'imageSrc'}
                 if (fields.get('anchor') or not _url(fields.get('imageSrc'))
@@ -816,7 +849,7 @@ def plan_import(payload, image_urls=None):
                 if fields and "ape_layout_settings_not_rendered" not in plan["warnings"]:
                     plan["warnings"].append("ape_layout_settings_not_rendered")
             elif kind in ("section", "column", "container"):
-                if id(node) not in reviewed_section_nodes and any(v not in (None, "", False, [], {}) for v in fields.values()):
+                if not (selection and selection[0] == 'videos') and id(node) not in reviewed_section_nodes and any(v not in (None, "", False, [], {}) for v in fields.values()):
                     issue("unsupported_container_fields")
             else:
                 issue("unknown_block")

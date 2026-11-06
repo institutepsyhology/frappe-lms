@@ -34,6 +34,7 @@ ORIGIN = 'https://shop.mv-centr.ru'
 ACCOUNT = 'mv-centr'
 MAX_ERRORS = 10
 REPORT = DATA / 'ОТЧЁТ-перенос-mv-centr.md'
+PROBLEMS_REPORT = DATA / 'ПРОБЛЕМНЫЕ-УРОКИ-mv-centr.md'
 # User-confirmed disposable test lesson. This is a lesson ID, not course 17.
 EXCLUDED_LESSONS = {17}
 # Only the verified image for this source snapshot; unknown images stop.
@@ -160,6 +161,53 @@ class Journal:
         temp=REPORT.with_name(REPORT.name+'.tmp')
         temp.write_text('\n'.join(lines)+'\n',encoding='utf-8')
         os.replace(temp,REPORT)
+        # Only the latest course outcome counts: historical failures must not
+        # reappear after a successful transfer. The preflight currently stops
+        # at the first issue, so later lessons can still need review.
+        latest = {}
+        events = self.db.execute('select id,course_id,lesson_id,status,codes from events order by id').fetchall()
+        pending = {}
+        for ident,cid,lid,status,codes in events:
+            if cid is None: continue
+            if status == 'lesson_needs_review': pending[cid] = (lid, json.loads(codes))
+            if status in ('course_needs_review','course_created','course_ready','existing_structure_unverified'):
+                latest[cid] = (ident,status,json.loads(codes),pending.get(cid))
+                pending.pop(cid,None)
+        descriptions = {'source_not_ready':'исходный снимок не готов',
+            'manifest_missing_or_changed':'нет подтверждённого состава курса',
+            'unsupported_spacer':'разделитель (будет игнорироваться после обновления)',
+            'spacer_renderer_not_installed':'разделитель (будет игнорироваться после обновления)',
+            'unsupported_multicolumn_layout':'расположение в колонках',
+            'unsupported_container_fields':'настройки блока',
+            'unsafe_or_unrecognized_html':'HTML требует проверки',
+            'empty_lesson':'не удалось распознать содержимое',
+            'course_title_exceeds_frappe_limit':'слишком длинное название курса',
+            'lesson_title_exceeds_frappe_limit':'слишком длинное название урока',
+            'image_requires_preparation':'изображение требует подготовки'}
+        descriptions.update({'unknown_page_fields':'неизвестные настройки страницы',
+            'video_url_invalid':'ссылка на видео требует проверки',
+            'unsupported_button':'кнопка или её ссылка требуют проверки',
+            'unsupported_header':'заголовок требует проверки',
+            'unsupported_video_settings':'настройки видео требуют проверки',
+            'video_pair_unsupported':'видеопара требует проверки',
+            'unknown_video_fields':'неизвестные настройки видео',
+            'legacy_player_pair_unresolved':'не удалось определить пару видео',
+            'source_unavailable':'источник временно недоступен',
+            'unknown_block':'неизвестный тип блока',
+            'reviewed_source_changed':'исходный урок изменился после согласования'})
+        lines = ['# Проблемные уроки MV-Centr', '',
+                 'Для каждого курса показана первая найденная проблема; после её исправления могут обнаружиться другие.', '',
+                 '| Курс АВО | Урок АВО | Причина |', '| --- | --- | --- |']
+        for cid,(_,status,codes,detail) in sorted(latest.items()):
+            if status != 'course_needs_review': continue
+            lid,issues = detail if detail else (None,codes)
+            course_link = f'[№ {cid}](https://shop.mv-centr.ru/shop/training/admin/update?id={cid}&lg=ru#training_lessons)'
+            lesson_link = f'[№ {lid}](https://shop.mv-centr.ru/shop/training/traininglessons/admin/update?id={lid}&lg=ru)' if lid else 'Не определён'
+            reason = ', '.join(descriptions.get(code,code) for code in issues)
+            lines.append(f'| {course_link} | {lesson_link} | {reason} |')
+        temp=PROBLEMS_REPORT.with_name(PROBLEMS_REPORT.name+'.tmp')
+        temp.write_text('\n'.join(lines)+'\n',encoding='utf-8')
+        os.replace(temp,PROBLEMS_REPORT)
 
 
 class MCP:
@@ -285,7 +333,13 @@ def outline(client,course):
 
 
 def prepared_images(payload):
-    sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
+    # Reviewed selections omit all images. Match the full source digest using
+    # the same rules as the server; changed captures must be reviewed again.
+    repo = str(Path(__file__).resolve().parents[2])
+    if repo not in sys.path: sys.path.insert(0, repo)
+    from lms.lms.avo_transform import reviewed_selection
+    if payload.get('format') == 'ape' and reviewed_selection(payload.get('ape'),payload.get('account'),payload.get('course_id'),payload.get('lesson_id')):
+        return {}
     from lms.lms.avo_transform import omit_placeholder_section, omit_placeholder_node
     pending=[payload['ape']]; images={}
     while pending:
