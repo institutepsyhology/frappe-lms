@@ -203,3 +203,12 @@ Unexpected content is not discarded. The already-imported lesson 1150 remains
 unchanged for idempotent read-back. Spacers in reviewed lesson 1151 use bounded
 HTML frames until the native renderer is installed. Visual checks are pending.
 Use the guarded release `deploy_html_placeholder.py` from its published commit.
+# Placeholder omission release verification, 2026-11-06
+
+Commit `9088a91e` produced image
+`sha256:7ae06a3bc7cc9423afd6af54a43c895b653e9040e925aeec7084ded3fc394e7e`.
+Candidate tests, backup-integrity checks and service health checks passed on
+all three sites, with counts and release switches unchanged during deployment.
+Actual MCP read-back confirmed the reviewed draft lessons and HTML boundaries,
+including the three video pairs and omission of the placeholder in lesson 1151.
+Rendering, access and backup restoration have not been verified.
