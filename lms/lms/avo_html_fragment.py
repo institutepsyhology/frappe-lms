@@ -16,14 +16,17 @@ CSS={'box-sizing','margin-top','border','color','font-family','font-size','borde
      'background-color','font-weight','text-decoration-line','margin','line-height','vertical-align',
      'white-space','z-index','background','margin-right','margin-left','margin-bottom','background-image',
      'background-position','background-size','background-repeat','background-attachment','background-origin',
-     'background-clip','position','min-height','padding-right','padding-left','width','overflow','padding-bottom','padding-top','max-width','flex','text-align','float'}
+     'background-clip','position','min-height','padding-right','padding-left','width','overflow','padding-bottom','padding-top','max-width','flex','text-align','float','outline'}
 CLASSES={'lesson-mission-wrapper','lesson-mission-text','redactor-inline-converted','xdget-block',
          'xdget-div','center-block','row-section','xdget-common-container','div','xdget-visible-to-bg-',
          'xdget-lessonContent','row','content-row','col-md-12','xdget-lessonFiles','xdget-lessonMission',
          'xdget-lessonAnswers','self-answers','lesson-send-answer-block','lite-block-live-wrapper','o-lt-lesson',
          'o-lt-lesson-mission-block','lmb1','lt-block','lt-lesson','lt-lesson-mission-block','lt-view','lt-block-wrapper','container',
          'o-lt-lesson-files','lessonFiles01','lt-lesson-files','block-box','modal-block-content','text-left','files-row',
-         'o-lt-separator','lt-separator','separator01','o-lt-lesson-header','lessonHdr01','lt-lesson-header','header','f-header','f-lesson-header-1'}
+         'o-lt-separator','lt-separator','separator01','o-lt-lesson-header','lessonHdr01','lt-lesson-header','header','f-header','f-lesson-header-1',
+         'o-lt-video','o-lt-video-hosting-with-defence','vid03','lt-video','lt-video-hosting-with-defence',
+         'gc-main-content','gc-both-main-content','wide','account-page-content','with-left-menu','gc-user-logined','gc-user-admin',
+         'page-full-block','main-page-block','full-width','xdget-root','xdget-lesson','main-lesson-container'}
 CLASS=re.compile(r'^[A-Za-z0-9_ -]{1,160}$')
 CSS_VALUE=re.compile(r'^[\w\s#.,%()\'"+\-]{1,300}$',re.UNICODE)
 SAFE_CLIPBOARD_CSS='<!--td {border: 1px solid #ccc;}br {mso-data-placement:same-cell;}-->'
@@ -53,6 +56,7 @@ def valid_style(value):
         if key.lower()=='text-align' and val.lower() not in ('left','right','center','justify','start','end'):return False
         if key.lower()=='flex' and val!='1 1 100%':return False
         if key.lower()=='float' and val.lower() not in ('left','right','none'):return False
+        if key.lower()=='outline' and val not in ('0','0px','none'):return False
     return True
 
 

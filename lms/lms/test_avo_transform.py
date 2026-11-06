@@ -10,6 +10,50 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_exact_placeholder_greeting_is_omitted_without_changing_snapshot(self):
+        import hashlib,copy
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        url='https://example.test/unnamed.jpeg'
+        section={'name':'section','children':[{'name':'column','children':[{'name':'image','id':'one','fields':{'imageSrc':url}}]},
+            {'name':'column','children':[{'name':'text','fields':{'html':'<p>Здравствуйте, {name}</p>'}}]}]}
+        p=sample({'name':'page','children':[section,{'name':'text','fields':{'html':'<p>Keep</p>'}}]},'ape');p.update(course_id=258,lesson_id=1151)
+        original=copy.deepcopy(p)
+        with patch.object(module,'PLACEHOLDER_IMAGE_SHA256',hashlib.sha256(url.encode()).hexdigest()):
+            out=plan_import(p);self.assertTrue(out['ready'],out['issues'])
+            self.assertEqual([b['data']['text'] for b in out['blocks']],['<p>Keep</p>'])
+            self.assertIn('owner_omitted_placeholder_greeting',out['warnings']);self.assertEqual(p,original)
+            section['children'][1]['children'][0]['fields']['html']='<p>Здравствуйте, {name}! Важный текст</p>'
+            self.assertIn('unsupported_multicolumn_layout',plan_import(p)['issues'])
+
+    def test_standalone_placeholder_nodes_only_omit_exact_content(self):
+        import hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        url='https://example.test/unnamed.jpeg'
+        nodes=[{'name':'image','fields':{'imageSrc':url}},{'name':'text','fields':{'html':'<p>Здравствуйте, {name}</p>'}},
+               {'name':'text','fields':{'html':'<p>Keep</p>'}}]
+        p=sample({'name':'page','children':nodes},'ape')
+        with patch.object(module,'PLACEHOLDER_IMAGE_SHA256',hashlib.sha256(url.encode()).hexdigest()):
+            out=plan_import(p);self.assertTrue(out['ready'],out['issues'])
+            self.assertEqual(len(out['blocks']),1)
+            nodes[1]['fields']['html']='<p>Здравствуйте, {name}! Important</p>'
+            self.assertEqual(len(plan_import(p)['blocks']),2)
+
+    def test_requested_html_field_preserves_original_markup(self):
+        import base64,hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        source='<p><strong>Материалы</strong></p>'
+        p=sample({'name':'page','children':[{'name':'text','fields':{'html':source}}]},'ape')
+        p.update(course_id=258,lesson_id=1151)
+        with patch.dict(module.CONFIRMED_HTML_FIELDS,{('mv-centr','258','1151'):hashlib.sha256(source.encode()).hexdigest()}):
+            out=plan_import(p)
+            self.assertTrue(out['ready'],out['issues'])
+            self.assertEqual(base64.b64decode(out['blocks'][0]['data']['encodedHtml']).decode(),source)
+            p['account']='iomp'
+            self.assertNotEqual(plan_import(p)['blocks'][0]['type'],'htmlBlock')
+
     def test_reviewed_lesson_spacer_uses_html_when_renderer_unavailable(self):
         import json,base64
         from pathlib import Path

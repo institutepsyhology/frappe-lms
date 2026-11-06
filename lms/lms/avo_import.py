@@ -12,7 +12,7 @@ import warnings
 
 import frappe
 from PIL import Image
-from lms.lms.avo_transform import IMAGE_KEY, plan_import
+from lms.lms.avo_transform import IMAGE_KEY, plan_import, omit_placeholder_section, omit_placeholder_node
 
 SITE_ACCOUNTS = {
     'my-lk.mv-centr.ru': ('mv-centr', 'https://shop.mv-centr.ru'),
@@ -79,6 +79,9 @@ def _find_image_keys(payload):
             if count > 1000:
                 raise ValueError('too_many_blocks')
             if not isinstance(node, dict):
+                continue
+            if (omit_placeholder_section(node,payload.get('account'),payload.get('course_id'),payload.get('lesson_id')) or
+                    omit_placeholder_node(node,payload.get('account'),payload.get('course_id'),payload.get('lesson_id'))):
                 continue
             if node.get('name') == 'image':
                 key = node.get('id')

@@ -285,10 +285,14 @@ def outline(client,course):
 
 
 def prepared_images(payload):
+    sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
+    from lms.lms.avo_transform import omit_placeholder_section, omit_placeholder_node
     pending=[payload['ape']]; images={}
     while pending:
         node=pending.pop()
         if not isinstance(node,dict):continue
+        if (omit_placeholder_section(node,payload.get('account'),payload.get('course_id'),payload.get('lesson_id')) or
+                omit_placeholder_node(node,payload.get('account'),payload.get('course_id'),payload.get('lesson_id'))):continue
         if node.get('name')=='image':
             key=node.get('id'); match=REVIEWED_IMAGES.get((payload.get('course_id'),payload.get('lesson_id'),key))
             source=node.get('fields',{}).get('imageSrc')

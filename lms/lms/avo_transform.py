@@ -15,6 +15,7 @@ MAX_NODES = 150000  # JSON values, not lesson blocks; APE blocks remain capped s
 MAX_BLOCKS = 1000
 ACCOUNT = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 IMAGE_KEY = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
+PLACEHOLDER_IMAGE_SHA256 = '44c98968db4973a119db3bbc00ca36392c1466e1b631596e1fff0ac4a2474ea2'
 PRIVATE_FILE = re.compile(r"^/private/files/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,180}$")
 ALLOWED_TAGS = {"p", "br", "strong", "b", "em", "i", "u", "s", "a", "ul", "ol", "li",
                 "h1", "h2", "h3", "h4", "blockquote", "code"}
@@ -30,6 +31,8 @@ CONFIRMED_SINGLE_COLUMN_LESSONS = {('mv-centr', '117', '571'), ('mv-centr', '118
 # Owner approved flattening only this exact image-and-text section.
 CONFIRMED_SINGLE_COLUMN_SECTIONS = {('mv-centr','258','1150'):
     '65769313d05a3037d67800d78caeb764452be7e932a96fe040df4bae1c67d625'}
+CONFIRMED_HTML_FIELDS = {('mv-centr','258','1151'):
+    'bd34b4023517d1f359d4c81aabf15d728845cd4f318e9ea7d629f017887a2d5d'}
 # Explicit user decision for these exact snapshots: keep the assignment text
 # and omit the empty answer form for now. The original remains in the snapshot.
 CONFIRMED_TEXT_ONLY_ANSWER_FORMS = {
@@ -52,6 +55,47 @@ def _sha256_text(value):
     if not isinstance(value,str):return None
     try:return hashlib.sha256(value.encode('utf-8')).hexdigest()
     except UnicodeError:return None
+
+
+def omit_placeholder_section(node, account, course, lesson):
+    """Omit only the owner's exact decorative image and generic greeting."""
+    # This lesson was imported before the owner decision; keep idempotent checks
+    # for its existing draft until it is separately updated.
+    if (str(account),str(course),str(lesson))==('mv-centr','258','1150'):return False
+    if not isinstance(node,dict) or node.get('name')!='section':return False
+    cols=node.get('children')
+    if not isinstance(cols,list) or len(cols)!=2 or any(not isinstance(c,dict) or c.get('name')!='column' for c in cols):return False
+    expected_overlay={'enabled':False,'r':255,'g':255,'b':255,'a':0.6}
+    for item in [node]+cols:
+        fields=item.get('fields',{})
+        if not isinstance(fields,dict) or any(k!='backgroundOverlayColor' for k in fields):return False
+        if fields.get('backgroundOverlayColor') not in (None,'',False,{},expected_overlay):return False
+    parts=[c.get('children') for c in cols]
+    if any(not isinstance(p,list) or len(p)!=1 or not isinstance(p[0],dict) for p in parts):return False
+    image,text=parts[0][0],parts[1][0]
+    for item in [node]+cols+[image,text]:
+        if any(value not in (None,'',False,[],{}) for key,value in item.items()
+               if key not in ('id','name','fields','children','style')):return False
+    if image.get('name')!='image' or text.get('name')!='text' or image.get('children',[]) or text.get('children',[]):return False
+    a,b=image.get('fields'),text.get('fields')
+    if not isinstance(a,dict) or not isinstance(b,dict) or set(a)-{'anchor','imageSrc'} or set(b)-{'anchor','html'}:return False
+    return (a.get('anchor') in ('',None) and b.get('anchor') in ('',None)
+            and _sha256_text(a.get('imageSrc'))==PLACEHOLDER_IMAGE_SHA256
+            and b.get('html')=='<p>Здравствуйте, {name}</p>')
+
+
+def omit_placeholder_node(node, account, course, lesson):
+    if (str(account),str(course),str(lesson))==('mv-centr','258','1150'):return False
+    if not isinstance(node,dict) or node.get('children',[]):return False
+    if any(value not in (None,'',False,[],{}) for key,value in node.items()
+           if key not in ('id','name','fields','children','style')):return False
+    fields=node.get('fields')
+    if not isinstance(fields,dict) or fields.get('anchor') not in ('',None):return False
+    if node.get('name')=='image':
+        return not (set(fields)-{'anchor','imageSrc'}) and _sha256_text(fields.get('imageSrc'))==PLACEHOLDER_IMAGE_SHA256
+    if node.get('name')=='text':
+        return not (set(fields)-{'anchor','html'}) and fields.get('html')=='<p>Здравствуйте, {name}</p>'
+    return False
 
 
 def _ape_spacer(node):
@@ -554,6 +598,9 @@ def plan_import(payload, image_urls=None):
             if not isinstance(node, dict) or not isinstance(node.get("name"), str):
                 issue("invalid_block")
                 continue
+            if omit_placeholder_section(node,account,course,lesson) or omit_placeholder_node(node,account,course,lesson):
+                if 'owner_omitted_placeholder_greeting' not in plan['warnings']:plan['warnings'].append('owner_omitted_placeholder_greeting')
+                continue
             kind, fields = node["name"], node.get("fields", {})
             if not isinstance(fields, dict):
                 issue("invalid_fields")
@@ -628,7 +675,7 @@ def plan_import(payload, image_urls=None):
             elif kind == 'spacer':
                 try:
                     spacer=_ape_spacer(node)
-                    if (account,course,lesson)==('mv-centr','258','1150'):
+                    if (account,course,lesson) in (('mv-centr','258','1150'),('mv-centr','258','1151')):
                         markup=('<div style="height:{height}px;width:{width}%;margin:{marginTop}px auto {marginBottom}px;'
                                 'background-color:{color}"></div>').format(**spacer)
                         height=max(100,min(1600,round(spacer['height']+spacer['marginTop']+spacer['marginBottom']+20)))
@@ -656,6 +703,17 @@ def plan_import(payload, image_urls=None):
             elif kind == "text":
                 if fields.get("anchor") or any(v not in (None, "", False, [], {}) for k, v in fields.items() if k not in ("html", "anchor")):
                     issue("unsupported_text_settings")
+                if (CONFIRMED_HTML_FIELDS.get((account,course,lesson)) == _sha256_text(fields.get('html'))
+                        and (account,course,lesson) in CONFIRMED_HTML_FIELDS and node.get('children',[])==[]):
+                    try:
+                        block=make_html_block(fields.get('html'))
+                    except (ValueError,UnicodeError,RecursionError):
+                        issue('unsafe_or_unrecognized_html')
+                    else:
+                        if id(node) not in legacy_skip:
+                            blocks.append(block)
+                            if 'ape_static_html_frame_unverified' not in plan['warnings']:plan['warnings'].append('ape_static_html_frame_unverified')
+                    continue
                 try:
                     normalized, changed = _normalize_ape_text(fields.get('html'))
                     if changed and 'ape_text_formatting_not_reconstructed' not in plan['warnings']:

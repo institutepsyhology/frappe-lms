@@ -10,6 +10,11 @@ class StaticFragmentTests(unittest.TestCase):
         for bad in ('float: url(https://bad.test)','float: expression(alert(1))','float: arbitrary'):
             with self.assertRaises(ValueError):make_html_block('<div style="'+bad+'">x</div>')
 
+    def test_reviewed_inert_layout_and_outline(self):
+        source='<div class="o-lt-video lt-video gc-main-content xdget-root"><a style="outline: 0px" href="https://example.test">x</a></div>'
+        self.assertEqual(base64.b64decode(make_html_block(source)['data']['encodedHtml']).decode(),source)
+        with self.assertRaises(ValueError):make_html_block(source.replace('outline: 0px','outline: url(https://bad.test)'))
+
     def test_google_drive_image_preview_and_audio_link(self):
         iframe='<iframe height="480" src="https://drive.google.com/file/d/abc_DEF-123/preview" width="640"></iframe>'
         fragment='<p>Картинка</p>'+iframe+'<p>Задание</p>'

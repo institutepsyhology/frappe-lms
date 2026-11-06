@@ -193,3 +193,13 @@ passed. Real MCP read-back confirmed the existing JPEG lesson with the exact
 Frappe EXIF transformation, as well as two other reviewed draft lessons.
 The image renderer, learner access and visual layout remain unverified; backup
 integrity was checked but restoration was not tested.
+# Reviewed HTML and placeholder omission, 2026-11-06
+
+Support reviewed inert layout classes and outline values while preserving the
+original HTML. The owner requested omitting a specific decorative JPEG and an
+exact generic greeting from future imports; rules check the exact image source
+digest and exact greeting, and preserve original private source snapshots.
+Unexpected content is not discarded. The already-imported lesson 1150 remains
+unchanged for idempotent read-back. Spacers in reviewed lesson 1151 use bounded
+HTML frames until the native renderer is installed. Visual checks are pending.
+Use the guarded release `deploy_html_placeholder.py` from its published commit.

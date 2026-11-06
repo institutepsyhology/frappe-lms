@@ -38,6 +38,19 @@ class Meta:
 
 
 class ImportTests(unittest.TestCase):
+    def test_ignored_placeholder_image_is_not_required_for_import(self):
+        import hashlib
+        from lms.lms import avo_transform as transform
+        url='https://example.test/unnamed.jpeg'
+        p=payload();p['format']='ape';p.pop('content');p.update(course_id=258,lesson_id=1151)
+        p['ape']={'name':'page','children':[{'name':'section','children':[
+            {'name':'column','children':[{'name':'image','id':'one','fields':{'imageSrc':url}}]},
+            {'name':'column','children':[{'name':'text','fields':{'html':'<p>Здравствуйте, {name}</p>'}}]}]},
+            {'name':'text','fields':{'html':'<p>Keep</p>'}}]}
+        with patch.object(transform,'PLACEHOLDER_IMAGE_SHA256',hashlib.sha256(url.encode()).hexdigest()):
+            self.assertEqual(module._find_image_keys(p),set())
+            self.assertTrue(module._plan(p,{})['ready'])
+
     def test_saved_jpeg_must_match_original_or_exact_frappe_exif_transform(self):
         import hashlib
         image={'name':'avo-example.jpg','bytes':b'original','sha256':hashlib.sha256(b'original').hexdigest()}
