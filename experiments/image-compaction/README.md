@@ -219,3 +219,12 @@ trainer-question header only for the owner's confirmed account, course,
 lesson and exact source digest; keep its original in the private snapshot.
 Other changed or unrecognized content remains blocked. Deploy the published
 commit with `deploy_trainer_html.py`; visual rendering requires verification.
+# Trainer link and legacy HTML release verification, 2026-11-06
+
+Commit `842483e4` produced image
+`sha256:488e28ca5ae8c8c98190640660b93306e664eb7b4b39bc88064e95adf83959e0`.
+Candidate tests, backup integrity and all-site health checks passed; counts and
+release switches were unchanged during deployment. Real MCP read-back verified
+the three reviewed drafts and HTML bounds. The trainer header was omitted only
+from the confirmed lesson. Visual rendering and backup restoration are not
+verified.
