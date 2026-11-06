@@ -49,9 +49,7 @@
 							:key="course.name"
 							class="flex flex-col border border-outline-gray-2 p-2 rounded-md h-full"
 						>
-							<div class="font-semibold text-ink-gray-9 leading-5 mb-2">
-								{{ course.title }}
-							</div>
+							<div v-safe-html:titlelabel="course.title" class="font-semibold text-ink-gray-9 leading-5 mb-2" />
 
 							<div
 								class="flex items-center gap-x-5 text-sm text-ink-gray-5 mb-8"

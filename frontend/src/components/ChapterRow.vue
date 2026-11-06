@@ -129,7 +129,7 @@
 									v-else-if="lesson.icon === 'icon-list'"
 									class="lucide-file-text h-4 w-4 text-ink-gray-9 me-2"
 								/>
-								{{ lesson.title }}
+								<span v-safe-html:titlelabel="lesson.title" />
 								<div v-if="allowEdit" class="ms-auto flex items-center gap-2">
 									<span
 										@click.prevent="

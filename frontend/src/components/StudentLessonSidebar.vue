@@ -5,7 +5,7 @@
 				v-if="!hideHeader"
 				class="text-lg-semibold text-ink-gray-9 leading-snug"
 			>
-				{{ courseTitle }}
+				<span v-safe-html:titlelabel="courseTitle" />
 			</div>
 			<div
 				class="flex items-center gap-2 text-sm text-ink-gray-7"
@@ -91,7 +91,7 @@
 										:is="iconFor(lesson.icon)"
 										class="size-4 stroke-1.5 shrink-0 text-ink-gray-7"
 									/>
-									<span class="truncate flex-1">{{ lesson.title }}</span>
+									<span v-safe-html:titlelabel="lesson.title" class="truncate flex-1" />
 									<template v-if="lesson.locked">
 										<LockKeyhole
 											class="size-4 stroke-1.5 shrink-0 text-ink-gray-4"

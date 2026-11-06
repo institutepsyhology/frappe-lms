@@ -149,6 +149,7 @@ export function getEditorTools(
 			inlineToolbar: INLINE_TOOLBAR_ORDER,
 			config: {
 				placeholder: 'Header',
+				levels: [1, 2, 3, 4, 5, 6],
 			},
 		},
 		list: {

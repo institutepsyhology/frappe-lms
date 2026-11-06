@@ -115,9 +115,7 @@
 							class="flex flex-col space-y-3 md:space-y-0 md:flex-row md:items-center justify-between"
 						>
 							<div class="flex flex-col">
-								<h1 class="text-4xl-semibold text-ink-gray-9">
-									{{ lesson.data.title }}
-								</h1>
+								<h1 v-safe-html:title="lesson.data.title" class="text-4xl-semibold text-ink-gray-9" />
 
 								<div
 									v-if="zenModeEnabled"
@@ -125,7 +123,7 @@
 								>
 									<span>
 										{{ lesson.data.chapter_title }} -
-										{{ lesson.data.course_title }}
+										<span v-safe-html:titlelabel="lesson.data.course_title" />
 									</span>
 									<span class="lucide-info size-3" />
 									<div
@@ -367,9 +365,7 @@
 
 		<BottomSheet v-if="isMobile" v-model="showChapters">
 			<template #header>
-				<div class="min-w-0 truncate text-p-lg-semibold text-ink-gray-9">
-					{{ lesson.data.course_title }}
-				</div>
+				<div v-safe-html:titlelabel="lesson.data.course_title" class="min-w-0 truncate text-p-lg-semibold text-ink-gray-9" />
 			</template>
 			<StudentLessonSidebar
 				:courseName="courseName"
@@ -390,6 +386,7 @@
 	/>
 </template>
 <script setup>
+import { titleText } from '@/directives/safeHtmlLevels'
 import {
 	Badge,
 	Button,
@@ -714,11 +711,11 @@ const notes = createListResource({
 const breadcrumbs = computed(() => {
 	let crumbs = [{ label: __('Courses'), route: { name: 'Courses' } }]
 	crumbs.push({
-		label: lesson?.data?.course_title,
+		label: titleText(lesson?.data?.course_title),
 		route: { name: 'CourseDetail', params: { courseName: props.courseName } },
 	})
 	crumbs.push({
-		label: lesson?.data?.title,
+		label: titleText(lesson?.data?.title),
 		route: {
 			name: 'Lesson',
 			params: {
@@ -1275,7 +1272,7 @@ const redirectToLogin = () => {
 
 usePageMeta(() => {
 	return {
-		title: lesson?.data?.title,
+		title: titleText(lesson?.data?.title),
 		icon: brand.favicon,
 	}
 })

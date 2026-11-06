@@ -37,7 +37,7 @@ class Client:
 
 class BatchTests(unittest.TestCase):
     def test_long_course_title_is_reported_before_writes(self):
-        client=Client();journal=Journal();p=payload(1);p['course_title']='x'*141
+        client=Client();journal=Journal();p=payload(1);p['course_title']='x'*513
         with patch.object(mod,'prepare_course',return_value=[p]),patch.object(mod,'outline',return_value=[]):
             with self.assertRaisesRegex(mod.Review,'course_needs_review'):mod.import_course(client,journal,24,[1],True)
         self.assertEqual(client.writes,[])

@@ -141,7 +141,16 @@ class LMSCourse(Document):
 
 	def autoname(self):
 		if not self.name:
-			self.name = generate_slug(self.title, "LMS Course")
+			name = generate_slug(self.title, "LMS Course")
+			# Document names remain limited to 140 characters even when the
+			# displayed title supports 512. Keep a collision-resistant suffix.
+			if len(name) > 140:
+				while True:
+					candidate = f"{name[:127].rstrip('-')}-{frappe.generate_hash(length=12)}"
+					if not frappe.db.exists("LMS Course", candidate):
+						name = candidate
+						break
+			self.name = name
 
 	def __repr__(self):
 		return f"<Course#{self.name}>"

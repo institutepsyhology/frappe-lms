@@ -65,6 +65,23 @@ def _schema():
             raise ValueError('mapping_schema_missing')
 
 
+def _title_limit(doctype):
+    field=frappe.get_meta(doctype).get_field('title')
+    if not field or field.fieldtype!='Data':raise ValueError('title_schema_invalid')
+    return int(field.length or 140)
+
+
+def _long_course_name(plan):
+    if len(plan['course_title'])<=140:return None
+    return 'avo-'+plan['account']+'-course-'+plan['course_id']
+
+
+def _sanitize_title(value):
+    if '<' not in value and '>' not in value:return value
+    from frappe.utils.html_utils import sanitize_html
+    return sanitize_html(value)
+
+
 def _matching(doctype, account, source_id):
     return frappe.get_all(doctype, filters={'custom_avo_account': account, 'custom_avo_id': source_id},
                           fields=['name'], limit_page_length=2)
@@ -149,7 +166,7 @@ def _lookup(plan, fingerprint, payload, images):
     lesson = frappe.get_doc('Course Lesson', lessons[0]['name']) if lessons else None
     if course:
         course.check_permission('write')
-        if course.title != plan['course_title']:
+        if course.title != _sanitize_title(plan['course_title']):
             raise ValueError('course_title_conflict')
     if lesson:
         if not course or lesson.course != course.name:
@@ -173,7 +190,7 @@ def _lookup(plan, fingerprint, payload, images):
         from lms.lms.utils import sanitize_editorjs
         expected_content = sanitize_editorjs(json.dumps({'blocks': expected['blocks'], 'version': '2.29.0'}, ensure_ascii=False))
         try:
-            if not expected['ready'] or lesson.title != plan['lesson_title'] or json.loads(lesson.content or '{}') != json.loads(expected_content):
+            if not expected['ready'] or lesson.title != _sanitize_title(plan['lesson_title']) or json.loads(lesson.content or '{}') != json.loads(expected_content):
                 raise ValueError('existing_lesson_conflict')
         except (TypeError, json.JSONDecodeError) as exc:
             raise ValueError('existing_lesson_conflict') from exc
@@ -237,6 +254,10 @@ def import_lesson(payload: dict, images: dict | None = None, dry_run: bool = Tru
     _schema()
     prepared = _images(images)
     plan = _plan(payload, prepared)
+    for kind,doctype in (('course','LMS Course'),('lesson','Course Lesson')):
+        if len(_sanitize_title(plan[kind+'_title']))>_title_limit(doctype):
+            plan['issues'].append(kind+'_title_exceeds_frappe_limit')
+            plan['ready']=False
     # The converter is present before its frontend renderer. Fail closed until
     # the matching renderer has been built, installed and verified on all sites.
     if any(block.get('type') == 'lessonSpacer' for block in plan['blocks']):
@@ -265,7 +286,11 @@ def import_lesson(payload: dict, images: dict | None = None, dry_run: bool = Tru
             'short_introduction': plan['course_title'], 'description': plan['course_title'],
             'published': 0, 'custom_avo_account': plan['account'], 'custom_avo_id': plan['course_id'],
             'instructors': [{'instructor': frappe.session.user}]})
-        course.insert()
+        long_name=_long_course_name(plan)
+        if long_name and frappe.db.exists('LMS Course',long_name):
+            raise ValueError('reserved_course_name_collision')
+        if long_name:course.insert(set_name=long_name)
+        else:course.insert()
         chapter = upsert_chapter(title='Уроки курса', course=course.name, is_scorm_package=False)
         chapter_name = chapter.name if hasattr(chapter, 'name') else chapter['name']
     else:

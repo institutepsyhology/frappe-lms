@@ -35,9 +35,30 @@ def png():
 class Meta:
     def has_field(self, name):
         return name in ("custom_avo_id", "custom_avo_account")
+    def get_field(self,name):
+        return types.SimpleNamespace(fieldtype='Data',length=0) if name=='title' else None
 
 
 class ImportTests(unittest.TestCase):
+    def test_long_title_stops_without_schema_and_uses_stable_name_when_supported(self):
+        p=payload();p['course_title']='А'*168
+        out=module.import_lesson(p,{'one':png()})
+        self.assertFalse(out['ready']);self.assertIn('course_title_exceeds_frappe_limit',out['issues'])
+        self.assertEqual(module._long_course_name({'account':'mv-centr','course_id':'518','course_title':p['course_title']}),'avo-mv-centr-course-518')
+        module.frappe.get_meta=lambda doctype:types.SimpleNamespace(has_field=lambda x:True,get_field=lambda x:types.SimpleNamespace(fieldtype='Data',length=512))
+        self.assertTrue(module.import_lesson(p,{'one':png()})['ready'])
+        p['course_title']='A'*512
+        self.assertTrue(module.import_lesson(p,{'one':png()})['ready'])
+        p['course_title']='A'*513
+        with self.assertRaisesRegex(ValueError,'invalid_title'):module.import_lesson(p,{'one':png()})
+
+    def test_html_title_is_checked_after_sanitization(self):
+        p=payload();p['course_title']='<b>x</b>'
+        with patch.object(module,'_sanitize_title',return_value='a'*141):
+            result=module.import_lesson(p,{'one':png()})
+        self.assertFalse(result['ready'])
+        self.assertIn('course_title_exceeds_frappe_limit',result['issues'])
+
     def test_ignored_placeholder_image_is_not_required_for_import(self):
         import hashlib
         from lms.lms import avo_transform as transform

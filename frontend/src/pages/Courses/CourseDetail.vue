@@ -212,6 +212,7 @@
 	<router-view />
 </template>
 <script setup lang="ts">
+import { titleText } from '@/directives/safeHtmlLevels'
 import { computed, inject, markRaw, ref, useTemplateRef, watch } from 'vue'
 import type { ComputedRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -442,7 +443,7 @@ const breadcrumbs = computed(() => {
 	}[] = [{ label: __('Courses'), route: { name: 'Courses' } }]
 	if (course.data) {
 		crumbs.push({
-			label: course.data.title,
+			label: titleText(course.data.title),
 			route: { name: 'CourseDetail', params: { courseName: course.data.name } },
 		})
 	}
@@ -451,7 +452,7 @@ const breadcrumbs = computed(() => {
 
 usePageMeta(() => {
 	return {
-		title: course.data?.title,
+		title: titleText(course.data?.title),
 		icon: brand.favicon,
 	}
 })

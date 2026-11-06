@@ -58,6 +58,7 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Title",
+   "length": 512,
    "reqd": 1,
    "width": "200"
   },

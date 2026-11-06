@@ -10,6 +10,22 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_heading_preserves_formatted_link_and_long_text(self):
+        text='А'*450+' <a href="https://example.test" target="_blank"><b>ссылка</b></a>'
+        root={'name':'page','children':[{'name':'header','fields':{'html':'<h5>'+text+'</h5>','format':'h5'}}]}
+        result=plan_import(sample(root,'ape'))
+        self.assertTrue(result['ready'],result['issues'])
+        self.assertEqual(result['blocks'][0]['data'],{'text':text,'level':5})
+        root['children'][0]['fields']['html']='<h5><a href="javascript:alert(1)">x</a></h5>'
+        self.assertIn('unsupported_header',plan_import(sample(root,'ape'))['issues'])
+
+    def test_avo_titles_support_512_characters(self):
+        p=sample({'name':'page','children':[{'name':'text','fields':{'html':'<p>OK</p>'}}]},'ape')
+        p['course_title']='А'*512;p['lesson_title']='Б'*512
+        self.assertTrue(plan_import(p)['ready'])
+        p['course_title']='А'*513
+        with self.assertRaisesRegex(ValueError,'invalid_title'):plan_import(p)
+
     def test_owner_omits_only_exact_trainer_header(self):
         import hashlib
         from unittest.mock import patch
@@ -21,7 +37,9 @@ class TransformTests(unittest.TestCase):
             out=plan_import(p);self.assertTrue(out['ready'],out['issues'])
             self.assertEqual(len(out['blocks']),1);self.assertIn('owner_omitted_trainer_link',out['warnings'])
             node['fields']['html']=header.replace('тренеру','преподавателю')
-            self.assertIn('unsupported_header',plan_import(p)['issues'])
+            changed=plan_import(p)
+            self.assertNotIn('owner_omitted_trainer_link',changed['warnings'])
+            self.assertEqual(changed['blocks'][-1]['type'],'header')
 
     def test_exact_placeholder_greeting_is_omitted_without_changing_snapshot(self):
         import hashlib,copy

@@ -6,6 +6,7 @@
 		<div class="grid grid-cols-1 md:grid-cols-2 gap-5">
 			<FormControl
 				v-model="doc.title"
+				:maxlength="512"
 				:label="__('Title')"
 				:required="true"
 				variant="outline"

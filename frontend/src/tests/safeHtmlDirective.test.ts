@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import safeHtml from '../directives/safeHtml'
+import { titleText } from '../directives/safeHtmlLevels'
 
 const mountAt = (level: string | null, html: string) =>
 	mount(
@@ -14,6 +15,29 @@ const mountAt = (level: string | null, html: string) =>
 	)
 
 describe('v-safe-html', () => {
+	it('uses plain readable title text in metadata and breadcrumbs', () => {
+		expect(titleText('<strong>A &amp; B</strong><script>alert(1)</script>')).toBe('A & B')
+	})
+	it('renders title formatting safely and avoids nested navigation links', () => {
+		const value = '<strong>Тема</strong> <a href="https://example.test">материал</a><img src=x onerror=alert(1)><script>alert(1)</script>'
+		const title = mountAt('title', value).html()
+		expect(title).toContain('<strong>Тема</strong>')
+		expect(title).toContain('href="https://example.test"')
+		expect(title).not.toContain('onerror')
+		expect(title).not.toContain('<script')
+		const label = mountAt('titlelabel', value).html()
+		expect(label).toContain('<strong>Тема</strong>')
+		expect(label).toContain('материал')
+		expect(label).not.toContain('<a')
+	})
+
+	it('retains harmless title styles and blocks external CSS and positioning', () => {
+		const html = mountAt('title', '<span style="color:red; font-size:22px; position:fixed; background-image:url(https://bad.test/x)">Text</span>').html()
+		expect(html).toContain('color: red')
+		expect(html).toContain('font-size: 22px')
+		expect(html).not.toContain('position: fixed')
+		expect(html).not.toContain('bad.test')
+	})
 	it('strips script tags and inline handlers at every level', () => {
 		for (const level of ['rich', 'basic', 'bio']) {
 			const html = mountAt(
@@ -134,7 +158,7 @@ describe('no raw v-html remains', () => {
 	})
 
 	it('finds no v-safe-html without an explicit known level', () => {
-		const KNOWN = ['rich', 'basic', 'bio']
+		const KNOWN = ['rich', 'basic', 'bio', 'title', 'titlelabel']
 		const offenders: string[] = []
 		for (const [path, src] of Object.entries(sources)) {
 			for (const [match, arg] of live(src).matchAll(

@@ -18,7 +18,7 @@ IMAGE_KEY = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
 PLACEHOLDER_IMAGE_SHA256 = '44c98968db4973a119db3bbc00ca36392c1466e1b631596e1fff0ac4a2474ea2'
 PRIVATE_FILE = re.compile(r"^/private/files/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,180}$")
 ALLOWED_TAGS = {"p", "br", "strong", "b", "em", "i", "u", "s", "a", "ul", "ol", "li",
-                "h1", "h2", "h3", "h4", "blockquote", "code"}
+                "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "code"}
 
 # Explicit owner decision: use only the second of two concatenated YouTube
 # links in this exact source field. A changed source digest requires review.
@@ -246,10 +246,14 @@ class _SafeHTML(HTMLParser):
             self.stack.append(tag)
         seen = set()
         for key, value in attrs:
-            if key in seen or tag != "a" or key not in ("href", "title"):
+            if key in seen or tag != "a" or key not in ("href", "title", "target", "rel"):
                 self.ok = False
             seen.add(key)
             if key == "href" and not _url(value):
+                self.ok = False
+            if key == 'target' and value not in ('_blank','_self'):
+                self.ok = False
+            if key == 'rel' and (not isinstance(value,str) or not set(value.split()).issubset({'noopener','noreferrer','nofollow'})):
                 self.ok = False
 
     def handle_startendtag(self, tag, attrs):
@@ -462,7 +466,7 @@ def plan_import(payload, image_urls=None):
         raise ValueError("invalid_account")
     course, lesson = _id(payload.get("course_id")), _id(payload.get("lesson_id"))
     course_title, lesson_title = payload.get("course_title"), payload.get("lesson_title")
-    if any(not isinstance(x, str) or not x.strip() or len(x) > 500 for x in (course_title, lesson_title)):
+    if any(not isinstance(x, str) or not x.strip() or len(x) > 512 for x in (course_title, lesson_title)):
         raise ValueError("invalid_title")
     plan = {"account": account, "course_id": course, "lesson_id": lesson,
             "course_title": course_title, "lesson_title": lesson_title,
@@ -698,7 +702,7 @@ def plan_import(payload, image_urls=None):
                         and not any(v not in (None,'',False,[],{}) for k,v in fields.items() if k not in allowed)):
                     if 'owner_omitted_trainer_link' not in plan['warnings']:plan['warnings'].append('owner_omitted_trainer_link')
                     continue
-                match = re.fullmatch(r'\s*<h([1-4])>(.*?)</h\1>\s*', markup, re.I | re.S) if isinstance(markup, str) else None
+                match = re.fullmatch(r'\s*<h([1-6])>(.*?)</h\1>\s*', markup, re.I | re.S) if isinstance(markup, str) else None
                 if (fields.get('anchor') or any(v not in (None, '', False, [], {}) for k, v in fields.items() if k not in allowed)
                         or source_format not in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6') or not match
                         or not _safe_html(markup) or not _safe_html(match.group(2))

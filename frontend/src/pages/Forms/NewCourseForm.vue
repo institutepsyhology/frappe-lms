@@ -8,6 +8,7 @@
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-5 border-b pb-5 mb-5">
 					<FormControl
 						v-model="course.title"
+						:maxlength="512"
 						:label="__('Title')"
 						:required="true"
 						autocomplete="off"

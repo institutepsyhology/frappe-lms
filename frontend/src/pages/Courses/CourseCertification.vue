@@ -15,9 +15,7 @@
 					class="border p-3 w-fit min-w-60 rounded-md space-y-2 hover:bg-surface-gray-1 cursor-pointer mt-5 text-start block"
 					@click="openCertificate"
 				>
-					<div class="text-ink-gray-9 font-semibold">
-						{{ courseTitle }}
-					</div>
+					<div v-safe-html:titlelabel="courseTitle" class="text-ink-gray-9 font-semibold" />
 					<div class="text-sm-medium text-ink-gray-7">
 						{{ __('Issued On') }}:
 						{{ dayjs(certificate.issue_date).format('DD MMM YYYY') }}

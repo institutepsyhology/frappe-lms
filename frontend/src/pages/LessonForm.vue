@@ -73,6 +73,7 @@
 			<textarea
 				ref="titleRef"
 				v-model="lesson.title"
+				maxlength="512"
 				:placeholder="__('Lesson title')"
 				:aria-label="__('Lesson title')"
 				rows="1"

@@ -6,9 +6,7 @@
 		>
 			<div class="md:w-2/3 space-y-10 min-w-0">
 				<section class="space-y-4">
-					<h1 class="text-4xl-semibold text-ink-gray-9">
-						{{ course.data.title }}
-					</h1>
+					<h1 v-safe-html:title="course.data.title" class="text-4xl-semibold text-ink-gray-9" />
 					<div
 						class="flex flex-wrap items-center gap-x-3 gap-y-2 text-ink-gray-7"
 					>

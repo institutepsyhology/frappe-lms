@@ -44,7 +44,7 @@
 						: 'text-3xl'
 				"
 			>
-				{{ course.title }}
+				<span v-safe-html:titlelabel="course.title" />
 			</div>
 		</div>
 		<div class="flex flex-col flex-auto p-4 border-x-2 border-b-2 rounded-b-md">
@@ -88,7 +88,7 @@
 				class="font-semibold leading-6"
 				:class="course.title.length > 32 ? 'text-lg' : 'text-2xl'"
 			>
-				{{ course.title }}
+				<span v-safe-html:titlelabel="course.title" />
 			</div>
 
 			<div class="short-introduction text-sm">

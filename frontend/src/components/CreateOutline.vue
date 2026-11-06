@@ -1,8 +1,6 @@
 <template>
 	<div v-if="course">
-		<div class="text-2xl-semibold">
-			{{ course.title }}
-		</div>
+		<div v-safe-html:titlelabel="course.title" class="text-2xl-semibold" />
 		<div v-if="course.chapters.length">
 			{{ course.chapters }}
 		</div>

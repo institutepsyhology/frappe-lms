@@ -6,6 +6,26 @@ import { safeUrl } from '@/utils/safeUrl'
 // config its call sites use today — this module is a consolidation, not a
 // policy change. Widening any of these is a separate, tested change.
 const purifier = DOMPurify()
+const titlePurifier = DOMPurify()
+const titleStyles = new Set([
+	'color', 'background-color', 'font-size', 'font-weight', 'font-style',
+	'font-family', 'text-decoration', 'text-align',
+])
+titlePurifier.addHook('afterSanitizeAttributes', (node) => {
+	const element = node as HTMLElement
+	if (element.tagName === 'A') {
+		element.setAttribute('target', '_blank')
+		element.setAttribute('rel', 'noopener noreferrer')
+	}
+	if (!element.style) return
+	for (const property of Array.from(element.style)) {
+		const value = element.style.getPropertyValue(property)
+		if (!titleStyles.has(property) || /url\s*\(|expression\s*\(|var\s*\(|@|\\/i.test(value) || element.style.getPropertyPriority(property)) {
+			element.style.removeProperty(property)
+		}
+	}
+	if (!element.style.length) element.removeAttribute('style')
+})
 
 // Every rendered anchor opens in a new tab with safe rel attributes. EditorJS's
 // link tool creates bare <a href> via execCommand, and DOMPurify strips target
@@ -62,6 +82,17 @@ purifier.addHook('uponSanitizeElement', (node, data) => {
 })
 
 export const SAFE_HTML_LEVELS = {
+	// Short titles may carry inline formatting and links; active content and
+	// remote media are not title markup. For navigational rows use titlelabel,
+	// which keeps link text without nesting anchors inside navigation links.
+	title: {
+		ALLOWED_TAGS: ['b', 'strong', 'i', 'em', 'u', 's', 'span', 'br', 'a', 'sub', 'sup', 'mark'],
+		ALLOWED_ATTR: ['href', 'target', 'rel', 'title', 'style'],
+	},
+	titlelabel: {
+		ALLOWED_TAGS: ['b', 'strong', 'i', 'em', 'u', 's', 'span', 'br', 'sub', 'sup', 'mark'],
+		ALLOWED_ATTR: ['style'],
+	},
 	// Denylist: rich author content renders as written, minus anything that can
 	// build a phishing form.
 	rich: {
@@ -126,6 +157,12 @@ export const SAFE_HTML_LEVELS = {
 
 export type SafeHtmlLevel = keyof typeof SAFE_HTML_LEVELS
 
+// Breadcrumbs and browser metadata are text-only, not HTML sinks.
+export const titleText = (html?: string | null): string => {
+	if (!html) return ''
+	return titlePurifier.sanitize(html, { RETURN_DOM_FRAGMENT: true }).textContent ?? ''
+}
+
 // An unknown or absent level renders at the strictest profile. Too strict is a
 // visible rendering bug someone reports; too loose is an XSS nobody sees.
 export const sanitizeAt = (
@@ -141,5 +178,5 @@ export const sanitizeAt = (
 		)
 	}
 	const config = SAFE_HTML_LEVELS[(known ? level : 'bio') as SafeHtmlLevel]
-	return purifier.sanitize(html, config)
+	return (level === 'title' || level === 'titlelabel' ? titlePurifier : purifier).sanitize(html, config)
 }
