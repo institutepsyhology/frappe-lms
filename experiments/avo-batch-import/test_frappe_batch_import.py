@@ -158,6 +158,8 @@ class BatchTests(unittest.TestCase):
             j=mod.Journal(Path(directory)/'events.sqlite')
             try:
                 for _ in range(9):self.assertFalse(j.failure())
+                j.success();self.assertEqual(j.state(),(0,0))
+                for _ in range(9):self.assertFalse(j.failure())
                 self.assertTrue(j.failure())
                 self.assertEqual(j.state(),(1,10));j.resume();self.assertEqual(j.state(),(0,0))
             finally:j.close()
