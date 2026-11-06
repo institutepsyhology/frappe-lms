@@ -36,9 +36,13 @@ CONFIRMED_HTML_FIELDS = {('mv-centr','258','1151'):
     ('mv-centr','447','2608'):'40c2aefc41caa2cde7ac583ff753e3eeba135257f2b1e6782fea1e573a63415d'}
 CONFIRMED_OMIT_HEADERS = {('mv-centr','447','2608'):
     'fcc9b9dfb972f67fa3e47b266af9ad5345f3e5593aa2a9f9b7163181c4ac16bf'}
+CONFIRMED_OMIT_EMPTY_BUTTONS = {('mv-centr','952','9422'):
+    '14eb83aff8cbadebc98291cf587459e2ccda9b646b0a0fcc6c4ccc5c85feab9f'}
 # The owner selected content for these exact MV-Centr captures. If a capture
 # changes, do not apply the decision to the new contents without review.
 REVIEWED_SELECTIONS = {
+    ('mv-centr','958','9497'): ('f322cbf9b57f4e63cc6ebd0d1fa858a966d30a721a72cef5fc6965df46882abf','videos',0),
+    ('mv-centr','889','8584'): ('dfc6bd4cfbb0481dc6c9d99e38951a43ccd59f24d00aa4515ecf912c187c3341','videos',6),
     ('mv-centr','951','9401'): ('54a8b35b7ebabbee601cce7d601283899c85f9c72e972af564b7c49cf372a8b1','videos',2),
     ('mv-centr','952','9416'): ('41ff6d97b59feb28328daa4769c55a3fc8d21b958a19b532aa02886d8bc0e9cc','videos',2),
     ('mv-centr','954','9448'): ('ccb24d5ba6d6cd77c07c38751b2dc5e804f8652923f1ff268791d4329449427a','videos',2),
@@ -637,6 +641,10 @@ def plan_import(payload, image_urls=None):
         if not isinstance(root, dict) or root.get("name") != "page":
             raise ValueError("invalid_ape_root")
         selection = reviewed_selection(root,account,course,lesson)
+        omit_rule = CONFIRMED_OMIT_EMPTY_BUTTONS.get((account,course,lesson))
+        root_digest = _sha256_text(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False)) if omit_rule else None
+        if omit_rule and root_digest != omit_rule:
+            issue('reviewed_source_changed')
         if (account,course,lesson) in REVIEWED_SELECTIONS and selection is None:
             issue('reviewed_source_changed')
         if selection and selection[0] in ('placeholder','welcome'):
@@ -824,6 +832,11 @@ def plan_import(payload, image_urls=None):
                             if 'ape_static_html_frame_unverified' not in plan['warnings']:
                                 plan['warnings'].append('ape_static_html_frame_unverified')
             elif kind == 'button':
+                if (omit_rule and root_digest == omit_rule and not node.get('children')
+                        and fields.get('html') == 'АУДИОЗАПИСЬ 2' and fields.get('url') == ''):
+                    if 'user_omitted_empty_button' not in plan['warnings']:
+                        plan['warnings'].append('user_omitted_empty_button')
+                    continue
                 allowed = {'anchor', 'html', 'icon', 'linkType', 'url', 'blank', 'toAnchor', 'event'}
                 button_url = fields.get('url')
                 if isinstance(button_url,str): button_url = button_url.strip()

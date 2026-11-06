@@ -123,6 +123,25 @@ class TransformTests(unittest.TestCase):
         node['fields']['html']='<script>bad</script>'
         self.assertIn('unsupported_button',plan_import(sample(root,'ape'))['issues'])
 
+    def test_owner_omits_only_empty_button_in_exact_reviewed_lesson(self):
+        import copy,hashlib,json
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        root={'name':'page','children':[{'name':'text','fields':{'html':'<p>Keep</p>'}},
+             {'name':'button','fields':{'linkType':'url','html':'АУДИОЗАПИСЬ 2','url':''}},
+             {'name':'button','fields':{'linkType':'url','html':'Other','url':'https://example.test/audio'}}]}
+        original=copy.deepcopy(root)
+        digest=hashlib.sha256(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+        p=sample(root,'ape');p.update(course_id=952,lesson_id=9422)
+        with patch.dict(module.CONFIRMED_OMIT_EMPTY_BUTTONS,{('mv-centr','952','9422'):digest}):
+            out=plan_import(p)
+            self.assertTrue(out['ready'],out['issues'])
+            self.assertEqual(len(out['blocks']),2)
+            self.assertIn('user_omitted_empty_button',out['warnings'])
+            self.assertEqual(root,original)
+            root['children'][0]['fields']['html']='<p>Changed</p>'
+            self.assertIn('reviewed_source_changed',plan_import(p)['issues'])
+
     def test_spacer_is_omitted_even_for_previously_reviewed_lessons(self):
         import json
         from pathlib import Path
