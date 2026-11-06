@@ -8,6 +8,15 @@ import frappe
 
 
 class TitleSchemaTests(unittest.TestCase):
+    def test_conflicting_fetched_title_is_detected_before_any_write(self):
+        from lms.lms import avo_title_schema as schema
+        fake=types.SimpleNamespace(local=types.SimpleNamespace(site='my-lk.mv-centr.ru'))
+        fake.get_all=lambda *a,**k: ([types.SimpleNamespace(value='200')]
+            if k['filters']['doc_type']=='Course Chapter' else [])
+        fake.get_meta=lambda *a,**k:types.SimpleNamespace(get_field=lambda _:types.SimpleNamespace(fieldtype='Data',length=512))
+        with patch.object(schema,'frappe',fake),patch.object(schema,'_set_length',side_effect=AssertionError('write attempted')):
+            with self.assertRaisesRegex(ValueError,'conflicting_title_length_setting'):schema.execute()
+
     def test_conflicting_setter_stops_before_any_write(self):
         from lms.lms import avo_title_schema as schema
         fake=types.SimpleNamespace(local=types.SimpleNamespace(site='my-lk.mv-centr.ru'))

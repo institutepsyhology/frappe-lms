@@ -6,6 +6,9 @@ fields are widened to 512 characters of stored markup. The migration
 setters, widens only the two title columns, and requires verified backups.
 Long imported course titles receive a deterministic account-scoped internal
 name; source IDs and full source snapshots remain unchanged.
+The migration also widens the LMS fields that fetch a course or lesson title,
+including Course Chapter.course_title. Without this, Frappe rejects creating
+a chapter for a course whose title exceeds 140 characters.
 
 The frontend allows formatting and links in title views, safely removes active
 markup and unsafe styles, and uses plain title text in breadcrumbs and browser
