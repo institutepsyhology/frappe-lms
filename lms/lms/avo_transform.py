@@ -292,6 +292,21 @@ def _safe_html(value):
         return False
 
 
+def _safe_heading_inline(value):
+    """Validate inline formatting and links in a heading without active HTML."""
+    class InlineOnly(HTMLParser):
+        def __init__(self):super().__init__();self.ok=True
+        def handle_starttag(self,tag,attrs):
+            if tag not in {'a','b','strong','i','em','u','s','span','sub','sup','mark'}:self.ok=False
+        def handle_startendtag(self,tag,attrs):self.handle_starttag(tag,attrs)
+    try:
+        check=InlineOnly();check.feed(value);check.close()
+        make_html_block(value)
+        return check.ok
+    except (ValueError,UnicodeError,RecursionError,TypeError):
+        return False
+
+
 def _normalize_ape_text(value):
     """Strip only APE's presentation wrappers; reject any unrecognized markup."""
     if not isinstance(value, str):
@@ -705,7 +720,7 @@ def plan_import(payload, image_urls=None):
                 match = re.fullmatch(r'\s*<h([1-6])>(.*?)</h\1>\s*', markup, re.I | re.S) if isinstance(markup, str) else None
                 if (fields.get('anchor') or any(v not in (None, '', False, [], {}) for k, v in fields.items() if k not in allowed)
                         or source_format not in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6') or not match
-                        or not _safe_html(markup) or not _safe_html(match.group(2))
+                        or not _safe_heading_inline(match.group(2))
                         or re.search(r'<\s*(?:br|p|h[1-6]|ul|ol|li|blockquote)\b', match.group(2), re.I)):
                     issue('unsupported_header')
                 else:

@@ -9,9 +9,9 @@ from html.parser import HTMLParser
 import re
 from urllib.parse import urlsplit
 
-TAGS={'p','div','span','h1','h2','h3','h4','h5','h6','strong','b','em','i','u','s','a','hr','br','ul','ol','li','blockquote','font','style','iframe'}
+TAGS={'p','div','span','h1','h2','h3','h4','h5','h6','strong','b','em','i','u','s','a','hr','br','ul','ol','li','blockquote','font','style','iframe','sub','sup','mark'}
 VOID={'br','hr'}
-ATTRS={'class','style','href','target','title','savefrom_lm','savefrom_lm_index','dir','span','id','data-xdget-id','data-block-id','data-updated','data-code','data-editable','data-main-class','data-param','color','type','src','width','height'}
+ATTRS={'class','style','href','target','rel','title','savefrom_lm','savefrom_lm_index','dir','span','id','data-xdget-id','data-block-id','data-updated','data-code','data-editable','data-main-class','data-param','color','type','src','width','height'}
 CSS={'box-sizing','margin-top','border','color','font-family','font-size','border-bottom','padding',
      'background-color','font-weight','text-decoration-line','margin','line-height','vertical-align',
      'white-space','z-index','background','margin-right','margin-left','margin-bottom','background-image',
@@ -78,6 +78,7 @@ class StaticHTML(HTMLParser):
             if key in ('src','width','height') and tag!='iframe':raise ValueError('unsupported_attribute')
             if key=='href' and (tag!='a' or not valid_link(value)):raise ValueError('invalid_link')
             if key=='target' and (tag!='a' or value not in ('_blank','_self')):raise ValueError('invalid_target')
+            if key=='rel' and (tag!='a' or not isinstance(value,str) or not set(value.split()).issubset({'noopener','noreferrer','nofollow'})):raise ValueError('invalid_link')
             if key=='savefrom_lm' and (tag!='a' or value!='1'):raise ValueError('unsupported_attribute')
             if key=='savefrom_lm_index' and (tag!='a' or not isinstance(value,str) or not re.fullmatch(r'[0-9]{1,6}',value)):raise ValueError('unsupported_attribute')
             if key=='dir' and value not in ('ltr','rtl','auto'):raise ValueError('unsupported_attribute')

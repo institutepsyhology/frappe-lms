@@ -11,12 +11,14 @@ def sample(content, fmt="preview"):
 
 class TransformTests(unittest.TestCase):
     def test_heading_preserves_formatted_link_and_long_text(self):
-        text='А'*450+' <a href="https://example.test" target="_blank"><b>ссылка</b></a>'
+        text='А'*450+' <span style="color: red"><a href="https://example.test" target="_blank"><b>ссылка</b></a></span>'
         root={'name':'page','children':[{'name':'header','fields':{'html':'<h5>'+text+'</h5>','format':'h5'}}]}
         result=plan_import(sample(root,'ape'))
         self.assertTrue(result['ready'],result['issues'])
         self.assertEqual(result['blocks'][0]['data'],{'text':text,'level':5})
         root['children'][0]['fields']['html']='<h5><a href="javascript:alert(1)">x</a></h5>'
+        self.assertIn('unsupported_header',plan_import(sample(root,'ape'))['issues'])
+        root['children'][0]['fields']['html']='<h5><img src="https://example.test/x" /></h5>'
         self.assertIn('unsupported_header',plan_import(sample(root,'ape'))['issues'])
 
     def test_avo_titles_support_512_characters(self):
