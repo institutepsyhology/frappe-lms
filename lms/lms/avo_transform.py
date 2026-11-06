@@ -39,6 +39,15 @@ CONFIRMED_OMIT_HEADERS = {('mv-centr','447','2608'):
 # The owner selected content for these exact MV-Centr captures. If a capture
 # changes, do not apply the decision to the new contents without review.
 REVIEWED_SELECTIONS = {
+    ('mv-centr','951','9401'): ('54a8b35b7ebabbee601cce7d601283899c85f9c72e972af564b7c49cf372a8b1','videos',2),
+    ('mv-centr','952','9416'): ('41ff6d97b59feb28328daa4769c55a3fc8d21b958a19b532aa02886d8bc0e9cc','videos',2),
+    ('mv-centr','954','9448'): ('ccb24d5ba6d6cd77c07c38751b2dc5e804f8652923f1ff268791d4329449427a','videos',2),
+    ('mv-centr','960','9508'): ('e3693219b6858434f1b15407074a0f2489c4bac001bc615279aed6e1434f7ed1','videos',2),
+    ('mv-centr','961','9511'): ('2a8aa37979632bc0e63ef95d0b03246333b1037f7088945748e6b34a4c714273','videos',2),
+    ('mv-centr','953','9434'): ('d088c6c2af205316f2f705c34ecdd932f483559c8299db710a8fc6d8f9d00e78','videos',4),
+    ('mv-centr','959','9500'): ('734ec85ef66519977a499062b46816ea82c713b91f46d120e4dd39f1e28d9f25','videos',4),
+    ('mv-centr','955','9474'): ('5a6ee7d4d24cd3675ff982763c875c3e99b0ac96b42d841c8f673cc5017f84b5','videos',1),
+    ('mv-centr','958','9496'): ('79e33d73346391e8940123a6f0921c510e992571fc90c57ba714a8b367275a90','videos',0),
     ('mv-centr','899','8699'): ('d0142121f66f647b08af1124424bdd88528c350e686526d149a33966eaa87194','placeholder',0),
     ('mv-centr','893','8621'): ('f0f0dd08db2fc79204a9e812610df544d3f26bd9badc36edfb31cf5407381253','placeholder',0),
     ('mv-centr','899','8651'): ('0164750455a3ad1ce304adc9696fd7ed6d16db55e2acc2c71a53e912746fa890','welcome',0),
@@ -688,8 +697,9 @@ def plan_import(payload, image_urls=None):
                     if not combined_pair and (reviewed_section or (account,course,lesson) in CONFIRMED_SINGLE_COLUMN_LESSONS):
                         if 'user_requested_single_column' not in plan['warnings']:
                             plan['warnings'].append('user_requested_single_column')
-                    elif not combined_pair and not (selection and selection[0] == 'videos'):
-                        issue('unsupported_multicolumn_layout')
+                    elif not combined_pair:
+                        if 'user_requested_single_column' not in plan['warnings']:
+                            plan['warnings'].append('user_requested_single_column')
             if node.get("style") and kind != 'spacer':
                 if "ape_layout_settings_not_rendered" not in plan["warnings"]:
                     plan["warnings"].append("ape_layout_settings_not_rendered")
@@ -815,14 +825,16 @@ def plan_import(payload, image_urls=None):
                                 plan['warnings'].append('ape_static_html_frame_unverified')
             elif kind == 'button':
                 allowed = {'anchor', 'html', 'icon', 'linkType', 'url', 'blank', 'toAnchor', 'event'}
+                button_url = fields.get('url')
+                if selection and isinstance(button_url,str): button_url = button_url.strip()
                 if (fields.get('linkType') != 'url' or any(fields.get(k) not in (None, '', False) for k in ('anchor','icon','toAnchor','event'))
                         or any(v not in (None, '', False, [], {}) for k, v in fields.items() if k not in allowed)
                         or not isinstance(fields.get('html'), str) or '<' in fields['html'] or '>' in fields['html']
-                        or not _url(fields.get('url'))):
+                        or not _url(button_url)):
                     issue('unsupported_button')
                 else:
                     if selection and selection[0] == 'videos':
-                        blocks.append({'type':'lessonButton','data':{'text':fields['html'],'url':fields['url'],
+                        blocks.append({'type':'lessonButton','data':{'text':fields['html'],'url':button_url,
                             'size':'medium','background':'#2563eb','color':'#ffffff','newTab':bool(fields.get('blank'))}})
                     else:
                         paragraph('<a href="' + escape(fields['url'], quote=True) + '">' + escape(fields['html']) + '</a>')
@@ -849,7 +861,9 @@ def plan_import(payload, image_urls=None):
                 if fields and "ape_layout_settings_not_rendered" not in plan["warnings"]:
                     plan["warnings"].append("ape_layout_settings_not_rendered")
             elif kind in ("section", "column", "container"):
-                if not (selection and selection[0] == 'videos') and id(node) not in reviewed_section_nodes and any(v not in (None, "", False, [], {}) for v in fields.values()):
+                if fields.get('backgroundOverlayColor') and 'ape_layout_settings_not_rendered' not in plan['warnings']:
+                    plan['warnings'].append('ape_layout_settings_not_rendered')
+                if not (selection and selection[0] == 'videos') and id(node) not in reviewed_section_nodes and any(v not in (None, "", False, [], {}) for k,v in fields.items() if k != 'backgroundOverlayColor'):
                     issue("unsupported_container_fields")
             else:
                 issue("unknown_block")

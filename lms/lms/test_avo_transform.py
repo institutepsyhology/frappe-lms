@@ -57,7 +57,8 @@ class TransformTests(unittest.TestCase):
             self.assertEqual([b['data']['text'] for b in out['blocks']],['<p>Keep</p>'])
             self.assertIn('owner_omitted_placeholder_greeting',out['warnings']);self.assertEqual(p,original)
             section['children'][1]['children'][0]['fields']['html']='<p>Здравствуйте, {name}! Важный текст</p>'
-            self.assertIn('unsupported_multicolumn_layout',plan_import(p)['issues'])
+            self.assertIn('<p>Здравствуйте, {name}! Важный текст</p>',
+                          [b['data']['text'] for b in plan_import(p)['blocks']])
 
     def test_standalone_placeholder_nodes_only_omit_exact_content(self):
         import hashlib
@@ -133,9 +134,9 @@ class TransformTests(unittest.TestCase):
             out=plan_import(p);self.assertTrue(out['ready'],out['issues'])
             self.assertEqual([x['data']['text'] for x in out['blocks']],['<p>First</p>','<p>Second</p>'])
             section['children'][0]['children'][0]['fields']['html']='<p>Changed</p>'
-            self.assertIn('unsupported_multicolumn_layout',plan_import(p)['issues'])
+            self.assertEqual(plan_import(p)['blocks'][0]['data']['text'],'<p>Changed</p>')
             p['account']='iomp'
-            self.assertIn('unsupported_multicolumn_layout',plan_import(p)['issues'])
+            self.assertTrue(plan_import(p)['ready'])
 
     def test_confirmed_audio_replacement_preserves_other_content_and_children(self):
         import base64, hashlib
@@ -188,9 +189,9 @@ class TransformTests(unittest.TestCase):
             self.assertEqual([x['data']['youtube'] for x in out['blocks'] if x['type']=='videoChoice'],[a,b])
             self.assertIn('user_requested_single_column',out['warnings'])
             p['account']='iomp'
-            self.assertIn('unsupported_multicolumn_layout',plan_import(p)['issues'])
+            self.assertTrue(plan_import(p)['ready'])
         p=sample(root,'ape');p.update(course_id=117,lesson_id=572)
-        self.assertIn('unsupported_multicolumn_layout',plan_import(p)['issues'])
+        self.assertTrue(plan_import(p)['ready'])
 
     def test_confirmed_empty_answer_form_is_omitted_but_source_and_task_survive(self):
         import base64, hashlib
@@ -251,14 +252,15 @@ class TransformTests(unittest.TestCase):
         self.assertFalse(out['ready'])
         self.assertIn('video_pair_unsupported', out['issues'])
 
-    def test_multicolumn_content_is_not_flattened_into_a_ready_import(self):
+    def test_multicolumn_content_is_flattened_in_source_order(self):
         root = {'name': 'page', 'children': [{'name': 'section', 'children': [
             {'name': 'column', 'children': [{'name': 'text', 'fields': {'html': '<p>Левая</p>'}}]},
             {'name': 'column', 'children': [{'name': 'text', 'fields': {'html': '<p>Правая</p>'}}]},
         ]}]}
         out = plan_import(sample(root, 'ape'))
-        self.assertFalse(out['ready'])
-        self.assertIn('unsupported_multicolumn_layout', out['issues'])
+        self.assertTrue(out['ready'],out['issues'])
+        self.assertEqual([b['data']['text'] for b in out['blocks']],['<p>Левая</p>','<p>Правая</p>'])
+        self.assertIn('user_requested_single_column', out['warnings'])
 
     def test_spacer_variants_are_ignored_but_empty_lesson_still_requires_review(self):
         import copy, json
