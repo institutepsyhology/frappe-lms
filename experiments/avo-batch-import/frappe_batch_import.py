@@ -37,6 +37,8 @@ REPORT = DATA / 'ОТЧЁТ-перенос-mv-centr.md'
 PROBLEMS_REPORT = DATA / 'ПРОБЛЕМНЫЕ-УРОКИ-mv-centr.md'
 # User-confirmed disposable test lesson. This is a lesson ID, not course 17.
 EXCLUDED_LESSONS = {17}
+# Owner excluded this entire obsolete MV-Centr course and all of its lessons.
+EXCLUDED_COURSES = {50}
 # Only the verified image for this source snapshot; unknown images stop.
 REVIEWED_IMAGES = {(258,1150,'92ab32ec-5836-4443-998d-16b2ec13a2c0'):
     ('44c98968db4973a119db3bbc00ca36392c1466e1b631596e1fff0ac4a2474ea2',
@@ -199,7 +201,7 @@ class Journal:
                  'Для каждого курса показаны проблемы последней проверки; при изменении исходных данных могут обнаружиться другие.', '',
                  '| Курс АВО | Урок АВО | Причина |', '| --- | --- | --- |']
         for cid,(_,status,codes,detail) in sorted(latest.items()):
-            if status != 'course_needs_review': continue
+            if status != 'course_needs_review' or cid in EXCLUDED_COURSES: continue
             course_link = f'[№ {cid}](https://shop.mv-centr.ru/shop/training/admin/update?id={cid}&lg=ru#training_lessons)'
             for lid,issues in detail or [(None,codes)]:
                 lesson_link = f'[№ {lid}](https://shop.mv-centr.ru/shop/training/traininglessons/admin/update?id={lid}&lg=ru)' if lid else 'Не определён'
@@ -373,6 +375,9 @@ def preview(client,payload,images=None):
 
 
 def import_course(client,journal,course,expected,apply):
+    if course in EXCLUDED_COURSES:
+        journal.event(course,None,'course_excluded',['user_excluded_course'])
+        return 'excluded'
     if expected is None: raise Review('manifest_missing_or_changed')
     excluded=[ident for ident in expected if ident in EXCLUDED_LESSONS]
     if excluded and len(excluded)==len(expected):

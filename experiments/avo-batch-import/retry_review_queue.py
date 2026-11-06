@@ -4,6 +4,7 @@ from pathlib import Path
 import sqlite3
 import subprocess
 import sys
+from frappe_batch_import import EXCLUDED_COURSES
 
 ROOT = Path(__file__).resolve().parents[3]
 DATA = ROOT / 'exports/lesson-content/mv-centr-frappe-import.sqlite'
@@ -16,7 +17,7 @@ def state_and_candidates():
         latest={}
         for cid,status in db.execute("select course_id,status from events where course_id is not null and status in ('course_needs_review','course_created','course_ready','existing_structure_unverified') order by id"):
             latest[cid]=status
-        return state, sorted(cid for cid,status in latest.items() if status=='course_needs_review')
+        return state, sorted(cid for cid,status in latest.items() if status=='course_needs_review' and cid not in EXCLUDED_COURSES)
 
 def main():
     state,courses=state_and_candidates()

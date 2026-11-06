@@ -36,6 +36,14 @@ class Client:
 
 
 class BatchTests(unittest.TestCase):
+    def test_owner_excluded_course_never_fetches_or_writes(self):
+        client=Client();journal=Journal()
+        with patch.object(mod,'prepare_course',side_effect=AssertionError('excluded course fetched')):
+            self.assertEqual(mod.import_course(client,journal,50,[332,333,334,335,336,337],True),'excluded')
+            self.assertEqual(mod.import_course(client,journal,50,None,True),'excluded')
+        self.assertEqual(client.writes,[])
+        self.assertIn((50,None,'course_excluded',['user_excluded_course']),journal.events)
+
     def test_long_course_title_is_reported_before_writes(self):
         client=Client();journal=Journal();p=payload(1);p['course_title']='x'*513
         with patch.object(mod,'prepare_course',return_value=[p]),patch.object(mod,'outline',return_value=[]):
