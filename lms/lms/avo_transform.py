@@ -32,7 +32,10 @@ CONFIRMED_SINGLE_COLUMN_LESSONS = {('mv-centr', '117', '571'), ('mv-centr', '118
 CONFIRMED_SINGLE_COLUMN_SECTIONS = {('mv-centr','258','1150'):
     '65769313d05a3037d67800d78caeb764452be7e932a96fe040df4bae1c67d625'}
 CONFIRMED_HTML_FIELDS = {('mv-centr','258','1151'):
-    'bd34b4023517d1f359d4c81aabf15d728845cd4f318e9ea7d629f017887a2d5d'}
+    'bd34b4023517d1f359d4c81aabf15d728845cd4f318e9ea7d629f017887a2d5d',
+    ('mv-centr','447','2608'):'40c2aefc41caa2cde7ac583ff753e3eeba135257f2b1e6782fea1e573a63415d'}
+CONFIRMED_OMIT_HEADERS = {('mv-centr','447','2608'):
+    'fcc9b9dfb972f67fa3e47b266af9ad5345f3e5593aa2a9f9b7163181c4ac16bf'}
 # Explicit user decision for these exact snapshots: keep the assignment text
 # and omit the empty answer form for now. The original remains in the snapshot.
 CONFIRMED_TEXT_ONLY_ANSWER_FORMS = {
@@ -689,6 +692,12 @@ def plan_import(payload, image_urls=None):
                 allowed = {'anchor', 'html', 'format'}
                 markup = fields.get('html')
                 source_format = fields.get('format')
+                if (CONFIRMED_OMIT_HEADERS.get((account,course,lesson)) == _sha256_text(markup)
+                        and (account,course,lesson) in CONFIRMED_OMIT_HEADERS
+                        and not node.get('children') and not fields.get('anchor')
+                        and not any(v not in (None,'',False,[],{}) for k,v in fields.items() if k not in allowed)):
+                    if 'owner_omitted_trainer_link' not in plan['warnings']:plan['warnings'].append('owner_omitted_trainer_link')
+                    continue
                 match = re.fullmatch(r'\s*<h([1-4])>(.*?)</h\1>\s*', markup, re.I | re.S) if isinstance(markup, str) else None
                 if (fields.get('anchor') or any(v not in (None, '', False, [], {}) for k, v in fields.items() if k not in allowed)
                         or source_format not in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6') or not match

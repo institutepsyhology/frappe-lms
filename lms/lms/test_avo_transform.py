@@ -10,6 +10,19 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_owner_omits_only_exact_trainer_header(self):
+        import hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        header='<h2><a target="_blank" href="https://example.test/question"><b>Задать вопрос тренеру</b></a></h2>'
+        node={'name':'header','fields':{'html':header,'format':'h1'}}
+        p=sample({'name':'page','children':[{'name':'text','fields':{'html':'<p>Содержание</p>'}},node]},'ape');p.update(course_id=447,lesson_id=2608)
+        with patch.dict(module.CONFIRMED_OMIT_HEADERS,{('mv-centr','447','2608'):hashlib.sha256(header.encode()).hexdigest()}):
+            out=plan_import(p);self.assertTrue(out['ready'],out['issues'])
+            self.assertEqual(len(out['blocks']),1);self.assertIn('owner_omitted_trainer_link',out['warnings'])
+            node['fields']['html']=header.replace('тренеру','преподавателю')
+            self.assertIn('unsupported_header',plan_import(p)['issues'])
+
     def test_exact_placeholder_greeting_is_omitted_without_changing_snapshot(self):
         import hashlib,copy
         from unittest.mock import patch

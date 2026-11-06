@@ -212,3 +212,10 @@ all three sites, with counts and release switches unchanged during deployment.
 Actual MCP read-back confirmed the reviewed draft lessons and HTML boundaries,
 including the three video pairs and omission of the placeholder in lesson 1151.
 Rendering, access and backup restoration have not been verified.
+# Reviewed legacy HTML and trainer link, 2026-11-06
+
+Allow reviewed inert formatting classes and preserve lesson HTML. Omit the
+trainer-question header only for the owner's confirmed account, course,
+lesson and exact source digest; keep its original in the private snapshot.
+Other changed or unrecognized content remains blocked. Deploy the published
+commit with `deploy_trainer_html.py`; visual rendering requires verification.

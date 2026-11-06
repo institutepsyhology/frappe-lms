@@ -26,7 +26,8 @@ CLASSES={'lesson-mission-wrapper','lesson-mission-text','redactor-inline-convert
          'o-lt-separator','lt-separator','separator01','o-lt-lesson-header','lessonHdr01','lt-lesson-header','header','f-header','f-lesson-header-1',
          'o-lt-video','o-lt-video-hosting-with-defence','vid03','lt-video','lt-video-hosting-with-defence',
          'gc-main-content','gc-both-main-content','wide','account-page-content','with-left-menu','gc-user-logined','gc-user-admin',
-         'page-full-block','main-page-block','full-width','xdget-root','xdget-lesson','main-lesson-container'}
+         'page-full-block','main-page-block','full-width','xdget-root','xdget-lesson','main-lesson-container',
+         'o-lt-lesson-text','lessonTxt01','lt-lesson-text','text','f-text','o-lt-lesson-video','lessonVid01','lt-lesson-video'}
 CLASS=re.compile(r'^[A-Za-z0-9_ -]{1,160}$')
 CSS_VALUE=re.compile(r'^[\w\s#.,%()\'"+\-]{1,300}$',re.UNICODE)
 SAFE_CLIPBOARD_CSS='<!--td {border: 1px solid #ccc;}br {mso-data-placement:same-cell;}-->'
@@ -84,7 +85,7 @@ class StaticHTML(HTMLParser):
             if key=='data-xdget-id' and (tag!='div' or not isinstance(value,str) or not re.fullmatch(r'[0-9]{1,12}',value)):raise ValueError('unsupported_attribute')
             if key in ('data-block-id','data-updated') and (tag!='div' or not isinstance(value,str) or not re.fullmatch(r'[0-9]{1,12}',value)):raise ValueError('unsupported_attribute')
             if key=='data-code' and (tag!='div' or not isinstance(value,str) or not re.fullmatch(r'(?:ltBlock[0-9]{1,12}|b-[0-9a-f]{5})',value)):raise ValueError('unsupported_attribute')
-            if key in ('data-editable','data-main-class','data-param') and (tag!='div' or value!=('true' if key=='data-editable' else 'header')):raise ValueError('unsupported_attribute')
+            if key in ('data-editable','data-main-class','data-param') and (tag!='div' or value not in (('true',) if key=='data-editable' else ('header','text'))):raise ValueError('unsupported_attribute')
             if key=='id' and (not isinstance(value,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',value)):raise ValueError('unsupported_attribute')
             if key=='color' and (tag!='font' or not isinstance(value,str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',value)):raise ValueError('unsupported_attribute')
             if key=='type' and (tag!='style' or value!='text/css'):raise ValueError('unsupported_attribute')
