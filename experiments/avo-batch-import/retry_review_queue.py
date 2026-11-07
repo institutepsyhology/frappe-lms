@@ -4,13 +4,19 @@ from pathlib import Path
 import sqlite3
 import subprocess
 import sys
-from frappe_batch_import import EXCLUDED_COURSES
+from frappe_batch_import import EXCLUDED_COURSES, RemoteJournal
 
 ROOT = Path(__file__).resolve().parents[3]
 DATA = ROOT / 'exports/lesson-content/mv-centr-frappe-import.sqlite'
 IMPORT = Path(__file__).with_name('frappe_batch_import.py')
 
 def state_and_candidates():
+    if (DATA.parent/'mv-centr-remote-journal.enabled').exists():
+        journal=RemoteJournal()
+        try:
+            paused,errors=journal.state()
+            return ('mv-centr',paused,errors),journal.candidates()
+        finally:journal.close()
     with closing(sqlite3.connect(DATA.resolve().as_uri()+'?mode=ro',uri=True)) as db:
         state=db.execute('select account,paused,consecutive_errors from state where singleton=1').fetchone()
         if not state or state[0]!='mv-centr': raise ValueError('wrong_account')
@@ -30,7 +36,9 @@ def main():
         if state[1]:
             print('Остановлено по порогу проблем; подробности в отчёте.',flush=True)
             return 1
-        result=subprocess.run([sys.executable,str(IMPORT),'--apply','--course',str(cid)])
+        args=[sys.executable,str(IMPORT),'--apply','--course',str(cid)]
+        if (DATA.parent/'mv-centr-remote-journal.enabled').exists():args.append('--remote-journal')
+        result=subprocess.run(args)
         if result.returncode:
             print(f'Остановлено на курсе {cid}; проверьте журнал.',flush=True)
             return result.returncode

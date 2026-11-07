@@ -27,8 +27,9 @@ def workspace_root():
     raise RuntimeError('workspace_not_found')
 
 
-ROOT = workspace_root()
-DATA = ROOT / 'exports/lesson-content'
+REMOTE_WORKER = os.environ.get('AVO_REMOTE_JOURNAL_WORKER') == '1' and os.name != 'nt'
+ROOT = Path('/opt/company-lms') if REMOTE_WORKER else workspace_root()
+DATA = (ROOT / 'private/avo-journal-mvcentr') if REMOTE_WORKER else ROOT / 'exports/lesson-content'
 SITE = 'my-lk.mv-centr.ru'
 ORIGIN = 'https://shop.mv-centr.ru'
 ACCOUNT = 'mv-centr'
@@ -210,6 +211,62 @@ class Journal:
         temp=PROBLEMS_REPORT.with_name(PROBLEMS_REPORT.name+'.tmp')
         temp.write_text('\n'.join(lines)+'\n',encoding='utf-8')
         os.replace(temp,PROBLEMS_REPORT)
+
+
+class RemoteJournal:
+    """Durable journal on the same Frappe host; never sends lesson content."""
+    def __init__(self):
+        key=Path.home()/'.ssh/codex_timeweb_lms_20261010'
+        known=ROOT/'frappe-deploy/known_hosts'
+        self.child=subprocess.Popen(['ssh','-o','BatchMode=yes','-o','ConnectTimeout=10',
+            '-o','ServerAliveInterval=15','-o','ServerAliveCountMax=2',
+            '-o','StrictHostKeyChecking=yes','-o','UserKnownHostsFile='+str(known),
+            '-i',str(key),'root@89.223.71.30',
+            'python3 -u /opt/company-lms/avo-journal-service/remote_journal_worker.py'],
+            stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,
+            text=True,encoding='utf-8',bufsize=1,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+        try:self.request('ping')
+        except Exception:
+            self.child.kill()
+            raise
+
+    def request(self,method,*args):
+        try:
+            self.child.stdin.write(json.dumps({'method':method,'args':args},ensure_ascii=True)+'\n')
+            self.child.stdin.flush()
+            line=self.child.stdout.readline()
+            response=json.loads(line)
+            if not response.get('ok'):raise ValueError('remote_rejected')
+            return response.get('result')
+        except Exception as exc:
+            raise Stop('remote_journal_unavailable') from exc
+
+    def event(self,*args):return self.request('event',*args)
+    def state(self):return tuple(self.request('state'))
+    def resume(self):return self.request('resume')
+    def failure(self,immediate=False):return self.request('failure',immediate)
+    def success(self):return self.request('success')
+    def candidates(self):return self.request('candidates')
+    def report(self):
+        reports=self.request('report')
+        # The server copy is authoritative. A full laptop disk must not erase
+        # the report or turn a safely stopped run into an unreported failure.
+        for path,key in ((REPORT,'report'),(PROBLEMS_REPORT,'problems')):
+            try:
+                temp=path.with_name(path.name+'.tmp')
+                temp.write_text(reports[key],encoding='utf-8')
+                os.replace(temp,path)
+            except OSError:
+                print('Отчёт сохранён на сервере; на ноутбуке нет места для копии.',file=sys.stderr,flush=True)
+    def close(self):
+        try:
+            try:self.request('close')
+            except Stop:pass
+        finally:
+            try:self.child.stdin.close()
+            except Exception:pass
+            try:self.child.wait(timeout=10)
+            except subprocess.TimeoutExpired:self.child.kill()
 
 
 class MCP:
@@ -449,11 +506,14 @@ def main():
     parser.add_argument('--limit',type=int,default=0,help='максимум курсов за запуск; 0 — без ограничения')
     parser.add_argument('--resume',action='store_true',help='снять остановку после разбора журнала')
     parser.add_argument('--report',action='store_true',help='обновить отчёт без подключения к сайтам')
+    parser.add_argument('--remote-journal',action='store_true',help='хранить рабочий журнал на сервере Frappe')
     args=parser.parse_args()
     if args.from_course<1 or args.limit<0 or (args.course is not None and args.course<1):parser.error('неверный номер')
     client=None; journal=None
     try:
-        journal=Journal(DATA/'mv-centr-frappe-import.sqlite')
+        marker=DATA/'mv-centr-remote-journal.enabled'
+        if marker.exists() and not args.remote_journal:raise Stop('remote_journal_required')
+        journal=RemoteJournal() if args.remote_journal else Journal(DATA/'mv-centr-frappe-import.sqlite')
         if args.report:
             journal.report();print(str(REPORT));return 0
         courses=course_ids(args.from_course,args.course)
@@ -473,13 +533,18 @@ def main():
     except Exception as error:
         code=str(error) if isinstance(error,Stop) and re.fullmatch(r'[a-z0-9_]{1,80}',str(error)) else 'unexpected_failure'
         if journal and code not in ('journal_paused','too_many_consecutive_errors'):
-            journal.event(None,None,'stopped',[code]);journal.failure(immediate=True)
+            try:journal.event(None,None,'stopped',[code]);journal.failure(immediate=True)
+            except Stop:pass
         print(json.dumps({'status':'stopped','reason':code}),file=sys.stderr,flush=True)
         return 1
     finally:
         if client:client.close()
         if journal:
-            try:journal.report()
+            try:
+                try:journal.report()
+                except Stop:
+                    print('Журнал сервера недоступен; перенос остановлен.',file=sys.stderr,flush=True)
+                    raise SystemExit(1)
             finally:journal.close()
 
 

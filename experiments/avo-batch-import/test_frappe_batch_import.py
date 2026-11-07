@@ -36,6 +36,32 @@ class Client:
 
 
 class BatchTests(unittest.TestCase):
+    def test_remote_journal_disconnect_stops_and_does_not_accept_silent_failure(self):
+        import io
+        class Process:
+            def __init__(self):
+                self.stdin=io.StringIO();self.stdout=io.StringIO('{"ok":true,"result":{"account":"mv-centr"}}\n');self.killed=False
+            def kill(self):self.killed=True
+            def wait(self,timeout):return 0
+        p=Process()
+        with patch.object(mod.subprocess,'Popen',return_value=p):
+            journal=mod.RemoteJournal()
+            with self.assertRaisesRegex(mod.Stop,'remote_journal_unavailable'):journal.event(1,2,'lesson_created',[])
+            journal.close()
+
+    def test_remote_report_survives_full_local_disk(self):
+        import io
+        class Process:
+            def __init__(self):
+                self.stdin=io.StringIO();self.stdout=io.StringIO('\n'.join([
+                    '{"ok":true,"result":{"account":"mv-centr"}}',
+                    '{"ok":true,"result":{"report":"server report","problems":"server problems"}}',
+                    '{"ok":true,"result":null}'])+'\n')
+            def kill(self):pass
+            def wait(self,timeout):return 0
+        with patch.object(mod.subprocess,'Popen',return_value=Process()),patch.object(Path,'write_text',side_effect=OSError('full')):
+            journal=mod.RemoteJournal();journal.report();journal.close()
+
     def test_owner_excluded_course_never_fetches_or_writes(self):
         client=Client();journal=Journal()
         with patch.object(mod,'prepare_course',side_effect=AssertionError('excluded course fetched')):
