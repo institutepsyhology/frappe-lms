@@ -124,7 +124,11 @@ CONFIRMED_OMIT_EMPTY_BUTTONS = {('mv-centr','952','9422'):
     ('mv-centr','670','8188'): '2cb34d841c213c0d96707b69f6613b354e2c99a6449ff3340c885dadaf014f0a',
     ('mv-centr','810','7770'): 'bbef3716009b5149110fc5771fb517426bc399af10f5ae52a7177a96cfb48e09',
     ('mv-centr','825','8184'): '2cb34d841c213c0d96707b69f6613b354e2c99a6449ff3340c885dadaf014f0a',
-    ('mv-centr','842','8062'): '9db7a6ea41bc326227379b451365c65a8f54ebf4ed914499bfdff1a21c4e4513'}
+    ('mv-centr','842','8062'): '9db7a6ea41bc326227379b451365c65a8f54ebf4ed914499bfdff1a21c4e4513',
+    ('mv-centr','911','8921'): 'c8c9b1393662e6f7c6e76c51c4d0c4e86decd89e778fe978eed19c68d30f1ce9',
+    ('mv-centr','981','9837'): 'c756eef9c43d449b0b4e93a8d5b43f5fda51bb649368fd49a22564520eb463cf',
+    ('mv-centr','976','9761'): '02d5ec2c4d47eaa7b06852f473947cc94bb06217bd4e771455c16aeba63f5e54',
+    ('mv-centr','996','10037'): '70af0a33be4251af7c5e4281132009a54ea7adee9086c81cc2afc4c1088d6fad'}
 # Manually checked Google file links with one extra 'h' in their scheme.
 # The correction is permitted only for the exact reviewed source HTML.
 REVIEWED_LINK_TYPOS = {
@@ -1118,6 +1122,25 @@ def plan_import(payload, image_urls=None):
                     blocks.append({'type': 'header', 'data': {'text': match.group(2), 'level': level}})
                     if source_format != 'h' + str(level) and 'ape_heading_format_mismatch' not in plan['warnings']:
                         plan['warnings'].append('ape_heading_format_mismatch')
+            elif kind == 'header-simple':
+                allowed={'anchor','level','html'}
+                markup=fields.get('html');level=fields.get('level')
+                if not node.get('children') and _trainer_label(markup):
+                    omit_trainer()
+                    continue
+                try:
+                    markup,omitted=_strip_trainer_links(markup)
+                except (ValueError,RecursionError):
+                    issue('unsupported_header')
+                    continue
+                if omitted:omit_trainer()
+                if (node.get('children') or fields.get('anchor') or level not in ('h1','h2','h3','h4','h5','h6')
+                        or any(v not in (None,'',False,[],{}) for k,v in fields.items() if k not in allowed)
+                        or not isinstance(markup,str) or not markup.strip() or not _safe_heading_inline(markup)
+                        or re.search(r'<\s*(?:br|p|h[1-6]|ul|ol|li|blockquote)\b',markup,re.I)):
+                    issue('unsupported_header')
+                else:
+                    blocks.append({'type':'header','data':{'text':markup,'level':int(level[1])}})
             elif kind == "text":
                 if fields.get("anchor") or any(v not in (None, "", False, [], {}) for k, v in fields.items() if k not in ("html", "anchor")):
                     issue("unsupported_text_settings")

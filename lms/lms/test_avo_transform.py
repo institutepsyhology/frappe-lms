@@ -10,6 +10,14 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_simple_header_preserves_safe_formatting_and_rejects_active_content(self):
+        root={'name':'page','children':[{'name':'header-simple','fields':{'level':'h4','html':'<strong>Практикум</strong>'}}]}
+        result=plan_import(sample(root,'ape'))
+        self.assertTrue(result['ready'],result['issues'])
+        self.assertEqual(result['blocks'][0],{'type':'header','data':{'text':'<strong>Практикум</strong>','level':4}})
+        root['children'][0]['fields']['html']='<script>alert(1)</script>'
+        self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
     def test_reviewed_remote_image_set_keeps_both_images_and_captions(self):
         import base64,hashlib
         from unittest.mock import patch
