@@ -37,7 +37,7 @@ MAX_ERRORS = 10
 REPORT = DATA / 'ОТЧЁТ-перенос-mv-centr.md'
 PROBLEMS_REPORT = DATA / 'ПРОБЛЕМНЫЕ-УРОКИ-mv-centr.md'
 # User-confirmed disposable test lessons. These are lesson IDs, not course IDs.
-EXCLUDED_LESSONS = {17, 19, 23, 5695, 5704, 5697, 6345, 6398, 9140}
+EXCLUDED_LESSONS = {17, 19, 23, 5695, 5704, 5697, 5705, 6345, 6398, 9140}
 # Owner excluded the obsolete course 50 and test course 849 (its only lesson 9140).
 EXCLUDED_COURSES = {50, 849}
 # Only the verified image for this source snapshot; unknown images stop.
@@ -206,6 +206,7 @@ class Journal:
             if status != 'course_needs_review' or cid in EXCLUDED_COURSES: continue
             course_link = f'[№ {cid}](https://shop.mv-centr.ru/shop/training/admin/update?id={cid}&lg=ru#training_lessons)'
             for lid,issues in detail or [(None,codes)]:
+                if lid in EXCLUDED_LESSONS:continue
                 lesson_link = f'[№ {lid}](https://shop.mv-centr.ru/shop/training/traininglessons/admin/update?id={lid}&lg=ru)' if lid else 'Не определён'
                 reason = ', '.join(descriptions.get(code,code) for code in issues)
                 lines.append(f'| {course_link} | {lesson_link} | {reason} |')

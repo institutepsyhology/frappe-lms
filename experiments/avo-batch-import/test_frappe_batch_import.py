@@ -52,6 +52,20 @@ class Client:
 
 
 class BatchTests(unittest.TestCase):
+    def test_excluded_lessons_do_not_reappear_in_problem_report(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            with patch.object(mod,'REPORT',root/'report.md'),patch.object(mod,'PROBLEMS_REPORT',root/'problems.md'):
+                journal=mod.Journal(root/'journal.sqlite')
+                try:
+                    journal.event(8,19,'lesson_needs_review',['vimeo_video_unavailable'])
+                    journal.event(8,18,'lesson_needs_review',['unsafe_or_unrecognized_html'])
+                    journal.event(8,None,'course_needs_review',['course_needs_review'])
+                    journal.report();result=(root/'problems.md').read_text(encoding='utf-8')
+                    self.assertNotIn('id=19&',result)
+                    self.assertIn('id=18&',result)
+                finally:journal.close()
+
     def test_remote_journal_disconnect_stops_and_does_not_accept_silent_failure(self):
         import io
         class Process:
@@ -170,7 +184,7 @@ class BatchTests(unittest.TestCase):
         self.assertEqual(client.writes,[])
 
     def test_owner_excluded_vimeo_lessons_do_not_exclude_same_number_courses(self):
-        self.assertTrue({19,23,5695,5704,5697,6345,6398}.issubset(mod.EXCLUDED_LESSONS))
+        self.assertTrue({19,23,5695,5704,5697,5705,6345,6398}.issubset(mod.EXCLUDED_LESSONS))
         self.assertNotIn(19,mod.EXCLUDED_COURSES)
         self.assertNotIn(23,mod.EXCLUDED_COURSES)
 
