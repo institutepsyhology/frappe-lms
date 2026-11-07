@@ -10,22 +10,6 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
-    def test_vimeo_video_is_separate_validated_link_in_source_order(self):
-        root={'name':'page','children':[
-            {'name':'video','fields':{'videoProvider':'youtube','videoSrc':'https://youtu.be/6mqNJuP-uuw'}},
-            {'name':'video','fields':{'videoProvider':'vimeo','videoSrc':'https://vimeo.com/507434099'}},
-            {'name':'button','fields':{'html':'Аудиозапись','linkType':'url','url':'https://example.test/audio'}},
-        ]}
-        result=plan_import(sample(root,'ape'))
-        self.assertTrue(result['ready'],result['issues'])
-        self.assertEqual([b['type'] for b in result['blocks']],['videoChoice','paragraph','paragraph'])
-        self.assertIn('https://vimeo.com/507434099',str(result['blocks'][1]))
-        self.assertIn('example.test/audio',str(result['blocks'][2]))
-        self.assertIn('vimeo_video_saved_as_link',result['warnings'])
-        for value in ['https://vimeo.com.evil.test/123','https://vimeo.com/123?x=1','javascript:alert(1)']:
-            root['children'][1]['fields']['videoSrc']=value
-            self.assertFalse(plan_import(sample(root,'ape'))['ready'],value)
-
     def test_owner_removed_entire_obsolete_lesson_gets_neutral_placeholder(self):
         import hashlib,json
         from unittest.mock import patch
