@@ -169,6 +169,11 @@ class BatchTests(unittest.TestCase):
             self.assertEqual(mod.import_course(client,journal,999,[9140],True),'excluded')
         self.assertEqual(client.writes,[])
 
+    def test_owner_excluded_vimeo_lessons_do_not_exclude_same_number_courses(self):
+        self.assertTrue({19,23,5695,5704,5697,6345,6398}.issubset(mod.EXCLUDED_LESSONS))
+        self.assertNotIn(19,mod.EXCLUDED_COURSES)
+        self.assertNotIn(23,mod.EXCLUDED_COURSES)
+
     def run_course(self,client,journal,apply=True,order=(1,2)):
         with patch.object(mod,'prepare_course',return_value=[payload(x) for x in order]), \
                 patch.object(mod,'outline',side_effect=lambda client,course: list(client.existing)):

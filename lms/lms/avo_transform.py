@@ -119,7 +119,12 @@ REVIEWED_STYLED_HEADERS = {('mv-centr','548','3689'): {
     '8a1dae0bdfee34354ce59a383aa93eac516a9208e44e919ff0f99599efd2b16e',
 }}
 CONFIRMED_OMIT_EMPTY_BUTTONS = {('mv-centr','952','9422'):
-    '14eb83aff8cbadebc98291cf587459e2ccda9b646b0a0fcc6c4ccc5c85feab9f'}
+    '14eb83aff8cbadebc98291cf587459e2ccda9b646b0a0fcc6c4ccc5c85feab9f',
+    ('mv-centr','612','7304'): 'f2d011c9f719c7153ae017880dc36b9ee04dafbeb709c949ede5a79473e443aa',
+    ('mv-centr','670','8188'): '2cb34d841c213c0d96707b69f6613b354e2c99a6449ff3340c885dadaf014f0a',
+    ('mv-centr','810','7770'): 'bbef3716009b5149110fc5771fb517426bc399af10f5ae52a7177a96cfb48e09',
+    ('mv-centr','825','8184'): '2cb34d841c213c0d96707b69f6613b354e2c99a6449ff3340c885dadaf014f0a',
+    ('mv-centr','842','8062'): '9db7a6ea41bc326227379b451365c65a8f54ebf4ed914499bfdff1a21c4e4513'}
 # Manually checked Google file links with one extra 'h' in their scheme.
 # The correction is permitted only for the exact reviewed source HTML.
 REVIEWED_LINK_TYPOS = {
@@ -1305,7 +1310,7 @@ def plan_import(payload, image_urls=None):
                     issue('ambiguous_trainer_action')
                     continue
                 if (omit_rule and root_digest == omit_rule and not node.get('children')
-                        and fields.get('html') == 'АУДИОЗАПИСЬ 2' and fields.get('url') == ''):
+                        and fields.get('html') in ('АУДИОЗАПИСЬ 2','АУДИОЗАПИСЬ') and fields.get('url') == ''):
                     if 'user_omitted_empty_button' not in plan['warnings']:
                         plan['warnings'].append('user_omitted_empty_button')
                     continue

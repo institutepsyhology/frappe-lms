@@ -10,6 +10,21 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_owner_omits_empty_audio_only_for_exact_reviewed_source(self):
+        import hashlib,json
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        root={'name':'page','children':[{'name':'text','fields':{'html':'<p>Материал</p>'}},
+            {'name':'button','fields':{'linkType':'url','html':'АУДИОЗАПИСЬ','url':''}}]}
+        digest=hashlib.sha256(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+        with patch.dict(module.CONFIRMED_OMIT_EMPTY_BUTTONS,{('mv-centr','5','13'):digest}):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertIn('Материал',str(result['blocks']))
+            self.assertIn('user_omitted_empty_button',result['warnings'])
+            root['children'][0]['fields']['html']='<p>Изменённый материал</p>'
+            self.assertIn('reviewed_source_changed',plan_import(sample(root,'ape'))['issues'])
+
     def test_reviewed_remote_image_keeps_html_and_rejects_unreviewed_changes(self):
         import base64,hashlib
         from unittest.mock import patch

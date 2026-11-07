@@ -37,7 +37,7 @@ MAX_ERRORS = 10
 REPORT = DATA / 'ОТЧЁТ-перенос-mv-centr.md'
 PROBLEMS_REPORT = DATA / 'ПРОБЛЕМНЫЕ-УРОКИ-mv-centr.md'
 # User-confirmed disposable test lessons. These are lesson IDs, not course IDs.
-EXCLUDED_LESSONS = {17, 9140}
+EXCLUDED_LESSONS = {17, 19, 23, 5695, 5704, 5697, 6345, 6398, 9140}
 # Owner excluded the obsolete course 50 and test course 849 (its only lesson 9140).
 EXCLUDED_COURSES = {50, 849}
 # Only the verified image for this source snapshot; unknown images stop.
