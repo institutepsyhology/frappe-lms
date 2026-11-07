@@ -890,6 +890,16 @@ def plan_import(payload, image_urls=None):
                     single_video(fields['videoProvider'],fields['videoSrc'])
                     if 'duplicate_video_sources_combined' not in plan['warnings']:
                         plan['warnings'].append('duplicate_video_sources_combined')
+                elif (fields.get('videoProvider') == 'vimeo'
+                      and fields.get('videoProvider2') in (None, '', 'youtube', 'rutube')
+                      and fields.get('videoSrc2') in (None, '')):
+                    value = fields.get('videoSrc')
+                    if isinstance(value, str) and re.fullmatch(r'https://(?:www\.)?vimeo\.com/[1-9][0-9]{0,15}/?', value):
+                        paragraph('<a href="' + value + '">Видео Vimeo</a>')
+                        if 'vimeo_video_saved_as_link' not in plan['warnings']:
+                            plan['warnings'].append('vimeo_video_saved_as_link')
+                    else:
+                        issue('video_url_invalid')
                 elif fields.get('videoProvider2') in (None, '', 'youtube', 'rutube') and fields.get('videoSrc2') in (None, ''):
                     single_video(fields.get('videoProvider'), fields.get('videoSrc'))
                 else:
