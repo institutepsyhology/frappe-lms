@@ -4,6 +4,16 @@ from lms.lms.avo_html_fragment import make_html_block, strip_empty_answer_form, 
 
 
 class StaticFragmentTests(unittest.TestCase):
+    def test_timing_tables_preserve_rows_and_reject_unsafe_attributes(self):
+        html=('<table width="336" style="border-collapse: collapse"><colgroup><col width="65"><col width="271"></colgroup>'
+              '<tbody><tr><td style="border-top: 1px solid #000000; overflow-wrap: break-word">02:25</td>'
+              '<td><span style="font-variant: normal; font-style: normal; text-decoration: none">Тема</span></td></tr></tbody></table>')
+        self.assertEqual(base64.b64decode(make_html_block(html)['data']['encodedHtml']).decode(),html)
+        for bad in (html.replace('width="336"','width="1 onload=alert(1)"'),
+                    html.replace('<td>','<td onclick="alert(1)">'),
+                    html.replace('break-word','url(https://bad.test)'),
+                    html.replace('</tbody>','<script>alert(1)</script></tbody>')):
+            with self.assertRaises(ValueError):make_html_block(bad)
     def test_static_float_layout_preserves_html(self):
         html='<div class="col-md-12" style="float: left; width: 862.444px">Текст</div>'
         self.assertEqual(base64.b64decode(make_html_block(html)['data']['encodedHtml']).decode(),html)

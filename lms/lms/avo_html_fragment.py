@@ -9,14 +9,15 @@ from html.parser import HTMLParser
 import re
 from urllib.parse import urlsplit
 
-TAGS={'p','div','span','h1','h2','h3','h4','h5','h6','strong','b','em','i','u','s','a','hr','br','ul','ol','li','blockquote','font','style','iframe','sub','sup','mark'}
-VOID={'br','hr'}
+TAGS={'p','div','span','h1','h2','h3','h4','h5','h6','strong','b','em','i','u','s','a','hr','br','ul','ol','li','blockquote','font','style','iframe','sub','sup','mark','table','colgroup','col','tbody','tr','td'}
+VOID={'br','hr','col'}
 ATTRS={'class','style','href','target','rel','title','savefrom_lm','savefrom_lm_index','dir','span','id','data-xdget-id','data-block-id','data-updated','data-code','data-editable','data-main-class','data-param','color','type','src','width','height'}
 CSS={'box-sizing','margin-top','border','color','font-family','font-size','border-bottom','padding',
      'background-color','font-weight','text-decoration-line','margin','line-height','vertical-align',
      'white-space','z-index','background','margin-right','margin-left','margin-bottom','background-image',
      'background-position','background-size','background-repeat','background-attachment','background-origin',
-     'background-clip','position','min-height','padding-right','padding-left','width','overflow','padding-bottom','padding-top','max-width','flex','text-align','float','outline'}
+     'background-clip','position','min-height','padding-right','padding-left','width','overflow','padding-bottom','padding-top','max-width','flex','text-align','float','outline',
+     'font-variant','font-style','text-decoration','border-collapse','border-top','border-right','border-left','overflow-wrap'}
 CLASSES={'lesson-mission-wrapper','lesson-mission-text','redactor-inline-converted','xdget-block',
          'xdget-div','center-block','row-section','xdget-common-container','div','xdget-visible-to-bg-',
          'xdget-lessonContent','row','content-row','col-md-12','xdget-lessonFiles','xdget-lessonMission',
@@ -75,7 +76,9 @@ class StaticHTML(HTMLParser):
             raise ValueError('answers_not_empty')
         for key,value in attrs:
             if key not in ATTRS:raise ValueError('unsupported_attribute')
-            if key in ('src','width','height') and tag!='iframe':raise ValueError('unsupported_attribute')
+            if key in ('src','height') and tag!='iframe':raise ValueError('unsupported_attribute')
+            if key=='width' and tag!='iframe':
+                if tag not in ('table','col') or not isinstance(value,str) or not re.fullmatch(r'[1-9][0-9]{0,3}',value):raise ValueError('unsupported_attribute')
             if key=='href' and (tag!='a' or not valid_link(value)):raise ValueError('invalid_link')
             if key=='target' and (tag!='a' or value not in ('_blank','_self')):raise ValueError('invalid_target')
             if key=='rel' and (tag!='a' or not isinstance(value,str) or not set(value.split()).issubset({'noopener','noreferrer','nofollow'})):raise ValueError('invalid_link')
