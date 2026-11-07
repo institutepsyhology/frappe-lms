@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 
 TAGS={'p','div','span','h1','h2','h3','h4','h5','h6','strong','b','em','i','u','s','a','hr','br','ul','ol','li','blockquote','font','style','iframe','sub','sup','mark','table','colgroup','col','tbody','tr','td'}
 VOID={'br','hr','col'}
-ATTRS={'class','style','href','target','rel','title','savefrom_lm','savefrom_lm_index','dir','span','id','data-xdget-id','data-block-id','data-updated','data-code','data-editable','data-main-class','data-param','color','face','type','src','width','height','aria-level','start'}
+ATTRS={'class','style','href','target','rel','title','savefrom_lm','savefrom_lm_index','dir','span','id','data-xdget-id','data-block-id','data-updated','data-code','data-editable','data-main-class','data-param','color','face','type','src','width','height','aria-level','start','role'}
 CSS={'box-sizing','margin-top','border','color','font-family','font-size','border-bottom','padding',
      'background-color','font-weight','text-decoration-line','margin','line-height','vertical-align',
      'white-space','z-index','background','margin-right','margin-left','margin-bottom','background-image',
@@ -22,7 +22,7 @@ CSS={'box-sizing','margin-top','border','color','font-family','font-size','borde
      'text-decoration-skip-ink','-webkit-text-decoration-skip','text-indent',
      'font-variant-ligatures','text-decoration-style','text-decoration-color','border-width','border-right-style',
      'border-bottom-style','border-left-style','border-right-color','border-bottom-color','border-left-color',
-     'border-image','border-top-style'}
+     'border-image','border-top-style','list-style','margin-inline-start','margin-inline-end'}
 CLASSES={'lesson-mission-wrapper','lesson-mission-text','redactor-inline-converted','xdget-block',
          'xdget-div','center-block','row-section','xdget-common-container','div','xdget-visible-to-bg-',
          'xdget-lessonContent','row','content-row','col-md-12','xdget-lessonFiles','xdget-lessonMission',
@@ -56,6 +56,8 @@ def valid_style(value):
         key,val=(x.strip() for x in item.split(':',1))
         if key.lower() not in CSS or not CSS_VALUE.fullmatch(val):return False
         if re.search(r'(?:url|expression)\s*\(',val,re.I):return False
+        if key.lower()=='list-style' and val.lower() not in ('none','decimal','disc','circle','square'):return False
+        if key.lower() in ('margin-inline-start','margin-inline-end') and not re.fullmatch(r'(?:-?\d+(?:\.\d+)?(?:px|em|rem|%)|0|auto)',val,re.I):return False
         if key.lower()=='position' and val.lower() not in ('static','relative'):return False
         if key.lower()=='background-image' and val.lower() not in ('none','initial'):return False
         if key.lower()=='z-index' and (not val.isdigit() or int(val)>1000):return False
@@ -90,6 +92,7 @@ class StaticHTML(HTMLParser):
             raise ValueError('answers_not_empty')
         for key,value in attrs:
             if key not in ATTRS:raise ValueError('unsupported_attribute')
+            if key=='role' and (tag!='p' or value!='presentation'):raise ValueError('unsupported_attribute')
             if key in ('src','height') and tag!='iframe':raise ValueError('unsupported_attribute')
             if key=='width' and tag!='iframe':
                 if tag not in ('table','col') or not isinstance(value,str) or not re.fullmatch(r'[1-9][0-9]{0,3}',value):raise ValueError('unsupported_attribute')

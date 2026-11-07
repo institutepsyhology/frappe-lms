@@ -91,6 +91,14 @@ class StaticFragmentTests(unittest.TestCase):
                     html+html):
             with self.assertRaises(ValueError):strip_empty_answer_form(bad)
 
+    def test_safe_list_styles_and_presentation_role_are_preserved(self):
+        html='<p role="presentation">Задание</p><ol style="list-style: none;"><li style="list-style: decimal; margin-inline-start: 24px; margin-inline-end: 8px;">Текст</li></ol>'
+        self.assertEqual(base64.b64decode(make_html_block(html)['data']['encodedHtml']).decode(),html)
+        for bad in (html.replace('role="presentation"','role="button"'),
+                    html.replace('list-style: none','list-style: url(https://example.test/x)'),
+                    html.replace('margin-inline-start: 24px','margin-inline-start: expression(1)')):
+            with self.assertRaises(ValueError):make_html_block(bad)
+
     def test_single_empty_answer_form_is_removed_without_touching_text(self):
         html='<p>Текст задания</p><form action="/answer" method="post" enctype="multipart/form-data"><div class="answer-form">&nbsp;</div></form><p>Материалы</p>'
         self.assertEqual(strip_empty_answer_form(html),'<p>Текст задания</p><p>Материалы</p>')
