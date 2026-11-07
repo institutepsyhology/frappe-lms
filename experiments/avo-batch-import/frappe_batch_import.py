@@ -498,6 +498,15 @@ def import_course(client,journal,course,expected,apply):
     journal.event(course,None,'course_created');return 'created'
 
 
+def record_course_review(journal, course, error):
+    reason = str(error)
+    journal.event(course,None,'course_needs_review',[reason])
+    # Unsupported lesson content is an item for later review, not a system
+    # failure. Connection, account and uncertain-write errors still stop.
+    if reason != 'course_needs_review' and journal.failure():
+        raise Stop('too_many_consecutive_errors')
+
+
 def main():
     parser=argparse.ArgumentParser(description='Перенос снимков mv-centr в черновики Frappe')
     parser.add_argument('--apply',action='store_true',help='создавать черновики; без флага только проверка')
@@ -507,6 +516,7 @@ def main():
     parser.add_argument('--resume',action='store_true',help='снять остановку после разбора журнала')
     parser.add_argument('--report',action='store_true',help='обновить отчёт без подключения к сайтам')
     parser.add_argument('--remote-journal',action='store_true',help='хранить рабочий журнал на сервере Frappe')
+    parser.add_argument('--review-queue',action='store_true',help='повторно обработать курсы из отчёта')
     args=parser.parse_args()
     if args.from_course<1 or args.limit<0 or (args.course is not None and args.course<1):parser.error('неверный номер')
     client=None; journal=None
@@ -517,6 +527,10 @@ def main():
         if args.report:
             journal.report();print(str(REPORT));return 0
         courses=course_ids(args.from_course,args.course)
+        if args.review_queue:
+            if not args.remote_journal:raise Stop('remote_journal_required')
+            candidates=set(journal.candidates())
+            courses=[item for item in courses if item[0] in candidates]
         if args.resume:journal.resume()
         if journal.state()[0]:raise Stop('journal_paused')
         client=MCP()
@@ -526,9 +540,9 @@ def main():
                 journal.success()
                 print(json.dumps({'course':cid,'status':status},ensure_ascii=True),flush=True)
             except Review as error:
-                journal.event(cid,None,'course_needs_review',[str(error)])
+                record_course_review(journal,cid,error)
                 print(json.dumps({'course':cid,'status':'needs_review','reason':str(error)}),flush=True)
-                if journal.failure():raise Stop('too_many_consecutive_errors')
+            journal.report()
         return 0
     except Exception as error:
         code=str(error) if isinstance(error,Stop) and re.fullmatch(r'[a-z0-9_]{1,80}',str(error)) else 'unexpected_failure'

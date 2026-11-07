@@ -19,6 +19,22 @@ class Journal:
     def event(self,*args):self.events.append(args)
 
 
+class ReviewQueueTests(unittest.TestCase):
+    def test_content_reviews_continue_but_repeated_system_errors_stop(self):
+        class TestJournal(Journal):
+            def __init__(self): super().__init__(); self.failures=0
+            def failure(self): self.failures+=1; return self.failures>=10
+        journal=TestJournal()
+        for course in range(1,13):
+            mod.record_course_review(journal,course,mod.Review('course_needs_review'))
+        self.assertEqual(journal.failures,0)
+        self.assertEqual(len(journal.events),12)
+        for course in range(1,10):
+            mod.record_course_review(journal,course,mod.Review('source_unavailable'))
+        with self.assertRaisesRegex(mod.Stop,'too_many_consecutive_errors'):
+            mod.record_course_review(journal,10,mod.Review('source_unavailable'))
+
+
 class Client:
     def __init__(self,unsupported=None,write_fails=False):
         self.existing=[]; self.unsupported=unsupported; self.write_fails=write_fails; self.writes=[]
