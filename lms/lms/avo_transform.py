@@ -34,7 +34,21 @@ def _trainer_label(markup):
     parser = Text()
     parser.feed(markup)
     label = ' '.join(' '.join(parser.parts).split())
-    return bool(re.fullmatch(r'(?:задать\s+)?вопрос(?:ы)?\s+тренеру[.!?]*', label, re.I))
+    return bool(re.fullmatch(r'(?:задать\s+)?вопрос(?:ы)?\s+тренеру(?:\s+здесь)?[.!?]*', label, re.I))
+
+
+def _possible_trainer_action(markup):
+    if not isinstance(markup, str):
+        return False
+    class Text(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.parts = []
+        def handle_data(self, data):
+            self.parts.append(data)
+    parser = Text()
+    parser.feed(markup)
+    return bool(re.search(r'вопрос\w*\s+(?:к\s+)?тренер\w*', ' '.join(parser.parts), re.I))
 
 
 def _strip_trainer_links(source):
@@ -66,6 +80,8 @@ def _strip_trainer_links(source):
                     raise ValueError('invalid_anchor')
                 if _trainer_label(' '.join(self.active[1])):
                     self.ranges.append((self.active[0], end + len(match.group(0))))
+                elif _possible_trainer_action(' '.join(self.active[1])):
+                    raise ValueError('ambiguous_trainer_action')
                 self.active = None
     parser = Links()
     parser.feed(source)
@@ -690,6 +706,9 @@ def plan_import(payload, image_urls=None):
                 if isinstance(link, dict) and _trainer_label(link.get('label')):
                     omit_trainer()
                     continue
+                if isinstance(link, dict) and _possible_trainer_action(link.get('label')):
+                    issue('ambiguous_trainer_action')
+                    continue
                 if not isinstance(link, dict) or not _url(link.get("url")) or not isinstance(link.get("label"), str):
                     issue("invalid_link")
                     continue
@@ -865,6 +884,12 @@ def plan_import(payload, image_urls=None):
                         and not any(v not in (None,'',False,[],{}) for k,v in fields.items() if k not in allowed)):
                     if 'owner_omitted_trainer_link' not in plan['warnings']:plan['warnings'].append('owner_omitted_trainer_link')
                     continue
+                try:
+                    markup, omitted = _strip_trainer_links(markup)
+                except (ValueError, RecursionError):
+                    issue('ambiguous_trainer_action')
+                    continue
+                if omitted: omit_trainer()
                 match = re.fullmatch(r'\s*<h([1-6])>(.*?)</h\1>\s*', markup, re.I | re.S) if isinstance(markup, str) else None
                 if (fields.get('anchor') or any(v not in (None, '', False, [], {}) for k, v in fields.items() if k not in allowed)
                         or source_format not in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6') or not match
@@ -944,6 +969,9 @@ def plan_import(payload, image_urls=None):
             elif kind == 'button':
                 if not node.get('children') and _trainer_label(fields.get('html')):
                     omit_trainer()
+                    continue
+                if _possible_trainer_action(fields.get('html')):
+                    issue('ambiguous_trainer_action')
                     continue
                 if (omit_rule and root_digest == omit_rule and not node.get('children')
                         and fields.get('html') == 'АУДИОЗАПИСЬ 2' and fields.get('url') == ''):

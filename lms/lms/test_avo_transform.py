@@ -14,6 +14,7 @@ class TransformTests(unittest.TestCase):
         root={'name':'page','children':[
             {'name':'text','fields':{'html':'<p>Материал <a href="https://example.test/file">Файл</a></p><p><a href="https://example.test/question"><b>Вопрос тренеру</b></a></p>'}},
             {'name':'button','fields':{'html':'ЗАДАТЬ ВОПРОС ТРЕНЕРУ','linkType':'url','url':'https://example.test/question'}},
+            {'name':'button','fields':{'html':'Задать вопрос тренеру здесь','linkType':'url','url':'https://example.test/question'}},
             {'name':'header','fields':{'html':'<h2><a href="https://example.test/question">Задать вопрос тренеру</a></h2>','format':'h2'}},
             {'name':'button','fields':{'html':'Презентация','linkType':'url','url':'https://example.test/slides'}},
         ]}
@@ -58,6 +59,19 @@ class TransformTests(unittest.TestCase):
         self.assertIn('Задание',html)
         self.assertNotIn('example.test/trainer',html)
         self.assertEqual(p,before)
+
+    def test_unrecognized_trainer_action_stops_instead_of_importing(self):
+        root={'name':'page','children':[{'name':'button','fields':{'html':'Материалы и вопросы к тренеру','linkType':'url','url':'https://example.test/q'}}]}
+        result=plan_import(sample(root,'ape'))
+        self.assertFalse(result['ready'])
+        self.assertIn('ambiguous_trainer_action',result['issues'])
+
+    def test_trainer_link_removed_from_mixed_header(self):
+        root={'name':'page','children':[{'name':'header','fields':{'html':'<h2>Тема <a href="https://example.test/q">Вопрос тренеру</a></h2>','format':'h2'}}]}
+        result=plan_import(sample(root,'ape'))
+        self.assertTrue(result['ready'],result['issues'])
+        self.assertNotIn('example.test/q',str(result['blocks']))
+        self.assertIn('Тема',str(result['blocks']))
 
     def test_heading_preserves_formatted_link_and_long_text(self):
         text='А'*450+' <span style="color: red"><a href="https://example.test" target="_blank"><b>ссылка</b></a></span>'
