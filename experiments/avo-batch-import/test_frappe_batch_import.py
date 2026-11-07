@@ -146,6 +146,13 @@ class BatchTests(unittest.TestCase):
             mod.import_course(client,journal,17,[1,17,2],True)
         self.assertEqual(client.writes,[1,2])
 
+    def test_test_course_849_and_lesson_9140_are_excluded(self):
+        client=Client();journal=Journal()
+        with patch.object(mod,'prepare_course',side_effect=AssertionError('should not fetch')):
+            self.assertEqual(mod.import_course(client,journal,849,[9140],True),'excluded')
+            self.assertEqual(mod.import_course(client,journal,999,[9140],True),'excluded')
+        self.assertEqual(client.writes,[])
+
     def run_course(self,client,journal,apply=True,order=(1,2)):
         with patch.object(mod,'prepare_course',return_value=[payload(x) for x in order]), \
                 patch.object(mod,'outline',side_effect=lambda client,course: list(client.existing)):

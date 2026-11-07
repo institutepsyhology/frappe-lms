@@ -11,13 +11,18 @@ from urllib.parse import urlsplit
 
 TAGS={'p','div','span','h1','h2','h3','h4','h5','h6','strong','b','em','i','u','s','a','hr','br','ul','ol','li','blockquote','font','style','iframe','sub','sup','mark','table','colgroup','col','tbody','tr','td'}
 VOID={'br','hr','col'}
-ATTRS={'class','style','href','target','rel','title','savefrom_lm','savefrom_lm_index','dir','span','id','data-xdget-id','data-block-id','data-updated','data-code','data-editable','data-main-class','data-param','color','type','src','width','height'}
+ATTRS={'class','style','href','target','rel','title','savefrom_lm','savefrom_lm_index','dir','span','id','data-xdget-id','data-block-id','data-updated','data-code','data-editable','data-main-class','data-param','color','face','type','src','width','height','aria-level','start'}
 CSS={'box-sizing','margin-top','border','color','font-family','font-size','border-bottom','padding',
      'background-color','font-weight','text-decoration-line','margin','line-height','vertical-align',
      'white-space','z-index','background','margin-right','margin-left','margin-bottom','background-image',
      'background-position','background-size','background-repeat','background-attachment','background-origin',
      'background-clip','position','min-height','padding-right','padding-left','width','overflow','padding-bottom','padding-top','max-width','flex','text-align','float','outline',
-     'font-variant','font-style','text-decoration','border-collapse','border-top','border-right','border-left','overflow-wrap'}
+     'font-variant','font-style','text-decoration','border-collapse','border-top','border-right','border-left','overflow-wrap',
+     'font-variant-numeric','font-variant-east-asian','list-style-type','height','border-top-color',
+     'text-decoration-skip-ink','-webkit-text-decoration-skip','text-indent',
+     'font-variant-ligatures','text-decoration-style','text-decoration-color','border-width','border-right-style',
+     'border-bottom-style','border-left-style','border-right-color','border-bottom-color','border-left-color',
+     'border-image','border-top-style'}
 CLASSES={'lesson-mission-wrapper','lesson-mission-text','redactor-inline-converted','xdget-block',
          'xdget-div','center-block','row-section','xdget-common-container','div','xdget-visible-to-bg-',
          'xdget-lessonContent','row','content-row','col-md-12','xdget-lessonFiles','xdget-lessonMission',
@@ -59,6 +64,15 @@ def valid_style(value):
         if key.lower()=='flex' and val!='1 1 100%':return False
         if key.lower()=='float' and val.lower() not in ('left','right','none'):return False
         if key.lower()=='outline' and val not in ('0','0px','none'):return False
+        if key.lower() in ('font-variant-numeric','font-variant-east-asian') and val.lower()!='normal':return False
+        if key.lower()=='font-variant-ligatures' and val.lower()!='normal':return False
+        if key.lower() in ('text-decoration-style','text-decoration-color') and val.lower()!='initial':return False
+        if key.lower()=='border-width' and not re.fullmatch(r'[0-9]{1,2}px(?:\s+[0-9]{1,2}px){0,3}',val):return False
+        if key.lower() in ('border-right-style','border-bottom-style','border-left-style','border-right-color','border-bottom-color','border-left-color','border-image') and val.lower()!='initial':return False
+        if key.lower()=='border-top-style' and val.lower()!='solid':return False
+        if key.lower()=='list-style-type' and val.lower() not in ('decimal','lower-alpha','disc'):return False
+        if key.lower() in ('text-decoration-skip-ink','-webkit-text-decoration-skip') and val.lower()!='none':return False
+        if key.lower()=='height' and val!='0px':return False
     return True
 
 
@@ -79,6 +93,10 @@ class StaticHTML(HTMLParser):
             if key in ('src','height') and tag!='iframe':raise ValueError('unsupported_attribute')
             if key=='width' and tag!='iframe':
                 if tag not in ('table','col') or not isinstance(value,str) or not re.fullmatch(r'[1-9][0-9]{0,3}',value):raise ValueError('unsupported_attribute')
+            if key in ('aria-level','start'):
+                if ((key=='aria-level' and tag!='li') or (key=='start' and tag!='ol')
+                        or not isinstance(value,str) or not re.fullmatch(r'[1-9][0-9]{0,2}',value)):
+                    raise ValueError('unsupported_attribute')
             if key=='href' and (tag!='a' or not valid_link(value)):raise ValueError('invalid_link')
             if key=='target' and (tag!='a' or value not in ('_blank','_self')):raise ValueError('invalid_target')
             if key=='rel' and (tag!='a' or not isinstance(value,str) or not set(value.split()).issubset({'noopener','noreferrer','nofollow'})):raise ValueError('invalid_link')
@@ -90,8 +108,9 @@ class StaticHTML(HTMLParser):
             if key in ('data-block-id','data-updated') and (tag!='div' or not isinstance(value,str) or not re.fullmatch(r'[0-9]{1,12}',value)):raise ValueError('unsupported_attribute')
             if key=='data-code' and (tag!='div' or not isinstance(value,str) or not re.fullmatch(r'(?:ltBlock[0-9]{1,12}|b-[0-9a-f]{5})',value)):raise ValueError('unsupported_attribute')
             if key in ('data-editable','data-main-class','data-param') and (tag!='div' or value not in (('true',) if key=='data-editable' else ('header','text'))):raise ValueError('unsupported_attribute')
-            if key=='id' and (not isinstance(value,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',value)):raise ValueError('unsupported_attribute')
+            if key=='id' and (not isinstance(value,str) or not re.fullmatch(r'[A-Za-z0-9_.-]{1,100}',value)):raise ValueError('unsupported_attribute')
             if key=='color' and (tag!='font' or not isinstance(value,str) or not re.fullmatch(r'#[0-9a-fA-F]{6}',value)):raise ValueError('unsupported_attribute')
+            if key=='face' and (tag!='font' or not isinstance(value,str) or not re.fullmatch(r'[A-Za-z0-9, -]{1,100}',value)):raise ValueError('unsupported_attribute')
             if key=='type' and (tag!='style' or value!='text/css'):raise ValueError('unsupported_attribute')
             if key=='class' and (not isinstance(value,str) or not CLASS.fullmatch(value) or not set(value.split()).issubset(CLASSES)):raise ValueError('invalid_class')
             if key=='style' and not valid_style(value):raise ValueError('invalid_style')
@@ -124,6 +143,41 @@ class StaticHTML(HTMLParser):
     def handle_decl(self,decl):raise ValueError('unsupported_html')
     def handle_pi(self,data):raise ValueError('unsupported_html')
     def unknown_decl(self,data):raise ValueError('unsupported_html')
+
+
+def strip_obsolete_manager_paragraphs(source):
+    """Remove the two exact obsolete manager instructions from reviewed HTML."""
+    if not isinstance(source,str) or not source:raise ValueError('invalid_html')
+    starts=[0]+[i+1 for i,c in enumerate(source) if c=='\n']
+    class Paragraphs(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.current=None
+            self.ranges=[]
+        def pos(self):
+            line,col=self.getpos();return starts[line-1]+col
+        def handle_starttag(self,tag,attrs):
+            if tag=='p':
+                if self.current is not None:raise ValueError('nested_paragraph')
+                self.current=[self.pos(),[]]
+        def handle_data(self,data):
+            if self.current is not None:self.current[1].append(data)
+        def handle_endtag(self,tag):
+            if tag=='p' and self.current is not None:
+                end=self.pos();close=re.match(r'</\s*p\s*>',source[end:],re.I)
+                if not close:raise ValueError('invalid_paragraph')
+                text=' '.join(' '.join(self.current[1]).split())
+                if re.fullmatch(r'Для приобретения данного пакета(?: обучения)?, обратитесь к менеджеру по оплате\.',text,re.I):
+                    self.ranges.append(('manager',self.current[0],end+len(close.group(0))))
+                elif text=='Это можно сделать прямо из вашего личного кабинета через мессенджер (кнопки для связи в правом нижнем углу: чат и телеграмм).':
+                    self.ranges.append(('old_contact',self.current[0],end+len(close.group(0))))
+                self.current=None
+    parser=Paragraphs();parser.feed(source);parser.close()
+    if parser.current is not None or sorted(k for k,_,_ in parser.ranges)!=['manager','old_contact']:
+        raise ValueError('manager_paragraphs_unconfirmed')
+    result=source
+    for _,start,end in reversed(parser.ranges):result=result[:start]+result[end:]
+    return result
 
 
 def strip_empty_answer_form(source):

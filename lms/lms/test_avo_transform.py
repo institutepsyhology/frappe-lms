@@ -10,6 +10,20 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_owner_removed_entire_obsolete_lesson_gets_neutral_placeholder(self):
+        import hashlib,json
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        root={'name':'page','children':[{'name':'text','fields':{'html':'<p>Устаревшее предложение</p>'}}]}
+        digest=hashlib.sha256(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+        p=sample(root,'ape')
+        with patch.dict(module.REVIEWED_SELECTIONS,{('mv-centr','5','13'):(digest,'removed',0)}):
+            result=plan_import(p)
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertEqual(result['lesson_title'],'Урок в разработке')
+            self.assertNotIn('Устаревшее предложение',str(result['blocks']))
+            root['children'][0]['fields']['html']='<p>Изменено</p>'
+            self.assertIn('reviewed_source_changed',plan_import(p)['issues'])
     def test_owner_excludes_trainer_links_across_block_types(self):
         root={'name':'page','children':[
             {'name':'text','fields':{'html':'<p>Материал <a href="https://example.test/file">Файл</a></p><p><a href="https://example.test/question"><b>Вопрос тренеру</b></a></p>'}},
@@ -83,6 +97,22 @@ class TransformTests(unittest.TestCase):
         self.assertEqual(root['children'][0]['fields']['html'],html)
         root['children'][0]['fields']['html']=html.replace('https://drive.google.com/file/d/example/view?usp=sharing','javascript:alert(1)')
         self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
+    def test_only_known_empty_video_overlay_is_omitted(self):
+        overlay='<div class="video_wrapper" style="margin: 0 auto;position: relative"><div class="hov2" style=" height: 70px;position: absolute;top:0;left:0;right:0;width: 100%; z-index: 999;">&nbsp;</div></div>'
+        root={'name':'page','children':[{'name':'text','fields':{'html':overlay+'<p>Задание</p>'}}]}
+        result=plan_import(sample(root,'ape'))
+        self.assertTrue(result['ready'],result['issues'])
+        self.assertIn('Задание',str(result['blocks']))
+        self.assertIn('empty_video_overlay_omitted',result['warnings'])
+        root['children'][0]['fields']['html']=overlay.replace('&nbsp;','Содержимое')+'<p>Задание</p>'
+        result=plan_import(sample(root,'ape'))
+        self.assertFalse(result['ready'])
+        inner=overlay.replace('&nbsp;</div></div>','&nbsp;</div><p>Заголовок</p></div>')
+        root['children'][0]['fields']['html']=inner+'<p>Задание</p>'
+        result=plan_import(sample(root,'ape'))
+        self.assertTrue(result['ready'],result['issues'])
+        self.assertEqual(result['blocks'][0]['type'],'htmlBlock')
 
     def test_heading_preserves_formatted_link_and_long_text(self):
         text='А'*450+' <span style="color: red"><a href="https://example.test" target="_blank"><b>ссылка</b></a></span>'

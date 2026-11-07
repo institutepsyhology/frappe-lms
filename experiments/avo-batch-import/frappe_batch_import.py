@@ -36,10 +36,10 @@ ACCOUNT = 'mv-centr'
 MAX_ERRORS = 10
 REPORT = DATA / 'ОТЧЁТ-перенос-mv-centr.md'
 PROBLEMS_REPORT = DATA / 'ПРОБЛЕМНЫЕ-УРОКИ-mv-centr.md'
-# User-confirmed disposable test lesson. This is a lesson ID, not course 17.
-EXCLUDED_LESSONS = {17}
-# Owner excluded this entire obsolete MV-Centr course and all of its lessons.
-EXCLUDED_COURSES = {50}
+# User-confirmed disposable test lessons. These are lesson IDs, not course IDs.
+EXCLUDED_LESSONS = {17, 9140}
+# Owner excluded the obsolete course 50 and test course 849 (its only lesson 9140).
+EXCLUDED_COURSES = {50, 849}
 # Only the verified image for this source snapshot; unknown images stop.
 REVIEWED_IMAGES = {(258,1150,'92ab32ec-5836-4443-998d-16b2ec13a2c0'):
     ('44c98968db4973a119db3bbc00ca36392c1466e1b631596e1fff0ac4a2474ea2',

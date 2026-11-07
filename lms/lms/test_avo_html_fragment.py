@@ -1,9 +1,32 @@
 import base64
 import unittest
-from lms.lms.avo_html_fragment import make_html_block, strip_empty_answer_form, replace_drive_audio
+from lms.lms.avo_html_fragment import make_html_block, strip_empty_answer_form, replace_drive_audio, strip_obsolete_manager_paragraphs
 
 
 class StaticFragmentTests(unittest.TestCase):
+    def test_reviewed_list_styles_preserve_markup_and_reject_active_values(self):
+        html=('<ol><li style="list-style-type: decimal; font-variant-numeric: normal; '
+              'font-variant-east-asian: normal; text-decoration-skip-ink: none">Задание</li></ol>')
+        self.assertEqual(base64.b64decode(make_html_block(html)['data']['encodedHtml']).decode(),html)
+        for bad in (html.replace('decimal','url(https://bad.test)'),html.replace('normal','expression(alert(1))',1)):
+            with self.assertRaises(ValueError):make_html_block(bad)
+        headings='<h5 id="h.example123">Урок</h5><ol start="4"><li aria-level="1">Пункт</li></ol>'
+        self.assertEqual(base64.b64decode(make_html_block(headings)['data']['encodedHtml']).decode(),headings)
+        for bad in (headings.replace('start="4"','start="4 onload=alert(1)"'),headings.replace('aria-level="1"','aria-level="0"')):
+            with self.assertRaises(ValueError):make_html_block(bad)
+        extra='<p style="font-variant-ligatures: normal; text-decoration-style: initial; text-decoration-color: initial">Текст</p>'
+        self.assertEqual(base64.b64decode(make_html_block(extra)['data']['encodedHtml']).decode(),extra)
+        self.assertEqual(base64.b64decode(make_html_block('<font face="Arial">Текст</font>')['data']['encodedHtml']).decode(),'<font face="Arial">Текст</font>')
+        with self.assertRaises(ValueError):make_html_block('<font face="Arial;url(bad)">Текст</font>')
+
+    def test_remove_only_obsolete_manager_paragraphs(self):
+        before='<p>Содержание курса</p>'
+        old='<p><b>Для приобретения&nbsp; данного пакета обучения,&nbsp; обратитесь к менеджеру по оплате.</b></p>'
+        old+='<p>Это можно сделать прямо из вашего личного кабинета через мессенджер (кнопки для связи в правом нижнем углу: чат и телеграмм).</p>'
+        after='<p>Дополнительный материал</p>'
+        self.assertEqual(strip_obsolete_manager_paragraphs(before+old+after),before+after)
+        with self.assertRaises(ValueError):strip_obsolete_manager_paragraphs(before+old.replace('менеджеру','куратору')+after)
+        with self.assertRaises(ValueError):strip_obsolete_manager_paragraphs(before+old+old+after)
     def test_timing_tables_preserve_rows_and_reject_unsafe_attributes(self):
         html=('<table width="336" style="border-collapse: collapse"><colgroup><col width="65"><col width="271"></colgroup>'
               '<tbody><tr><td style="border-top: 1px solid #000000; overflow-wrap: break-word">02:25</td>'

@@ -7,7 +7,7 @@ import json
 import math
 import re
 from urllib.parse import parse_qs, urlsplit
-from lms.lms.avo_html_fragment import make_html_block, strip_empty_answer_form, split_reviewed_audio_links
+from lms.lms.avo_html_fragment import make_html_block, strip_empty_answer_form, split_reviewed_audio_links, strip_obsolete_manager_paragraphs
 
 MAX_BYTES = 16 * 1024 * 1024
 MAX_DEPTH = 100
@@ -19,6 +19,11 @@ PLACEHOLDER_IMAGE_SHA256 = '44c98968db4973a119db3bbc00ca36392c1466e1b631596e1fff
 PRIVATE_FILE = re.compile(r"^/private/files/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,180}$")
 ALLOWED_TAGS = {"p", "br", "strong", "b", "em", "i", "u", "s", "a", "ul", "ol", "li",
                 "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "code"}
+EMPTY_LEGACY_VIDEO_OVERLAY = ('<div class="video_wrapper" style="margin: 0 auto;position: relative">'
+    '<div class="hov2" style=" height: 70px;position: absolute;top:0;left:0;right:0;width: 100%; z-index: 999;">'
+    '&nbsp;</div></div>')
+EMPTY_LEGACY_VIDEO_HOVER = ('<div class="hov2" style=" height: 70px;position: absolute;top:0;left:0;right:0;width: 100%; z-index: 999;">'
+    '&nbsp;</div>')
 
 
 def _trainer_label(markup):
@@ -111,6 +116,13 @@ CONFIRMED_OMIT_HEADERS = {('mv-centr','447','2608'):
     'fcc9b9dfb972f67fa3e47b266af9ad5345f3e5593aa2a9f9b7163181c4ac16bf'}
 CONFIRMED_OMIT_EMPTY_BUTTONS = {('mv-centr','952','9422'):
     '14eb83aff8cbadebc98291cf587459e2ccda9b646b0a0fcc6c4ccc5c85feab9f'}
+# Owner removed the old manager contact instruction, keeping the rest of
+# these lessons. Bind both the full source and its text to the reviewed image.
+CONFIRMED_OMIT_MANAGER = {
+    ('mv-centr','621','8136'): ('a60cd60e84b0d4dfb1a926867f0743a2d7df7b5f45105e7b5a0c52371c735b84','eaf7109bbd62d3dfeee182ec4d744fe26bdf38e33cc94dc7d6fd374371dcd3bf'),
+    ('mv-centr','685','8153'): ('79fe64079f2dcd9e2c97890c1e0dfe1a94e07c2c5316bcbcb73924fc976a4040','f4d56d59e0b45007b099df735bc1fcb5056450c4ad28d57692fe373b3fa69a0e'),
+    ('mv-centr','771','8257'): ('2495be659295d6d53759263bce1c421a1d21c819e32efcbe79173b6124e0b08e','757f4e0e4fb1fd36a3fc9f49191db0c2fec7b6b7ec6e34904e2d9b64ef6fd9e6'),
+}
 # Owner confirmed this exact VK iframe is the alternative for the preceding
 # YouTube player. Preserve it as an HTML block, not as a fabricated Rutube URL.
 CONFIRMED_VK_ALTERNATIVE = {('mv-centr','583','4086'):
@@ -119,6 +131,14 @@ CONFIRMED_VK_ALTERNATIVE = {('mv-centr','583','4086'):
 # The owner selected content for these exact MV-Centr captures. If a capture
 # changes, do not apply the decision to the new contents without review.
 REVIEWED_SELECTIONS = {
+    # Owner removed the complete certificate/curator-offer content in these
+    # particular lessons. Keep their identifiers with neutral placeholders.
+    ('mv-centr','608','4898'): ('8a3f0a39f5bb61c80da012c6c7eb80660f6f806f2a98db1ecf802343319ac470','removed',0),
+    ('mv-centr','617','4986'): ('6bdde733ea295e26b26daf826d6a7f29b767c17c7b8f0cb6e5223c5b839052cb','removed',0),
+    ('mv-centr','698','5439'): ('564d2f96f63611d426f7bfd622b1b8e10ee2575a2b85c297f9bb2006383098f9','removed',0),
+    ('mv-centr','699','5449'): ('5b6ddb408ebfa286c9eaa69a691b557c35b631deba056dff5424a90527b2e74d','removed',0),
+    ('mv-centr','884','8439'): ('6bdde733ea295e26b26daf826d6a7f29b767c17c7b8f0cb6e5223c5b839052cb','removed',0),
+    ('mv-centr','917','9000'): ('0c2d0c2a9eb5e013d3384c2bdcd8ceedddc46b4422454987d1579e28e29d9c2e','removed',0),
     ('mv-centr','958','9498'): ('96ae2cf24d8dccb4eb0d84e86e8b1d57e6bc7fcffcd53c473c5463b35dae4bea','videos',0),
     ('mv-centr','889','8585'): ('e068b329730df74ac7c9973d2757412deafef7c6167e1530c2a31eff35154e2b','videos',6),
     ('mv-centr','889','8586'): ('ea5a41f7512533fae1c9041f969cd67f8e085c8b4cac21aaacf4c8e512535b9b','videos',6),
@@ -747,6 +767,9 @@ def plan_import(payload, image_urls=None):
         if not isinstance(root, dict) or root.get("name") != "page":
             raise ValueError("invalid_ape_root")
         selection = reviewed_selection(root,account,course,lesson)
+        manager_rule = CONFIRMED_OMIT_MANAGER.get((account,course,lesson))
+        manager_root_hash = _sha256_text(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False)) if manager_rule else None
+        if manager_rule and manager_root_hash != manager_rule[0]:issue('reviewed_source_changed')
         vk_rule = CONFIRMED_VK_ALTERNATIVE.get((account,course,lesson))
         vk_root_hash = _sha256_text(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False)) if vk_rule else None
         if vk_rule and vk_root_hash != vk_rule[0]: issue('reviewed_source_changed')
@@ -756,8 +779,9 @@ def plan_import(payload, image_urls=None):
             issue('reviewed_source_changed')
         if (account,course,lesson) in REVIEWED_SELECTIONS and selection is None:
             issue('reviewed_source_changed')
-        if selection and selection[0] in ('placeholder','welcome'):
-            paragraph('<p>Урок в разработке.</p>' if selection[0] == 'placeholder' else '<p>Добро пожаловать на курс!</p>')
+        if selection and selection[0] in ('placeholder','welcome','removed'):
+            if selection[0] == 'removed':plan['lesson_title'] = 'Урок в разработке'
+            paragraph('<p>Урок в разработке.</p>' if selection[0] in ('placeholder','removed') else '<p>Добро пожаловать на курс!</p>')
             plan['warnings'].append('user_requested_replacement')
             root = {'name':'page','children':[]}
         legacy_first, legacy_skip, legacy_unmatched = _legacy_player_pairs(root)
@@ -911,6 +935,20 @@ def plan_import(payload, image_urls=None):
                     issue('unsafe_or_unrecognized_html')
                     continue
                 if omitted: omit_trainer()
+                if isinstance(source,str) and EMPTY_LEGACY_VIDEO_OVERLAY in source:
+                    source=source.replace(EMPTY_LEGACY_VIDEO_OVERLAY,'')
+                    if 'empty_video_overlay_omitted' not in plan['warnings']:plan['warnings'].append('empty_video_overlay_omitted')
+                legacy_wrapper = '<div class="video_wrapper" style="margin: 0 auto;position: relative">'
+                if isinstance(source,str) and legacy_wrapper + EMPTY_LEGACY_VIDEO_HOVER in source:
+                    source=source.replace(legacy_wrapper + EMPTY_LEGACY_VIDEO_HOVER,'<div style="margin: 0 auto;position: relative">')
+                    if 'empty_video_overlay_omitted' not in plan['warnings']:plan['warnings'].append('empty_video_overlay_omitted')
+                if manager_rule and manager_root_hash == manager_rule[0] and _sha256_text(original_html) == manager_rule[1]:
+                    try:
+                        source = strip_obsolete_manager_paragraphs(source)
+                    except (ValueError, RecursionError):
+                        issue('reviewed_source_changed')
+                        continue
+                    if 'owner_omitted_manager_contact' not in plan['warnings']:plan['warnings'].append('owner_omitted_manager_contact')
                 if _trainer_label(source) and not node.get('children'):
                     omit_trainer()
                     continue
