@@ -131,7 +131,9 @@ REVIEWED_LINK_TYPOS = {
 REVIEWED_BUTTON_LABELS = {('mv-centr','94','434'):
     '6445561bd99aaba2c622d99d399ce3388a216dd2adf0d897a3d865d2f67a9874',
     ('mv-centr','411','2247'): '1d0f79878a6a3070ddc5110f8f89039510fbc18091ae9b3787a1d919583c16b3',
-    ('mv-centr','433','2418'): '66efec3b4be5286924aaafc43c6c02fdcd4a106f6524cf8a18aa5cc05f6f91af'}
+    ('mv-centr','433','2418'): '66efec3b4be5286924aaafc43c6c02fdcd4a106f6524cf8a18aa5cc05f6f91af',
+    ('mv-centr','438','2480'): '66efec3b4be5286924aaafc43c6c02fdcd4a106f6524cf8a18aa5cc05f6f91af',
+    ('mv-centr','439','2503'): '1c49311c3404a417e1c3f81c6842f68f8bcc84eb6c0032f9864d8959f2074635'}
 REVIEWED_YOUTUBE_URLS = {('mv-centr','385','2064'):
     ('c9d40cfec263b64602ce737fe6f887372f328b0f4fbf4df302308ce4e515712a','https://youtu.be/vj6WMLWnUIs')}
 REVIEWED_YOUTUBE_IFRAMES = {('mv-centr','324','1517'):
