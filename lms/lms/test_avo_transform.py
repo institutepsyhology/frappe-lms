@@ -10,6 +10,20 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_reviewed_formatted_button_keeps_text_and_destination(self):
+        import hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        label='<strong><span style="color: red">Материал</span></strong>'
+        root={'name':'page','children':[{'name':'button','fields':{'html':label,'linkType':'url','url':'https://example.test/file'}}]}
+        with patch.dict(module.REVIEWED_BUTTON_LABELS,{('mv-centr','5','13'):hashlib.sha256(label.encode()).hexdigest()}):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertIn('example.test/file',str(result['blocks']))
+            self.assertIn('<strong>Материал</strong>',str(result['blocks']))
+            root['children'][0]['fields']['html']=label.replace('Материал','Другой')
+            self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
     def test_static_list_in_header_is_preserved_as_html(self):
         import base64
         html='<ul><li style="text-align: left;"><h3>Первая тема</h3></li><li><h3>Вторая тема</h3></li></ul>'

@@ -128,6 +128,8 @@ REVIEWED_LINK_TYPOS = {
     ('mv-centr','43','278'): '729f6872742803a8f35cb45d0315157ff5aea5f1f5012151f173c20edb660990',
     ('mv-centr','379','2027'): '4267a3e9b1acabaa4018038d1e7ff522e45a9359ac3b54625fa89120c93bf3e3',
 }
+REVIEWED_BUTTON_LABELS = {('mv-centr','94','434'):
+    '6445561bd99aaba2c622d99d399ce3388a216dd2adf0d897a3d865d2f67a9874'}
 # Owner removed the old manager contact instruction, keeping the rest of
 # these lessons. Bind both the full source and its text to the reviewed image.
 CONFIRMED_OMIT_MANAGER = {
@@ -154,7 +156,13 @@ CONFIRMED_VK_ALTERNATIVE = {('mv-centr','583','4086'):
      '75af4033b49d7cdb9b7aa68ec27eed00bc09e636504c0259dd7ae0b422a3a089'),
     ('mv-centr','191','757'):
     ('8d720db5f4f32b3fe7669ae6da49ed0cb30113382f2cf054e9d4962b16a57e9a',
-     '3834fb1805e0f9ba388be2fd6ff836a72fb2a305d631e7c1419efdf7c77f12c5')}
+     '3834fb1805e0f9ba388be2fd6ff836a72fb2a305d631e7c1419efdf7c77f12c5'),
+    ('mv-centr','277','1284'):
+    ('1e0e26c8808d158ac822c7429f7fef5d24cab63808404ae6115d1be2b60e3ec7',
+     'ff9611d47c557fe527dadc6a1f391612ce1bb91b07103e2426fd78e584287dd6'),
+    ('mv-centr','300','1377'):
+    ('6d0f28de79e1f2c46001dfa3b2a67a159cf9bf0b3294529695c801a1b78580b0',
+     '75af4033b49d7cdb9b7aa68ec27eed00bc09e636504c0259dd7ae0b422a3a089')}
 # The owner selected content for these exact MV-Centr captures. If a capture
 # changes, do not apply the decision to the new contents without review.
 REVIEWED_SELECTIONS = {
@@ -854,7 +862,7 @@ def plan_import(payload, image_urls=None):
             else:
                 legacy_first[id(leaves[5])]=leaves[7]['fields']
                 legacy_skip.update((id(leaves[4]),id(leaves[6]),id(leaves[7])))
-        if (account,course,lesson) == ('mv-centr','379','2031') and vk_rule and vk_root_hash == vk_rule[0]:
+        if (account,course,lesson) in (('mv-centr','379','2031'),('mv-centr','277','1284')) and vk_rule and vk_root_hash == vk_rule[0]:
             leaves=[]; pending=[root]
             while pending:
                 item=pending.pop()
@@ -1159,9 +1167,17 @@ def plan_import(payload, image_urls=None):
                 if isinstance(button_url,str): button_url = button_url.strip()
                 label = fields.get('html')
                 if isinstance(label,str): label = re.sub(r'<br\s*/?>', ' ', label, flags=re.I).strip()
+                label_html=None
+                if (REVIEWED_BUTTON_LABELS.get((account,course,lesson)) == _sha256_text(fields.get('html'))
+                        and (account,course,lesson) in REVIEWED_BUTTON_LABELS):
+                    try:
+                        label_html,_=_normalize_ape_text(label)
+                        if not _safe_html(label_html) or re.search(r'<\s*(?:a|iframe|script)\b',label_html,re.I):label_html=None
+                    except (ValueError,RecursionError):
+                        label_html=None
                 if (fields.get('linkType') != 'url' or any(fields.get(k) not in (None, '', False) for k in ('anchor','icon','toAnchor','event'))
                         or any(v not in (None, '', False, [], {}) for k, v in fields.items() if k not in allowed)
-                        or not isinstance(label, str) or '<' in label or '>' in label
+                        or not isinstance(label, str) or (('<' in label or '>' in label) and label_html is None)
                         or not _url(button_url)):
                     issue('unsupported_button')
                 else:
@@ -1169,7 +1185,7 @@ def plan_import(payload, image_urls=None):
                         blocks.append({'type':'lessonButton','data':{'text':label,'url':button_url,
                             'size':'medium','background':'#2563eb','color':'#ffffff','newTab':bool(fields.get('blank'))}})
                     else:
-                        paragraph('<a href="' + escape(button_url, quote=True) + '">' + escape(label) + '</a>')
+                        paragraph('<a href="' + escape(button_url, quote=True) + '">' + (label_html if label_html is not None else escape(label)) + '</a>')
                         if fields.get('blank') and 'ape_button_new_tab_not_reconstructed' not in plan['warnings']:
                             plan['warnings'].append('ape_button_new_tab_not_reconstructed')
             elif kind == 'image':
