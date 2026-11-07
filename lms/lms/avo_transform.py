@@ -38,6 +38,11 @@ CONFIRMED_OMIT_HEADERS = {('mv-centr','447','2608'):
     'fcc9b9dfb972f67fa3e47b266af9ad5345f3e5593aa2a9f9b7163181c4ac16bf'}
 CONFIRMED_OMIT_EMPTY_BUTTONS = {('mv-centr','952','9422'):
     '14eb83aff8cbadebc98291cf587459e2ccda9b646b0a0fcc6c4ccc5c85feab9f'}
+# Owner confirmed this exact VK iframe is the alternative for the preceding
+# YouTube player. Preserve it as an HTML block, not as a fabricated Rutube URL.
+CONFIRMED_VK_ALTERNATIVE = {('mv-centr','583','4086'):
+    ('64ad8cd5b5cb7c7e5e3b390592b7afe53abe7d704cdddcce47406388ef196939',
+     'd2ec0795e5f7a1d3b83d8c7d65f38b700905457d8a0eebfd2eabb47959188a91')}
 # The owner selected content for these exact MV-Centr captures. If a capture
 # changes, do not apply the decision to the new contents without review.
 REVIEWED_SELECTIONS = {
@@ -651,6 +656,9 @@ def plan_import(payload, image_urls=None):
         if not isinstance(root, dict) or root.get("name") != "page":
             raise ValueError("invalid_ape_root")
         selection = reviewed_selection(root,account,course,lesson)
+        vk_rule = CONFIRMED_VK_ALTERNATIVE.get((account,course,lesson))
+        vk_root_hash = _sha256_text(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False)) if vk_rule else None
+        if vk_rule and vk_root_hash != vk_rule[0]: issue('reviewed_source_changed')
         omit_rule = CONFIRMED_OMIT_EMPTY_BUTTONS.get((account,course,lesson))
         root_digest = _sha256_text(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False)) if omit_rule else None
         if omit_rule and root_digest != omit_rule:
@@ -725,20 +733,28 @@ def plan_import(payload, image_urls=None):
             if any(node[k] not in (None, "", False, [], {}) for k in extra_node_keys):
                 issue("unknown_node_fields")
             if kind == "video":
+                vk_approved = bool(vk_rule and vk_root_hash == vk_rule[0]
+                    and fields.get('videoProvider') == 'embedded'
+                    and _sha256_text(fields.get('embeddedHtml')) == vk_rule[1])
                 allowed = {"anchor", "videoProvider", "videoSrc", "nativePlayer", "posterSrc",
                            "isShowProgressControl", "isShowFastRewindButtons", "videoProvider2",
                            "videoSrc2", "nativePlayer2", "posterSrc2", "isShowProgressControl2",
                            "isShowFastRewindButtons2", "embeddedHtml", "html", "isFloating"}
                 if any(v not in (None, "", False, [], {}) for k, v in fields.items() if k not in allowed):
                     issue("unknown_video_fields")
-                if any(fields.get(k) not in (None, "", False) for k in ("anchor", "posterSrc", "posterSrc2", "embeddedHtml")):
+                if any(fields.get(k) not in (None, "", False) for k in ("anchor", "posterSrc", "posterSrc2")) or (fields.get('embeddedHtml') and not vk_approved):
                     issue("unsupported_video_settings")
                 if fields.get("html") not in (None, "", "Видео"):
                     issue("unsupported_video_settings")
                 if any(k in fields for k in ("nativePlayer", "nativePlayer2", "isShowProgressControl", "isShowFastRewindButtons", "isFloating")):
                     if "ape_video_settings_not_reconstructed" not in plan["warnings"]:
                         plan["warnings"].append("ape_video_settings_not_reconstructed")
-                if id(node) in legacy_first:
+                if vk_approved:
+                    markup=('<style>iframe{width:100%;max-width:1280px;aspect-ratio:16/9;height:auto;border:0}</style>'
+                            + fields['embeddedHtml'])
+                    blocks.append({'type':'htmlBlock','data':{'encodedHtml':base64.b64encode(markup.encode('utf-8')).decode('ascii'),'height':760}})
+                    if 'user_requested_vk_html' not in plan['warnings']:plan['warnings'].append('user_requested_vk_html')
+                elif id(node) in legacy_first:
                     other = legacy_first[id(node)]
                     video_pair([{'provider': fields.get('videoProvider'), 'url': fields.get('videoSrc')},
                                 {'provider': other.get('videoProvider'), 'url': other.get('videoSrc')}])

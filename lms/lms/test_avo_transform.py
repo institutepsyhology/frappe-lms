@@ -110,6 +110,23 @@ class TransformTests(unittest.TestCase):
             self.assertIn('reviewed_source_changed',plan_import(p)['issues'])
             self.assertIsNone(module.reviewed_selection(original,'iomp',123,456))
 
+    def test_owner_confirmed_vk_iframe_stays_after_youtube_and_is_hash_bound(self):
+        import base64,hashlib,json
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        iframe='<iframe src="https://vkvideo.ru/video_ext.php?oid=-1&id=1" width="1280" height="720"></iframe>'
+        root={'name':'page','children':[{'name':'video','fields':{'videoProvider':'youtube','videoSrc':'https://youtu.be/abcdefghijk'}},
+             {'name':'video','fields':{'videoProvider':'embedded','embeddedHtml':iframe}}]}
+        digest=hashlib.sha256(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+        rule=(digest,hashlib.sha256(iframe.encode()).hexdigest())
+        p=sample(root,'ape');p.update(course_id=583,lesson_id=4086)
+        with patch.dict(module.CONFIRMED_VK_ALTERNATIVE,{('mv-centr','583','4086'):rule}):
+            out=plan_import(p);self.assertTrue(out['ready'],out['issues'])
+            self.assertEqual([x['type'] for x in out['blocks']],['videoChoice','htmlBlock'])
+            self.assertIn(iframe,base64.b64decode(out['blocks'][1]['data']['encodedHtml']).decode())
+            root['children'][1]['fields']['embeddedHtml']=iframe.replace('id=1','id=2')
+            self.assertIn('reviewed_source_changed',plan_import(p)['issues'])
+
     def test_button_whitespace_and_line_break_are_normalized_without_changing_source(self):
         import copy
         node={'name':'button','fields':{'linkType':'url','html':'Аудиозапись<br>',
