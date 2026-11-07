@@ -130,6 +130,14 @@ REVIEWED_LINK_TYPOS = {
 }
 REVIEWED_BUTTON_LABELS = {('mv-centr','94','434'):
     '6445561bd99aaba2c622d99d399ce3388a216dd2adf0d897a3d865d2f67a9874'}
+REVIEWED_YOUTUBE_IFRAMES = {('mv-centr','324','1517'):
+    '28bde2b88d985e479944a8e825fbce88090208af873a4fc669914279944ee60b'}
+REVIEWED_MIXED_YOUTUBE = {
+    ('mv-centr','591','4185'): ('256ef16b78481fd2adf9875017c90b11eccf8955188650cb0321eca87e3b4e91',3),
+    ('mv-centr','593','4208'): ('256ef16b78481fd2adf9875017c90b11eccf8955188650cb0321eca87e3b4e91',3),
+    ('mv-centr','607','4373'): ('256ef16b78481fd2adf9875017c90b11eccf8955188650cb0321eca87e3b4e91',3),
+    ('mv-centr','594','4246'): ('cd853eb2deb4ea2fa8bbc66aeaec76cce4b2c12ee289cef7bea0617b761ab1d4',1),
+}
 # Owner removed the old manager contact instruction, keeping the rest of
 # these lessons. Bind both the full source and its text to the reviewed image.
 CONFIRMED_OMIT_MANAGER = {
@@ -1067,6 +1075,39 @@ def plan_import(payload, image_urls=None):
                     issue('unsafe_or_unrecognized_html')
                     continue
                 if omitted: omit_trainer()
+                mixed=REVIEWED_MIXED_YOUTUBE.get((account,course,lesson))
+                if mixed and mixed[0] == _sha256_text(original_html) and not node.get('children'):
+                    pattern=(r'<iframe (?:allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen="" frameborder="0" height="315" src="(https://www\.youtube\.com/embed/[A-Za-z0-9_-]{11})" width="560"'
+                             r'|width="560" height="315" src="(https://www\.youtube\.com/embed/[A-Za-z0-9_-]{11})" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen="")></iframe>')
+                    matches=list(re.finditer(pattern,source))
+                    if (len(matches)!=mixed[1] or not matches or not source[:matches[0].start()].endswith('<p>')
+                            or not source[matches[-1].end():].startswith('</p>')
+                            or any(source[a.end():b.start()].strip() for a,b in zip(matches,matches[1:]))):
+                        issue('reviewed_source_changed')
+                    else:
+                        before=source[:matches[0].start()-3]; after=source[matches[-1].end()+4:]
+                        try:
+                            surrounding=[make_html_block(v) if v.strip() else None for v in (before,after)]
+                        except (ValueError,UnicodeError,RecursionError):
+                            issue('unsafe_or_unrecognized_html')
+                        else:
+                            if surrounding[0]:blocks.append(surrounding[0])
+                            for match in matches:single_video('youtube',match.group(1) or match.group(2))
+                            if surrounding[1]:blocks.append(surrounding[1])
+                            if 'reviewed_embedded_youtube_preserved' not in plan['warnings']:plan['warnings'].append('reviewed_embedded_youtube_preserved')
+                            if any(surrounding) and 'ape_static_html_frame_unverified' not in plan['warnings']:plan['warnings'].append('ape_static_html_frame_unverified')
+                    continue
+                if (REVIEWED_YOUTUBE_IFRAMES.get((account,course,lesson)) == _sha256_text(original_html)
+                        and (account,course,lesson) in REVIEWED_YOUTUBE_IFRAMES and not node.get('children')):
+                    pattern=(r'\s*<iframe width="560" height="315" src="(https://www\.youtube\.com/embed/[A-Za-z0-9_-]{11})" '
+                             r'frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>')
+                    matches=list(re.finditer(pattern,source))
+                    if len(matches)!=5 or re.sub(pattern,'',source).strip():
+                        issue('reviewed_source_changed')
+                    else:
+                        for match in matches:single_video('youtube',match.group(1))
+                        if 'reviewed_embedded_youtube_preserved' not in plan['warnings']:plan['warnings'].append('reviewed_embedded_youtube_preserved')
+                    continue
                 if REVIEWED_LINK_TYPOS.get((account,course,lesson)) == _sha256_text(original_html) and (account,course,lesson) in REVIEWED_LINK_TYPOS:
                     if source.count('hhttps://') != 1:
                         issue('reviewed_source_changed')

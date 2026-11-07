@@ -10,6 +10,36 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_reviewed_youtube_embeds_and_adjacent_html_preserve_order(self):
+        import hashlib,base64
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        iframe='<iframe allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen="" frameborder="0" height="315" src="https://www.youtube.com/embed/6mqNJuP-uuw" width="560"></iframe>'
+        tail='<p>Полный текст задания</p>'
+        html='<p>'+iframe+'</p>'+tail
+        root={'name':'page','children':[{'name':'text','fields':{'html':html}}]}
+        with patch.dict(module.REVIEWED_MIXED_YOUTUBE,{('mv-centr','5','13'):(hashlib.sha256(html.encode()).hexdigest(),1)}):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertEqual([b['type'] for b in result['blocks']],['videoChoice','htmlBlock'])
+            self.assertEqual(base64.b64decode(result['blocks'][1]['data']['encodedHtml']).decode(),tail)
+            root['children'][0]['fields']['html']=html.replace('Полный','Изменённый')
+            self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
+    def test_reviewed_youtube_iframes_remain_five_separate_videos(self):
+        import hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        ids=['6mqNJuP-uuw','s0crnbKYQa4','jPjMD0ag-hI','V7mbYkbdDNk','D_2I-zv4UuI']
+        html='\n'.join('<iframe width="560" height="315" src="https://www.youtube.com/embed/'+i+'" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>' for i in ids)
+        root={'name':'page','children':[{'name':'text','fields':{'html':html}}]}
+        with patch.dict(module.REVIEWED_YOUTUBE_IFRAMES,{('mv-centr','5','13'):hashlib.sha256(html.encode()).hexdigest()}):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertEqual([b['data']['youtube'].rsplit('/',1)[-1] for b in result['blocks']],ids)
+            root['children'][0]['fields']['html']=html+'<p>Не пропускать</p>'
+            self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
     def test_reviewed_formatted_button_keeps_text_and_destination(self):
         import hashlib
         from unittest.mock import patch
