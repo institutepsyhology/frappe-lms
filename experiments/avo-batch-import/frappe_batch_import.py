@@ -44,6 +44,14 @@ EXCLUDED_COURSES = {50, 849}
 REVIEWED_IMAGES = {(258,1150,'92ab32ec-5836-4443-998d-16b2ec13a2c0'):
     ('44c98968db4973a119db3bbc00ca36392c1466e1b631596e1fff0ac4a2474ea2',
      'eb781d7527cb12f817ae59ace8310ca3ab2f1c34c2e360813b9052f1cc6d2d33','mv-centr-image-1150.jpg')}
+REVIEWED_IMAGES.update({
+    (847,7758,'ffc4b821-7d86-424a-b806-c40544569f3e'):
+        ('9ded212d34af81481864431c59aa0bf3f2d5b6928f69ba6249db083ef046d541','e23c2d873c3edbe6100f2652e24b9c69249e5d8ffa558cca25d09e81698b2fcf','mv-centr-reviewed-image-7758.jpg'),
+    (847,7759,'a628618a-8deb-461a-8e66-ce643ab72385'):
+        ('b1d067222208d5059fc9761755d3a355814944c5b49bc2a0d863331391f0ee9d','0ed86e907f71cc456f1ba29a7f7e04f7b791d5bcb0ea43b56866300265a0405a','mv-centr-reviewed-image-7759.png'),
+    (847,7760,'a8d28cd3-6500-4083-84a0-cd96d12c67b1'):
+        ('aac6256c1a69e0d17092fec38fe96ab9ee55324171f6ead42c9a652e0ab7c919','0e90f18ba7b324c314125cf79d10f5c23c449131b7ea73804693d5efe1ad6b63','mv-centr-reviewed-image-7760.jpg'),
+})
 # One independently checked image, explicitly scoped to each source block.
 for _course, _lesson, _block in (
     (800,6760,'12e376fa-9558-47e7-aaa7-3706b83c4a1b'),

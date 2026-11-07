@@ -159,6 +159,11 @@ REVIEWED_BUTTON_LABELS = {('mv-centr','94','434'):
 REVIEWED_AUDIO_URL_WITH_NOTE = {
     ('mv-centr','916','9055'): '9313e9b56ecfa2c1cec46540746d56b03e86bc0f3cadcecbaad7aeae040bfeea',
 }
+REVIEWED_IMAGE_LABELS = {
+    ('mv-centr','847','7758'): '9ded212d34af81481864431c59aa0bf3f2d5b6928f69ba6249db083ef046d541',
+    ('mv-centr','847','7759'): 'b1d067222208d5059fc9761755d3a355814944c5b49bc2a0d863331391f0ee9d',
+    ('mv-centr','847','7760'): 'aac6256c1a69e0d17092fec38fe96ab9ee55324171f6ead42c9a652e0ab7c919',
+}
 REVIEWED_YOUTUBE_URLS = {('mv-centr','385','2064'):
     ('c9d40cfec263b64602ce737fe6f887372f328b0f4fbf4df302308ce4e515712a','https://youtu.be/vj6WMLWnUIs')}
 REVIEWED_VIDEO_URL_CLEANUP = {
@@ -1491,11 +1496,16 @@ def plan_import(payload, image_urls=None):
                             plan['warnings'].append('ape_button_new_tab_not_reconstructed')
             elif kind == 'image':
                 allowed = {'anchor', 'imageSrc'}
+                image_label = ''
+                if (REVIEWED_IMAGE_LABELS.get((account,course,lesson)) == _sha256_text(fields.get('imageSrc'))
+                        and (account,course,lesson) in REVIEWED_IMAGE_LABELS and fields.get('html') == 'Изображение'):
+                    allowed.add('html')
+                    image_label = fields['html']
                 if (fields.get('anchor') or not _url(fields.get('imageSrc'))
                         or any(v not in (None, '', False, [], {}) for k, v in fields.items() if k not in allowed)):
                     issue('unsupported_image_settings')
                 else:
-                    entry({'type': 'image', 'image_key': node.get('id'), 'caption': ''})
+                    entry({'type': 'image', 'image_key': node.get('id'), 'caption': image_label})
             elif kind == "page":
                 known = {"commonFontName", "commonFontLink", "commonFontFamily", "headingFontName", "headingFontLink", "headingFontFamily", "fontPair", "backgroundOverlayColor"}
                 if any(v not in (None, "", False, [], {}) for k, v in fields.items() if k not in known):

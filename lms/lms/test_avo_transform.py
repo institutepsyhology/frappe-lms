@@ -231,6 +231,19 @@ class TransformTests(unittest.TestCase):
             root['children'][0]['fields']['url']=url+'x'
             self.assertFalse(plan_import(sample(root,'ape'))['ready'])
 
+    def test_reviewed_image_label_requires_exact_source(self):
+        import hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        url='https://example.test/map.png'
+        root={'name':'page','children':[{'name':'image','id':'slide1','fields':{'anchor':'','imageSrc':url,'html':'Изображение'}}]}
+        with patch.dict(module.REVIEWED_IMAGE_LABELS,{('mv-centr','5','13'):hashlib.sha256(url.encode()).hexdigest()}):
+            result=plan_import(sample(root,'ape'),{'slide1':'/private/files/map.png'})
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertEqual(result['blocks'][0]['data']['caption'],'Изображение')
+            root['children'][0]['fields']['imageSrc']=url+'x'
+            self.assertFalse(plan_import(sample(root,'ape'),{'slide1':'/private/files/map.png'})['ready'])
+
     def test_reviewed_formatted_button_keeps_text_and_destination(self):
         import hashlib
         from unittest.mock import patch
