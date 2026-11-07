@@ -55,6 +55,7 @@ REVIEWED_IMAGES.update({
 # One independently checked image, explicitly scoped to each source block.
 for _course, _lesson, _block in (
     (800,6760,'12e376fa-9558-47e7-aaa7-3706b83c4a1b'),
+    (809,7706,'e8fcf1c9-fcc0-444d-a47e-34672f068c97'),
     (854,7892,'3f3b7fc5-7e76-4143-a1bb-4d1bbd9d681b'),
     (854,7914,'ceb343d9-b162-41f8-bd3b-4a0a469bc435'),
     (854,7915,'75afe839-e28d-44cc-a9eb-fbed16509854'),

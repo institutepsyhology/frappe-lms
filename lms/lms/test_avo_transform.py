@@ -244,6 +244,21 @@ class TransformTests(unittest.TestCase):
             root['children'][0]['fields']['imageSrc']=url+'x'
             self.assertFalse(plan_import(sample(root,'ape'),{'slide1':'/private/files/map.png'})['ready'])
 
+    def test_reviewed_legacy_html_preserves_text_around_video(self):
+        import base64,hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        html='<div class="legacy"><p>До &amp; текст</p><div><iframe src="https://www.youtube.com/embed/6mqNJuP-uuw"></iframe></div><p>После</p></div>'
+        root={'name':'page','children':[{'name':'text','fields':{'html':html}}]}
+        with patch.dict(module.REVIEWED_LEGACY_TEXT_VIDEO,{('mv-centr','5','13'):hashlib.sha256(html.encode()).hexdigest()}):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertEqual([b['type'] for b in result['blocks']],['htmlBlock','videoChoice','htmlBlock'])
+            self.assertIn('До &amp; текст',base64.b64decode(result['blocks'][0]['data']['encodedHtml']).decode())
+            self.assertIn('После',base64.b64decode(result['blocks'][2]['data']['encodedHtml']).decode())
+            root['children'][0]['fields']['html']=html+'<script>bad</script>'
+            self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
     def test_reviewed_formatted_button_keeps_text_and_destination(self):
         import hashlib
         from unittest.mock import patch

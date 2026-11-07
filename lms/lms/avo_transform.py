@@ -129,6 +129,8 @@ REVIEWED_STYLED_HEADERS = {('mv-centr','548','3689'): {
 }, ('mv-centr','715','5751'): {
     '0ae90f2112d2168c3be4a414faf4531b8e13f8bafaa98a372e50b30a4748a32b',
     '8a1dae0bdfee34354ce59a383aa93eac516a9208e44e919ff0f99599efd2b16e',
+}, ('mv-centr','809','7706'): {
+    '7f9ddc60c3493c0f9629c2ba1e02b7242997d609e30d3906fe85f018c7b1ee42',
 }}
 CONFIRMED_OMIT_EMPTY_BUTTONS = {('mv-centr','952','9422'):
     '14eb83aff8cbadebc98291cf587459e2ccda9b646b0a0fcc6c4ccc5c85feab9f',
@@ -163,6 +165,9 @@ REVIEWED_IMAGE_LABELS = {
     ('mv-centr','847','7758'): '9ded212d34af81481864431c59aa0bf3f2d5b6928f69ba6249db083ef046d541',
     ('mv-centr','847','7759'): 'b1d067222208d5059fc9761755d3a355814944c5b49bc2a0d863331391f0ee9d',
     ('mv-centr','847','7760'): 'aac6256c1a69e0d17092fec38fe96ab9ee55324171f6ead42c9a652e0ab7c919',
+}
+REVIEWED_LEGACY_TEXT_VIDEO = {
+    ('mv-centr','397','2146'): 'b2e84c5abce4091a35e8a5e6b7216ff86c14adedb777b6f78b34235652fb9a55',
 }
 REVIEWED_YOUTUBE_URLS = {('mv-centr','385','2064'):
     ('c9d40cfec263b64602ce737fe6f887372f328b0f4fbf4df302308ce4e515712a','https://youtu.be/vj6WMLWnUIs')}
@@ -355,6 +360,51 @@ def _sha256_text(value):
     if not isinstance(value,str):return None
     try:return hashlib.sha256(value.encode('utf-8')).hexdigest()
     except UnicodeError:return None
+
+
+def _split_reviewed_legacy_text_video(source):
+    """Keep reviewed static text in order around one YouTube iframe.
+
+    Discard layout attributes only; unsupported tags or iframe content fail.
+    The caller must bind this conversion to the exact reviewed source digest.
+    """
+    class Reader(HTMLParser):
+        tags = {'div','p','span','h3','u','ol','li'}
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.stack=[]; self.current=[]; self.parts=[]; self.in_video=False; self.videos=0
+        def handle_starttag(self,tag,attrs):
+            if self.in_video: raise ValueError('nested_video')
+            if tag=='iframe':
+                a=dict(attrs)
+                if len(a)!=len(attrs) or not re.fullmatch(r'https://www\.youtube\.com/embed/[A-Za-z0-9_-]{11}',a.get('src','')):
+                    raise ValueError('unrecognized_video')
+                self.parts.append(('html',''.join(self.current)+''.join('</'+t+'>' for t in reversed(self.stack))))
+                self.parts.append(('youtube',a['src']));self.current=[];self.in_video=True;self.videos+=1
+            elif tag=='br': self.current.append('<br>')
+            elif tag in self.tags:
+                self.stack.append(tag);self.current.append('<'+tag+'>')
+            else: raise ValueError('unsupported_html')
+        def handle_startendtag(self,tag,attrs):
+            if tag!='br': raise ValueError('unsupported_html')
+            self.handle_starttag(tag,attrs)
+        def handle_endtag(self,tag):
+            if tag=='iframe' and self.in_video:
+                self.in_video=False;self.current=['<'+t+'>' for t in self.stack];return
+            if self.in_video or not self.stack or self.stack.pop()!=tag: raise ValueError('unbalanced_html')
+            self.current.append('</'+tag+'>')
+        def handle_data(self,data):
+            if self.in_video:
+                if data.strip():raise ValueError('video_has_text')
+            else:self.current.append(escape(data))
+        def handle_comment(self,data):raise ValueError('unsupported_html')
+        def handle_decl(self,decl):raise ValueError('unsupported_html')
+        def handle_pi(self,data):raise ValueError('unsupported_html')
+        def unknown_decl(self,data):raise ValueError('unsupported_html')
+    parser=Reader();parser.feed(source);parser.close()
+    if parser.in_video or parser.stack or parser.videos!=1:raise ValueError('unbalanced_html')
+    parser.parts.append(('html',''.join(parser.current)))
+    return parser.parts
 
 
 def omit_placeholder_section(node, account, course, lesson):
@@ -1231,6 +1281,20 @@ def plan_import(payload, image_urls=None):
                     issue('unsafe_or_unrecognized_html')
                     continue
                 if omitted: omit_trainer()
+                legacy_text_hash = REVIEWED_LEGACY_TEXT_VIDEO.get((account,course,lesson))
+                if legacy_text_hash and legacy_text_hash == _sha256_text(original_html) and not node.get('children'):
+                    try:
+                        pieces = _split_reviewed_legacy_text_video(source)
+                        prepared = [(kind_, make_html_block(value) if kind_ == 'html' else value) for kind_,value in pieces]
+                    except (ValueError,UnicodeError,RecursionError):
+                        issue('unsafe_or_unrecognized_html')
+                    else:
+                        for kind_,value in prepared:
+                            if kind_ == 'html': blocks.append(value)
+                            else: single_video('youtube',value)
+                        for warning in ('ape_static_html_frame_unverified','reviewed_embedded_youtube_preserved','legacy_layout_simplified'):
+                            if warning not in plan['warnings']:plan['warnings'].append(warning)
+                    continue
                 image_set=REVIEWED_REMOTE_IMAGE_SETS.get((account,course,lesson))
                 if image_set and image_set[0] == _sha256_text(original_html) and not node.get('children'):
                     try:
