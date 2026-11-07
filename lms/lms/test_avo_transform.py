@@ -10,6 +10,19 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_reviewed_styled_heading_keeps_html_and_rejects_changed_source(self):
+        import hashlib,base64
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        heading='<h2><strong><font color="#000000">Признаки</font></strong></h2>'
+        root={'name':'page','children':[{'name':'header','fields':{'html':heading,'format':'h2'}}]}
+        with patch.dict(module.REVIEWED_STYLED_HEADERS,{('mv-centr','5','13'):{hashlib.sha256(heading.encode()).hexdigest()}}):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertEqual(base64.b64decode(result['blocks'][0]['data']['encodedHtml']).decode(),heading)
+            root['children'][0]['fields']['html']=heading.replace('Признаки','Другое')
+            self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
     def test_owner_removed_entire_obsolete_lesson_gets_neutral_placeholder(self):
         import hashlib,json
         from unittest.mock import patch

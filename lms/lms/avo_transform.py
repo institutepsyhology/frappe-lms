@@ -114,6 +114,10 @@ CONFIRMED_HTML_FIELDS = {('mv-centr','258','1151'):
     ('mv-centr','447','2608'):'40c2aefc41caa2cde7ac583ff753e3eeba135257f2b1e6782fea1e573a63415d'}
 CONFIRMED_OMIT_HEADERS = {('mv-centr','447','2608'):
     'fcc9b9dfb972f67fa3e47b266af9ad5345f3e5593aa2a9f9b7163181c4ac16bf'}
+REVIEWED_STYLED_HEADERS = {('mv-centr','548','3689'): {
+    '0ae90f2112d2168c3be4a414faf4531b8e13f8bafaa98a372e50b30a4748a32b',
+    '8a1dae0bdfee34354ce59a383aa93eac516a9208e44e919ff0f99599efd2b16e',
+}}
 CONFIRMED_OMIT_EMPTY_BUTTONS = {('mv-centr','952','9422'):
     '14eb83aff8cbadebc98291cf587459e2ccda9b646b0a0fcc6c4ccc5c85feab9f'}
 # Owner removed the old manager contact instruction, keeping the rest of
@@ -937,6 +941,19 @@ def plan_import(payload, image_urls=None):
                     issue('ambiguous_trainer_action')
                     continue
                 if omitted: omit_trainer()
+                if (not node.get('children') and not fields.get('anchor')
+                        and not any(v not in (None,'',False,[],{}) for k,v in fields.items() if k not in allowed)
+                        and _sha256_text(markup) in REVIEWED_STYLED_HEADERS.get((account,course,lesson), set())):
+                    try:
+                        block=make_html_block(markup)
+                    except (ValueError,UnicodeError,RecursionError):
+                        issue('unsupported_header')
+                    else:
+                        block['data']['height']=160
+                        blocks.append(block)
+                        if 'ape_static_html_frame_unverified' not in plan['warnings']:
+                            plan['warnings'].append('ape_static_html_frame_unverified')
+                    continue
                 match = re.fullmatch(r'\s*<h([1-6])>(.*?)</h\1>\s*', markup, re.I | re.S) if isinstance(markup, str) else None
                 if (fields.get('anchor') or any(v not in (None, '', False, [], {}) for k, v in fields.items() if k not in allowed)
                         or source_format not in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6') or not match
