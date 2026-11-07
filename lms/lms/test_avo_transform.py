@@ -217,6 +217,20 @@ class TransformTests(unittest.TestCase):
             root['children'][0]['fields']['videoSrc']=url+'x'
             self.assertFalse(plan_import(sample(root,'ape'))['ready'])
 
+    def test_reviewed_audio_button_retains_note_and_requires_exact_source(self):
+        import hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        url='ко 2 видео https://drive.google.com/file/d/abcDEF123/view?usp=sharing'
+        root={'name':'page','children':[{'name':'button','fields':{'html':'АУДИОЗАПИСЬ','linkType':'url','url':url}}]}
+        with patch.dict(module.REVIEWED_AUDIO_URL_WITH_NOTE,{('mv-centr','5','13'):hashlib.sha256(url.encode()).hexdigest()}):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertIn('ко 2 видео',str(result['blocks']))
+            self.assertIn('drive.google.com/file/d/abcDEF123',str(result['blocks']))
+            root['children'][0]['fields']['url']=url+'x'
+            self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
     def test_reviewed_formatted_button_keeps_text_and_destination(self):
         import hashlib
         from unittest.mock import patch

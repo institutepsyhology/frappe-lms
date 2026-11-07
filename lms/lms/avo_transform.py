@@ -154,7 +154,11 @@ REVIEWED_BUTTON_LABELS = {('mv-centr','94','434'):
     ('mv-centr','411','2247'): '1d0f79878a6a3070ddc5110f8f89039510fbc18091ae9b3787a1d919583c16b3',
     ('mv-centr','433','2418'): '66efec3b4be5286924aaafc43c6c02fdcd4a106f6524cf8a18aa5cc05f6f91af',
     ('mv-centr','438','2480'): '66efec3b4be5286924aaafc43c6c02fdcd4a106f6524cf8a18aa5cc05f6f91af',
-    ('mv-centr','439','2503'): '1c49311c3404a417e1c3f81c6842f68f8bcc84eb6c0032f9864d8959f2074635'}
+    ('mv-centr','439','2503'): '1c49311c3404a417e1c3f81c6842f68f8bcc84eb6c0032f9864d8959f2074635',
+    ('mv-centr','1001','10092'): 'd2b52cbd4ee1aaf90d8276df4c53f5fd45adbc9efd3d632247863a100995bee6'}
+REVIEWED_AUDIO_URL_WITH_NOTE = {
+    ('mv-centr','916','9055'): '9313e9b56ecfa2c1cec46540746d56b03e86bc0f3cadcecbaad7aeae040bfeea',
+}
 REVIEWED_YOUTUBE_URLS = {('mv-centr','385','2064'):
     ('c9d40cfec263b64602ce737fe6f887372f328b0f4fbf4df302308ce4e515712a','https://youtu.be/vj6WMLWnUIs')}
 REVIEWED_VIDEO_URL_CLEANUP = {
@@ -1454,6 +1458,16 @@ def plan_import(payload, image_urls=None):
                 if isinstance(button_url,str): button_url = button_url.strip()
                 label = fields.get('html')
                 if isinstance(label,str): label = re.sub(r'<br\s*/?>', ' ', label, flags=re.I).strip()
+                note_hash = REVIEWED_AUDIO_URL_WITH_NOTE.get((account,course,lesson))
+                if note_hash and _sha256_text(fields.get('url')) == note_hash and label == 'АУДИОЗАПИСЬ':
+                    match = re.fullmatch(r'ко 2 видео\s+(https://drive\.google\.com/file/d/[A-Za-z0-9_-]+/view\?usp=sharing)', button_url)
+                    if not match:
+                        issue('reviewed_source_changed')
+                        continue
+                    button_url = match.group(1)
+                    label = 'АУДИОЗАПИСЬ (ко 2 видео)'
+                    if 'reviewed_button_url_corrected' not in plan['warnings']:
+                        plan['warnings'].append('reviewed_button_url_corrected')
                 label_html=None
                 if (REVIEWED_BUTTON_LABELS.get((account,course,lesson)) == _sha256_text(fields.get('html'))
                         and (account,course,lesson) in REVIEWED_BUTTON_LABELS):
