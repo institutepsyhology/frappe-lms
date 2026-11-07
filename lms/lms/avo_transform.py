@@ -126,6 +126,9 @@ REVIEWED_STYLED_HEADERS = {('mv-centr','548','3689'): {
 }, ('mv-centr','557','3841'): {
     '0ae90f2112d2168c3be4a414faf4531b8e13f8bafaa98a372e50b30a4748a32b',
     '8a1dae0bdfee34354ce59a383aa93eac516a9208e44e919ff0f99599efd2b16e',
+}, ('mv-centr','715','5751'): {
+    '0ae90f2112d2168c3be4a414faf4531b8e13f8bafaa98a372e50b30a4748a32b',
+    '8a1dae0bdfee34354ce59a383aa93eac516a9208e44e919ff0f99599efd2b16e',
 }}
 CONFIRMED_OMIT_EMPTY_BUTTONS = {('mv-centr','952','9422'):
     '14eb83aff8cbadebc98291cf587459e2ccda9b646b0a0fcc6c4ccc5c85feab9f',
@@ -158,6 +161,13 @@ REVIEWED_YOUTUBE_IFRAMES = {('mv-centr','324','1517'):
     ('28bde2b88d985e479944a8e825fbce88090208af873a4fc669914279944ee60b', 5),
     ('mv-centr','555','3831'):
     ('c15380c2d1ebc1beeae124522d28028d97350cb836ac243d83f1c7ff8e562ac0', 1)}
+REVIEWED_CENTERED_YOUTUBE_IFRAMES = {
+    ('mv-centr','864','8095'): 'ad280d10c1cfd3652006cd3c1421d18e702d76e28aaf74f7a121f5c831510564',
+    ('mv-centr','864','8096'): '811bf42c5ab4aa2cfe816e499de40727a62fe456d0b84286025fe8e0981a7eee',
+    ('mv-centr','864','8097'): 'd31c5efcd000f801ed0d9edbd328649e581304098e9211f363390b2ec502b92a',
+    ('mv-centr','864','8098'): '5b163e3cbe83a3f0508e530f2d6297137996852065b5e8fbce4eefc73f8ac0d1',
+    ('mv-centr','864','8099'): '251da7defbdebe2147169173c4d63b0a586051f8a697acd39164c021dd9b25f4',
+}
 REVIEWED_MIXED_YOUTUBE = {
     ('mv-centr','555','3947'): ('1bf0953361b807e902bfb184782a8dcf300990b20c8bf4c79b41f9052c0d4b65',1),
     ('mv-centr','555','3948'): ('1bf0953361b807e902bfb184782a8dcf300990b20c8bf4c79b41f9052c0d4b65',1),
@@ -279,6 +289,10 @@ CONFIRMED_TEXT_ONLY_ANSWER_FORMS = {
 # Owner requested replacing these particular legacy players with links.
 # Digests bind the decision to the verified source; originals remain private.
 CONFIRMED_DRIVE_AUDIO_LINKS = {
+    ('mv-centr','715','5751'): 'ee5ee3228ffa2b366bc47592ab91dea6689aa514e0944f4516e374785723f194',
+    ('mv-centr','715','5759'): '122d2c4afe570d3ffb3c222875d094c28fa89f0f66a935960314ab4a150bc22f',
+    ('mv-centr','716','5781'): '983fbb61980d849d89f02869f11ecbef95a872cd92bd3199975ad4490407d63b',
+    ('mv-centr','721','5819'): 'd0d11f9427e8c29120a558da516c6e7caf664aabba5fedae41e2f4a4695cb2ec',
     ('mv-centr','553','3773'): 'ee5ee3228ffa2b366bc47592ab91dea6689aa514e0944f4516e374785723f194',
     ('mv-centr','555','3777'): '5907c39d7a43d8d949618d7d789a699bd27c123c09cc0726437b47a3af4c2f94',
     ('mv-centr','555','3946'): '06418e87139fc880a981d57cae41c7490a3ebccfaf57cb628b4d24a1d25b6d91',
@@ -1281,6 +1295,19 @@ def plan_import(payload, image_urls=None):
                             if surrounding[1]:blocks.append(surrounding[1])
                             if 'reviewed_embedded_youtube_preserved' not in plan['warnings']:plan['warnings'].append('reviewed_embedded_youtube_preserved')
                             if any(surrounding) and 'ape_static_html_frame_unverified' not in plan['warnings']:plan['warnings'].append('ape_static_html_frame_unverified')
+                    continue
+                centered_review = REVIEWED_CENTERED_YOUTUBE_IFRAMES.get((account,course,lesson))
+                if centered_review and centered_review == _sha256_text(original_html) and not node.get('children'):
+                    pattern = (r'<div class="center"><iframe width="630" height="360" '
+                               r'src="(https://www\.youtube\.com/embed/[A-Za-z0-9_-]{11})" '
+                               r'frameborder="0" allowfullscreen=""></iframe></div>')
+                    match = re.fullmatch(pattern, source.strip())
+                    if not match:
+                        issue('reviewed_source_changed')
+                    else:
+                        single_video('youtube', match.group(1))
+                        if 'reviewed_embedded_youtube_preserved' not in plan['warnings']:
+                            plan['warnings'].append('reviewed_embedded_youtube_preserved')
                     continue
                 iframe_review = REVIEWED_YOUTUBE_IFRAMES.get((account,course,lesson))
                 if (iframe_review and iframe_review[0] == _sha256_text(original_html)

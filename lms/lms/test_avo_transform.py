@@ -175,6 +175,20 @@ class TransformTests(unittest.TestCase):
             root['children'][0]['fields']['html'] += html
             self.assertFalse(plan_import(sample(root,'ape'))['ready'])
 
+    def test_reviewed_centered_youtube_iframe_requires_exact_source(self):
+        import hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        html='<div class="center"><iframe width="630" height="360" src="https://www.youtube.com/embed/6mqNJuP-uuw" frameborder="0" allowfullscreen=""></iframe></div>'
+        root={'name':'page','children':[{'name':'text','fields':{'html':html}}]}
+        with patch.dict(module.REVIEWED_CENTERED_YOUTUBE_IFRAMES,{('mv-centr','5','13'):hashlib.sha256(html.encode()).hexdigest()}):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertEqual(len(result['blocks']),1)
+            self.assertTrue(result['blocks'][0]['data']['youtube'].endswith('6mqNJuP-uuw'))
+            root['children'][0]['fields']['html'] += '<p>Не пропускать</p>'
+            self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
     def test_reviewed_formatted_button_keeps_text_and_destination(self):
         import hashlib
         from unittest.mock import patch
