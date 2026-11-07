@@ -1009,7 +1009,7 @@ def plan_import(payload, image_urls=None):
             # unfamiliar fields for review and keep the source snapshot.
             if (kind == 'code' and set(fields).issubset({'anchor','html'})
                     and fields.get('html') == '' and fields.get('anchor') in (None,'')
-                    and not node.get('children')):
+                    and node.get('children',[]) == []):
                 if 'empty_editor_block_omitted' not in plan['warnings']:
                     plan['warnings'].append('empty_editor_block_omitted')
                 continue
@@ -1112,8 +1112,8 @@ def plan_import(payload, image_urls=None):
                 markup = fields.get('html')
                 source_format = fields.get('format')
                 if (markup == '' and source_format in ('h1','h2','h3','h4','h5','h6')
-                        and not node.get('children') and not fields.get('anchor')
-                        and not any(v not in (None,'',False,[],{}) for k,v in fields.items() if k not in allowed)):
+                        and node.get('children',[]) == [] and not fields.get('anchor')
+                        and set(fields).issubset(allowed)):
                     if 'empty_editor_block_omitted' not in plan['warnings']:
                         plan['warnings'].append('empty_editor_block_omitted')
                     continue

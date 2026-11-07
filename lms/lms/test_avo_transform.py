@@ -200,6 +200,9 @@ class TransformTests(unittest.TestCase):
         self.assertIn('Материал',str(result['blocks']))
         root['children'][1]['fields']['html']='<script>content</script>'
         self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+        root['children'][1]['fields']['html']=''
+        root['children'][1]['children']=None
+        self.assertFalse(plan_import(sample(root,'ape'))['ready'])
 
     def test_reviewed_formatted_button_keeps_text_and_destination(self):
         import hashlib
