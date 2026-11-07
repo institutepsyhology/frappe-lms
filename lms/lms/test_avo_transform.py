@@ -189,6 +189,18 @@ class TransformTests(unittest.TestCase):
             root['children'][0]['fields']['html'] += '<p>Не пропускать</p>'
             self.assertFalse(plan_import(sample(root,'ape'))['ready'])
 
+    def test_empty_editor_blocks_are_ignored_without_dropping_content(self):
+        root={'name':'page','children':[
+            {'name':'header','fields':{'anchor':'','html':'','format':'h1'}},
+            {'name':'code','fields':{'anchor':'','html':''}},
+            {'name':'text','fields':{'html':'<p>Материал</p>'}}]}
+        result=plan_import(sample(root,'ape'))
+        self.assertTrue(result['ready'],result['issues'])
+        self.assertEqual(len(result['blocks']),1)
+        self.assertIn('Материал',str(result['blocks']))
+        root['children'][1]['fields']['html']='<script>content</script>'
+        self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
     def test_reviewed_formatted_button_keeps_text_and_destination(self):
         import hashlib
         from unittest.mock import patch

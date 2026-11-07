@@ -1005,6 +1005,14 @@ def plan_import(payload, image_urls=None):
             if not isinstance(fields, dict):
                 issue("invalid_fields")
                 continue
+            # Empty editor blocks contain no content; leave nonempty or
+            # unfamiliar fields for review and keep the source snapshot.
+            if (kind == 'code' and set(fields).issubset({'anchor','html'})
+                    and fields.get('html') == '' and fields.get('anchor') in (None,'')
+                    and not node.get('children')):
+                if 'empty_editor_block_omitted' not in plan['warnings']:
+                    plan['warnings'].append('empty_editor_block_omitted')
+                continue
             if kind in ('page', 'section', 'container', 'column') and isinstance(node.get('children'), list):
                 children = node['children']
                 columns = [child for child in children if isinstance(child, dict) and child.get('name') == 'column']
@@ -1103,6 +1111,12 @@ def plan_import(payload, image_urls=None):
                 allowed = {'anchor', 'html', 'format'}
                 markup = fields.get('html')
                 source_format = fields.get('format')
+                if (markup == '' and source_format in ('h1','h2','h3','h4','h5','h6')
+                        and not node.get('children') and not fields.get('anchor')
+                        and not any(v not in (None,'',False,[],{}) for k,v in fields.items() if k not in allowed)):
+                    if 'empty_editor_block_omitted' not in plan['warnings']:
+                        plan['warnings'].append('empty_editor_block_omitted')
+                    continue
                 if not node.get('children') and _trainer_label(markup):
                     omit_trainer()
                     continue
