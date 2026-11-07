@@ -10,6 +10,26 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_reviewed_duplicate_vk_editor_field_preserves_visible_alternative(self):
+        import hashlib,json
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        iframe='<iframe src="https://vkvideo.ru/video_ext.php?oid=-1&amp;id=2&amp;hash=abc" width="1280" height="720"></iframe>'
+        root={'name':'page','children':[
+            {'name':'text','fields':{'html':'<p>Плеер 1</p>'}},
+            {'name':'video','fields':{'videoProvider':'youtube','videoSrc':'https://youtu.be/6mqNJuP-uuw','videoProvider2':'embedded','videoSrc2':'','embeddedHtml2':iframe}},
+            {'name':'text','fields':{'html':'<p>Плеер 2</p>'}},
+            {'name':'video','fields':{'videoProvider':'embedded','videoProvider2':'rutube','videoSrc2':'','embeddedHtml':iframe}},
+            {'name':'text','fields':{'html':'<p>Материалы</p>'}}]}
+        digest=hashlib.sha256(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+        payload=sample(root,'ape');payload.update(course_id=177,lesson_id=710)
+        with patch.dict(module.CONFIRMED_VK_ALTERNATIVE,{('mv-centr','177','710'):(digest,hashlib.sha256(iframe.encode()).hexdigest())}):
+            result=plan_import(payload)
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertEqual([x['type'] for x in result['blocks']],['paragraph','videoChoice','paragraph','htmlBlock','paragraph'])
+            root['children'][1]['fields']['embeddedHtml2']=iframe.replace('id=2','id=3')
+            self.assertFalse(plan_import(payload)['ready'])
+
     def test_reviewed_google_link_typo_is_corrected_only_for_exact_source(self):
         import hashlib
         from unittest.mock import patch

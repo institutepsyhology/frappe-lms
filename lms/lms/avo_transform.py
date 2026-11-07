@@ -145,7 +145,16 @@ CONFIRMED_VK_ALTERNATIVE = {('mv-centr','583','4086'):
      'b970b431a7a57b8c2c57b57832448d359439e8673cc7e5fef3a4ebddf279cb9d'),
     ('mv-centr','379','2031'):
     ('94974ac0116dd550a8bae540e39c201e028a1ffc3f04313f47a79cd6995ac34d',
-     'b4ccfb9e0925fbe3c12e8e46a374e974f9bfb0701995fe4e0fe8895e49a0e342')}
+     'b4ccfb9e0925fbe3c12e8e46a374e974f9bfb0701995fe4e0fe8895e49a0e342'),
+    ('mv-centr','173','698'):
+    ('9a806bbe83c1e203a8c6304b9b19e2b12ddb4a2b89196b3ddb5d46a247283a6e',
+     '1ec6f095bbc9c44a1d60bf9fd5060cbb1a2f4956ab63ec8c9ca8d973a996291d'),
+    ('mv-centr','177','710'):
+    ('212476128ddbab7a3e8c8d81a95ac43e99a43221b67d4bdf784d58e4f55a26f8',
+     '75af4033b49d7cdb9b7aa68ec27eed00bc09e636504c0259dd7ae0b422a3a089'),
+    ('mv-centr','191','757'):
+    ('8d720db5f4f32b3fe7669ae6da49ed0cb30113382f2cf054e9d4962b16a57e9a',
+     '3834fb1805e0f9ba388be2fd6ff836a72fb2a305d631e7c1419efdf7c77f12c5')}
 # The owner selected content for these exact MV-Centr captures. If a capture
 # changes, do not apply the decision to the new contents without review.
 REVIEWED_SELECTIONS = {
@@ -829,7 +838,7 @@ def plan_import(payload, image_urls=None):
         # The reviewed lesson has two explicitly numbered player pairs. The
         # first keeps its YouTube and VK HTML adjacent in source order;
         # the second combines its YouTube and Rutube into one choice.
-        if (account,course,lesson) == ('mv-centr','18','52') and vk_rule and vk_root_hash == vk_rule[0]:
+        if (account,course,lesson) in (('mv-centr','18','52'),('mv-centr','191','757')) and vk_rule and vk_root_hash == vk_rule[0]:
             leaves=[]
             pending=[root]
             while pending:
@@ -929,6 +938,11 @@ def plan_import(payload, image_urls=None):
                            "isShowProgressControl", "isShowFastRewindButtons", "videoProvider2",
                            "videoSrc2", "nativePlayer2", "posterSrc2", "isShowProgressControl2",
                            "isShowFastRewindButtons2", "embeddedHtml", "html", "isFloating"}
+                # These exact reviewed snapshots also repeat the same VK video
+                # in an unused secondary editor field. Its visible iframe is
+                # preserved once below, not silently discarded.
+                if vk_rule and vk_root_hash == vk_rule[0] and (account,course,lesson) in (('mv-centr','173','698'),('mv-centr','177','710')):
+                    allowed.add('embeddedHtml2')
                 if any(v not in (None, "", False, [], {}) for k, v in fields.items() if k not in allowed):
                     issue("unknown_video_fields")
                 if any(fields.get(k) not in (None, "", False) for k in ("anchor", "posterSrc", "posterSrc2")) or (fields.get('embeddedHtml') and not vk_approved):
@@ -949,6 +963,11 @@ def plan_import(payload, image_urls=None):
                                 {'provider': other.get('videoProvider'), 'url': other.get('videoSrc')}])
                 elif id(node) in legacy_skip:
                     pass
+                elif (vk_rule and vk_root_hash == vk_rule[0]
+                      and (account,course,lesson) in (('mv-centr','173','698'),('mv-centr','177','710'))
+                      and fields.get('videoProvider') == 'youtube' and fields.get('videoProvider2') == 'embedded'
+                      and fields.get('videoSrc2') in (None,'') and not fields.get('embeddedHtml')):
+                    single_video('youtube',fields.get('videoSrc'))
                 elif (fields.get('videoProvider') == 'youtube' and fields.get('videoProvider2') in (None, '', 'youtube', 'rutube')
                       and fields.get('videoSrc2') in (None, '') and isinstance(fields.get('videoSrc'),str)
                       and CONFIRMED_CONCATENATED_YOUTUBE.get((account,course,lesson)) == _sha256_text(fields['videoSrc'])
