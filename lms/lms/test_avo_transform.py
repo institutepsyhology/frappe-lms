@@ -10,6 +10,43 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_reviewed_google_link_typo_is_corrected_only_for_exact_source(self):
+        import hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        html='<p><a href="hhttps://drive.google.com/file/d/example/view">Материал</a></p>'
+        root={'name':'page','children':[{'name':'text','fields':{'html':html}}]}
+        with patch.dict(module.REVIEWED_LINK_TYPOS,{('mv-centr','5','13'):hashlib.sha256(html.encode()).hexdigest()}):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertIn('https://drive.google.com/file/d/example/view',str(result['blocks']))
+            self.assertEqual(root['children'][0]['fields']['html'],html)
+            root['children'][0]['fields']['html']=html.replace('example','changed')
+            self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
+    def test_reviewed_numbered_vk_and_rutube_pairs_preserve_order(self):
+        import hashlib,json
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        iframe='<iframe src="https://vkvideo.ru/video_ext.php?oid=-1&amp;id=2&amp;hash=abc" width="1280" height="720"></iframe>'
+        def text(value): return {'name':'text','fields':{'html':'<p>'+value+'</p>'}}
+        def video(provider,url='',embedded=''):
+            return {'name':'video','fields':{'videoProvider':provider,'videoSrc':url,'videoProvider2':'rutube','videoSrc2':'','embeddedHtml':embedded}}
+        root={'name':'page','children':[
+            text('Плеер 1'),video('youtube','https://youtu.be/6mqNJuP-uuw'),text('Плеер 2'),video('embedded',embedded=iframe),
+            text('Плеер 1'),video('youtube','https://youtu.be/s0crnbKYQa4'),text('Плеер 2'),
+            video('rutube','https://rutube.ru/video/0123456789abcdef0123456789abcdef/'),text('Материалы')]}
+        digest=hashlib.sha256(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+        payload=sample(root,'ape');payload.update(course_id=18,lesson_id=52)
+        with patch.dict(module.CONFIRMED_VK_ALTERNATIVE,{('mv-centr','18','52'):(digest,hashlib.sha256(iframe.encode()).hexdigest())}):
+            result=plan_import(payload)
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertEqual([x['type'] for x in result['blocks']],['paragraph','videoChoice','paragraph','htmlBlock','videoChoice','paragraph'])
+            self.assertTrue(result['blocks'][4]['data']['youtube'])
+            self.assertTrue(result['blocks'][4]['data']['rutube'])
+            root['children'].append(text('изменение'))
+            self.assertIn('reviewed_source_changed',plan_import(payload)['issues'])
+
     def test_reviewed_styled_heading_keeps_html_and_rejects_changed_source(self):
         import hashlib,base64
         from unittest.mock import patch

@@ -120,6 +120,14 @@ REVIEWED_STYLED_HEADERS = {('mv-centr','548','3689'): {
 }}
 CONFIRMED_OMIT_EMPTY_BUTTONS = {('mv-centr','952','9422'):
     '14eb83aff8cbadebc98291cf587459e2ccda9b646b0a0fcc6c4ccc5c85feab9f'}
+# Manually checked Google file links with one extra 'h' in their scheme.
+# The correction is permitted only for the exact reviewed source HTML.
+REVIEWED_LINK_TYPOS = {
+    ('mv-centr','39','242'): 'e948adb6882696e72aa5dc286cb26be773fd95df5aca80053b528cf4dde06ef1',
+    ('mv-centr','40','255'): 'f1cf497d89be4a0253559f1f104199099b32399508cd2cb53274afd9c05dbb3d',
+    ('mv-centr','43','278'): '729f6872742803a8f35cb45d0315157ff5aea5f1f5012151f173c20edb660990',
+    ('mv-centr','379','2027'): '4267a3e9b1acabaa4018038d1e7ff522e45a9359ac3b54625fa89120c93bf3e3',
+}
 # Owner removed the old manager contact instruction, keeping the rest of
 # these lessons. Bind both the full source and its text to the reviewed image.
 CONFIRMED_OMIT_MANAGER = {
@@ -131,7 +139,13 @@ CONFIRMED_OMIT_MANAGER = {
 # YouTube player. Preserve it as an HTML block, not as a fabricated Rutube URL.
 CONFIRMED_VK_ALTERNATIVE = {('mv-centr','583','4086'):
     ('64ad8cd5b5cb7c7e5e3b390592b7afe53abe7d704cdddcce47406388ef196939',
-     'd2ec0795e5f7a1d3b83d8c7d65f38b700905457d8a0eebfd2eabb47959188a91')}
+     'd2ec0795e5f7a1d3b83d8c7d65f38b700905457d8a0eebfd2eabb47959188a91'),
+    ('mv-centr','18','52'):
+    ('bc88dea9e4d841d72ef2c73381b4964c11c4f847deb5c8da3cdcbed1df67c92d',
+     'b970b431a7a57b8c2c57b57832448d359439e8673cc7e5fef3a4ebddf279cb9d'),
+    ('mv-centr','379','2031'):
+    ('94974ac0116dd550a8bae540e39c201e028a1ffc3f04313f47a79cd6995ac34d',
+     'b4ccfb9e0925fbe3c12e8e46a374e974f9bfb0701995fe4e0fe8895e49a0e342')}
 # The owner selected content for these exact MV-Centr captures. If a capture
 # changes, do not apply the decision to the new contents without review.
 REVIEWED_SELECTIONS = {
@@ -812,6 +826,39 @@ def plan_import(payload, image_urls=None):
             plan['warnings'].append('user_requested_replacement')
             root = {'name':'page','children':[]}
         legacy_first, legacy_skip, legacy_unmatched = _legacy_player_pairs(root)
+        # The reviewed lesson has two explicitly numbered player pairs. The
+        # first keeps its YouTube and VK HTML adjacent in source order;
+        # the second combines its YouTube and Rutube into one choice.
+        if (account,course,lesson) == ('mv-centr','18','52') and vk_rule and vk_root_hash == vk_rule[0]:
+            leaves=[]
+            pending=[root]
+            while pending:
+                item=pending.pop()
+                if isinstance(item,dict) and item.get('name') in ('page','section','column','container'):
+                    pending.extend(reversed(item.get('children',[])))
+                else:
+                    leaves.append(item)
+            if ([x.get('name') for x in leaves] != ['text','video','text','video','text','video','text','video','text']
+                    or leaves[5].get('fields',{}).get('videoProvider') != 'youtube'
+                    or leaves[7].get('fields',{}).get('videoProvider') != 'rutube'):
+                issue('reviewed_source_changed')
+            else:
+                legacy_first[id(leaves[5])]=leaves[7]['fields']
+                legacy_skip.update((id(leaves[4]),id(leaves[6]),id(leaves[7])))
+        if (account,course,lesson) == ('mv-centr','379','2031') and vk_rule and vk_root_hash == vk_rule[0]:
+            leaves=[]; pending=[root]
+            while pending:
+                item=pending.pop()
+                if isinstance(item,dict) and item.get('name') in ('page','section','column','container'):
+                    pending.extend(reversed(item.get('children',[])))
+                else:
+                    leaves.append(item)
+            if ([x.get('name') for x in leaves] != ['text','video','text','video','text']
+                    or leaves[1].get('fields',{}).get('videoProvider') != 'youtube'
+                    or leaves[3].get('fields',{}).get('videoProvider') != 'embedded'):
+                issue('reviewed_source_changed')
+            else:
+                legacy_unmatched.difference_update((id(leaves[0]),id(leaves[2])))
         if legacy_unmatched:
             issue('legacy_player_pair_unresolved')
         if legacy_first:
@@ -975,6 +1022,12 @@ def plan_import(payload, image_urls=None):
                     issue('unsafe_or_unrecognized_html')
                     continue
                 if omitted: omit_trainer()
+                if REVIEWED_LINK_TYPOS.get((account,course,lesson)) == _sha256_text(original_html) and (account,course,lesson) in REVIEWED_LINK_TYPOS:
+                    if source.count('hhttps://') != 1:
+                        issue('reviewed_source_changed')
+                        continue
+                    source=source.replace('hhttps://','https://',1)
+                    if 'reviewed_link_typo_corrected' not in plan['warnings']:plan['warnings'].append('reviewed_link_typo_corrected')
                 if isinstance(source,str) and EMPTY_LEGACY_VIDEO_OVERLAY in source:
                     source=source.replace(EMPTY_LEGACY_VIDEO_OVERLAY,'')
                     if 'empty_video_overlay_omitted' not in plan['warnings']:plan['warnings'].append('empty_video_overlay_omitted')
