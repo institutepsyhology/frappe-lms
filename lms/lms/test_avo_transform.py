@@ -73,6 +73,17 @@ class TransformTests(unittest.TestCase):
         self.assertNotIn('example.test/q',str(result['blocks']))
         self.assertIn('Тема',str(result['blocks']))
 
+    def test_legacy_audio_top_link_is_preserved_as_safe_link(self):
+        html='<h4><strong><a target="_top" href="https://drive.google.com/file/d/example/view?usp=sharing">АУДИОЗАПИСЬ</a></strong></h4>'
+        root={'name':'page','children':[{'name':'text','fields':{'html':html}}]}
+        result=plan_import(sample(root,'ape'))
+        self.assertTrue(result['ready'],result['issues'])
+        self.assertIn('https://drive.google.com/file/d/example/view?usp=sharing',str(result['blocks']))
+        self.assertIn('legacy_audio_link_normalized',result['warnings'])
+        self.assertEqual(root['children'][0]['fields']['html'],html)
+        root['children'][0]['fields']['html']=html.replace('https://drive.google.com/file/d/example/view?usp=sharing','javascript:alert(1)')
+        self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
     def test_heading_preserves_formatted_link_and_long_text(self):
         text='А'*450+' <span style="color: red"><a href="https://example.test" target="_blank"><b>ссылка</b></a></span>'
         root={'name':'page','children':[{'name':'header','fields':{'html':'<h5>'+text+'</h5>','format':'h5'}}]}

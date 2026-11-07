@@ -1,5 +1,5 @@
 """Pure, conservative AVO lesson-to-EditorJS conversion; no I/O or execution."""
-from html import escape
+from html import escape, unescape
 from html.parser import HTMLParser
 import hashlib
 import base64
@@ -913,6 +913,14 @@ def plan_import(payload, image_urls=None):
                 if omitted: omit_trainer()
                 if _trainer_label(source) and not node.get('children'):
                     omit_trainer()
+                    continue
+                # Some legacy lessons wrap one audio link in an old _top
+                # heading. Convert this exact structure to a normal link; the
+                # original source remains unchanged in the private snapshot.
+                audio_link = re.fullmatch(r'\s*<h4><strong><a target="_top" href="([^"<>]+)">АУДИОЗАПИСЬ</a></strong></h4>\s*', source, re.I) if isinstance(source,str) else None
+                if audio_link and not node.get('children') and _url(unescape(audio_link.group(1))):
+                    paragraph('<a href="' + escape(unescape(audio_link.group(1)), quote=True) + '">АУДИОЗАПИСЬ</a>')
+                    if 'legacy_audio_link_normalized' not in plan['warnings']:plan['warnings'].append('legacy_audio_link_normalized')
                     continue
                 if (CONFIRMED_HTML_FIELDS.get((account,course,lesson)) == _sha256_text(fields.get('html'))
                         and (account,course,lesson) in CONFIRMED_HTML_FIELDS and node.get('children',[])==[]):
