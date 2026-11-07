@@ -44,6 +44,19 @@ EXCLUDED_COURSES = {50, 849}
 REVIEWED_IMAGES = {(258,1150,'92ab32ec-5836-4443-998d-16b2ec13a2c0'):
     ('44c98968db4973a119db3bbc00ca36392c1466e1b631596e1fff0ac4a2474ea2',
      'eb781d7527cb12f817ae59ace8310ca3ab2f1c34c2e360813b9052f1cc6d2d33','mv-centr-image-1150.jpg')}
+# One independently checked image, explicitly scoped to each source block.
+for _course, _lesson, _block in (
+    (800,6760,'12e376fa-9558-47e7-aaa7-3706b83c4a1b'),
+    (854,7892,'3f3b7fc5-7e76-4143-a1bb-4d1bbd9d681b'),
+    (854,7914,'ceb343d9-b162-41f8-bd3b-4a0a469bc435'),
+    (854,7915,'75afe839-e28d-44cc-a9eb-fbed16509854'),
+    (854,7916,'fd5004e6-21d6-4cd3-ab72-6c69f48376df'),
+    (854,7918,'6082e86e-ac7c-4732-b35b-11fb58e46ff0'),
+):
+    REVIEWED_IMAGES[(_course,_lesson,_block)] = (
+        '553bb21768e933c323558e94885f76c94c614859d2033a9b26f046ce1fac125a',
+        '16656f7b2ca7b05aa814bb46ba2b061c95bd5ae30a7eaa5a4cb9f1f1916134da',
+        'mv-centr-review-common-lesson-image.jpg')
 
 
 class Stop(Exception):
