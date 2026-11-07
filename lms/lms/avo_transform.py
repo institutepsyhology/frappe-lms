@@ -163,6 +163,10 @@ REVIEWED_REMOTE_IMAGES = {('mv-centr','258','1159'):
     ('mv-centr','358','1829'):
     ('06971963815c423c5fabd2955e9c30379c86c33297bd24c3b6dd8fd1b6205d2c',
      '<img alt="" style="width: 604px; height: 400px;" src="https://f1.autoweboffice.ru/mvcentr/1159.jpg" />')}
+REVIEWED_REMOTE_IMAGE_SETS = {('mv-centr','329','1569'):
+    ('2abaf3dca453dd6106750a1d464c55cdb06befd0d836e92b2af3ea9fbdf7763b',
+     ('bb6a7393cef3a19f9b40d465a782f9ebc402f686bf753a7afc5e4e15a8900a5b',
+      'f48ff2ed38d3f0df7c18deff22921f8644da66495cfce1090e883f7117207ac9'))}
 REVIEWED_LINK_LISTS = {('mv-centr','593','4219'):
     '0a63588d9dcfc9128bf95c1c1571c9fa319f6ca7c19eaa47b0dfc35e4067b107'}
 # Owner removed the old manager contact instruction, keeping the rest of
@@ -1124,6 +1128,29 @@ def plan_import(payload, image_urls=None):
                     issue('unsafe_or_unrecognized_html')
                     continue
                 if omitted: omit_trainer()
+                image_set=REVIEWED_REMOTE_IMAGE_SETS.get((account,course,lesson))
+                if image_set and image_set[0] == _sha256_text(original_html) and not node.get('children'):
+                    try:
+                        tags=re.findall(r'<img\b[^>]*>',source,re.I)
+                        if len(source.encode('utf-8'))>200000 or tuple(_sha256_text(t) for t in tags)!=image_set[1]:raise ValueError('unrecognized_image')
+                        class ImageTag(HTMLParser):
+                            def __init__(self):super().__init__();self.urls=[]
+                            def handle_starttag(self,tag,attrs):
+                                if tag=='img':self.urls.extend(v for k,v in attrs if k=='src')
+                            def handle_startendtag(self,tag,attrs):self.handle_starttag(tag,attrs)
+                        cleaned=source
+                        for tag in tags:
+                            parser=ImageTag();parser.feed(tag);parser.close()
+                            if len(parser.urls)!=1 or not _url(parser.urls[0]) or urlsplit(parser.urls[0]).hostname!='i.mycdn.me':raise ValueError('unrecognized_image')
+                            cleaned=cleaned.replace(tag,'',1)
+                        make_html_block(cleaned)
+                    except (ValueError,UnicodeError,RecursionError):
+                        issue('unsafe_or_unrecognized_html')
+                    else:
+                        blocks.append({'type':'htmlBlock','data':{'encodedHtml':base64.b64encode(source.encode('utf-8')).decode('ascii'),'height':1600}})
+                        if 'reviewed_remote_image_preserved' not in plan['warnings']:plan['warnings'].append('reviewed_remote_image_preserved')
+                        if 'ape_static_html_frame_unverified' not in plan['warnings']:plan['warnings'].append('ape_static_html_frame_unverified')
+                    continue
                 remote_image=REVIEWED_REMOTE_IMAGES.get((account,course,lesson))
                 if remote_image and remote_image[0] == _sha256_text(original_html) and not node.get('children'):
                     tag=remote_image[1]

@@ -10,6 +10,21 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_reviewed_remote_image_set_keeps_both_images_and_captions(self):
+        import base64,hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        tags=['<img src="https://i.mycdn.me/image?id=1" />','<img src="https://i.mycdn.me/image?id=2" />']
+        html='<p>Ответ 1 '+tags[0]+'</p><p>Ответ 2 '+tags[1]+'</p>'
+        root={'name':'page','children':[{'name':'text','fields':{'html':html}}]}
+        rule=(hashlib.sha256(html.encode()).hexdigest(),tuple(hashlib.sha256(x.encode()).hexdigest() for x in tags))
+        with patch.dict(module.REVIEWED_REMOTE_IMAGE_SETS,{('mv-centr','5','13'):rule}):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertEqual(base64.b64decode(result['blocks'][0]['data']['encodedHtml']).decode(),html)
+            root['children'][0]['fields']['html']=html.replace('id=2','id=3')
+            self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
     def test_owner_omits_empty_audio_only_for_exact_reviewed_source(self):
         import hashlib,json
         from unittest.mock import patch
