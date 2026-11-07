@@ -117,6 +117,15 @@ CONFIRMED_OMIT_HEADERS = {('mv-centr','447','2608'):
 REVIEWED_STYLED_HEADERS = {('mv-centr','548','3689'): {
     '0ae90f2112d2168c3be4a414faf4531b8e13f8bafaa98a372e50b30a4748a32b',
     '8a1dae0bdfee34354ce59a383aa93eac516a9208e44e919ff0f99599efd2b16e',
+}, ('mv-centr','553','3773'): {
+    '0ae90f2112d2168c3be4a414faf4531b8e13f8bafaa98a372e50b30a4748a32b',
+    '8a1dae0bdfee34354ce59a383aa93eac516a9208e44e919ff0f99599efd2b16e',
+}, ('mv-centr','556','3787'): {
+    '0ae90f2112d2168c3be4a414faf4531b8e13f8bafaa98a372e50b30a4748a32b',
+    '8a1dae0bdfee34354ce59a383aa93eac516a9208e44e919ff0f99599efd2b16e',
+}, ('mv-centr','557','3841'): {
+    '0ae90f2112d2168c3be4a414faf4531b8e13f8bafaa98a372e50b30a4748a32b',
+    '8a1dae0bdfee34354ce59a383aa93eac516a9208e44e919ff0f99599efd2b16e',
 }}
 CONFIRMED_OMIT_EMPTY_BUTTONS = {('mv-centr','952','9422'):
     '14eb83aff8cbadebc98291cf587459e2ccda9b646b0a0fcc6c4ccc5c85feab9f',
@@ -146,8 +155,12 @@ REVIEWED_BUTTON_LABELS = {('mv-centr','94','434'):
 REVIEWED_YOUTUBE_URLS = {('mv-centr','385','2064'):
     ('c9d40cfec263b64602ce737fe6f887372f328b0f4fbf4df302308ce4e515712a','https://youtu.be/vj6WMLWnUIs')}
 REVIEWED_YOUTUBE_IFRAMES = {('mv-centr','324','1517'):
-    '28bde2b88d985e479944a8e825fbce88090208af873a4fc669914279944ee60b'}
+    ('28bde2b88d985e479944a8e825fbce88090208af873a4fc669914279944ee60b', 5),
+    ('mv-centr','555','3831'):
+    ('c15380c2d1ebc1beeae124522d28028d97350cb836ac243d83f1c7ff8e562ac0', 1)}
 REVIEWED_MIXED_YOUTUBE = {
+    ('mv-centr','555','3947'): ('1bf0953361b807e902bfb184782a8dcf300990b20c8bf4c79b41f9052c0d4b65',1),
+    ('mv-centr','555','3948'): ('1bf0953361b807e902bfb184782a8dcf300990b20c8bf4c79b41f9052c0d4b65',1),
     ('mv-centr','591','4185'): ('256ef16b78481fd2adf9875017c90b11eccf8955188650cb0321eca87e3b4e91',3),
     ('mv-centr','593','4208'): ('256ef16b78481fd2adf9875017c90b11eccf8955188650cb0321eca87e3b4e91',3),
     ('mv-centr','607','4373'): ('256ef16b78481fd2adf9875017c90b11eccf8955188650cb0321eca87e3b4e91',3),
@@ -266,6 +279,17 @@ CONFIRMED_TEXT_ONLY_ANSWER_FORMS = {
 # Owner requested replacing these particular legacy players with links.
 # Digests bind the decision to the verified source; originals remain private.
 CONFIRMED_DRIVE_AUDIO_LINKS = {
+    ('mv-centr','553','3773'): 'ee5ee3228ffa2b366bc47592ab91dea6689aa514e0944f4516e374785723f194',
+    ('mv-centr','555','3777'): '5907c39d7a43d8d949618d7d789a699bd27c123c09cc0726437b47a3af4c2f94',
+    ('mv-centr','555','3946'): '06418e87139fc880a981d57cae41c7490a3ebccfaf57cb628b4d24a1d25b6d91',
+    ('mv-centr','556','3787'): 'ee5ee3228ffa2b366bc47592ab91dea6689aa514e0944f4516e374785723f194',
+    ('mv-centr','556','3791'): 'fb5135e91d58a280ae1ea8d9ea9768ecbc50e2a16c79cbf28d09a2224d6b0ed8',
+    ('mv-centr','556','3793'): '365b89e868707f504cfccf8f810feaef856924d2e189152a280069825ea41ef3',
+    ('mv-centr','556','3801'): '06418e87139fc880a981d57cae41c7490a3ebccfaf57cb628b4d24a1d25b6d91',
+    ('mv-centr','557','3841'): 'ee5ee3228ffa2b366bc47592ab91dea6689aa514e0944f4516e374785723f194',
+    ('mv-centr','557','3845'): 'fb5135e91d58a280ae1ea8d9ea9768ecbc50e2a16c79cbf28d09a2224d6b0ed8',
+    ('mv-centr','557','3847'): '365b89e868707f504cfccf8f810feaef856924d2e189152a280069825ea41ef3',
+    ('mv-centr','557','3855'): '06418e87139fc880a981d57cae41c7490a3ebccfaf57cb628b4d24a1d25b6d91',
     ('mv-centr', '547', '3680'): '06418e87139fc880a981d57cae41c7490a3ebccfaf57cb628b4d24a1d25b6d91',
     ('mv-centr', '548', '3689'): 'ee5ee3228ffa2b366bc47592ab91dea6689aa514e0944f4516e374785723f194',
     ('mv-centr', '548', '3693'): 'fb5135e91d58a280ae1ea8d9ea9768ecbc50e2a16c79cbf28d09a2224d6b0ed8',
@@ -1258,12 +1282,13 @@ def plan_import(payload, image_urls=None):
                             if 'reviewed_embedded_youtube_preserved' not in plan['warnings']:plan['warnings'].append('reviewed_embedded_youtube_preserved')
                             if any(surrounding) and 'ape_static_html_frame_unverified' not in plan['warnings']:plan['warnings'].append('ape_static_html_frame_unverified')
                     continue
-                if (REVIEWED_YOUTUBE_IFRAMES.get((account,course,lesson)) == _sha256_text(original_html)
-                        and (account,course,lesson) in REVIEWED_YOUTUBE_IFRAMES and not node.get('children')):
+                iframe_review = REVIEWED_YOUTUBE_IFRAMES.get((account,course,lesson))
+                if (iframe_review and iframe_review[0] == _sha256_text(original_html)
+                        and not node.get('children')):
                     pattern=(r'\s*<iframe width="560" height="315" src="(https://www\.youtube\.com/embed/[A-Za-z0-9_-]{11})" '
                              r'frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>')
                     matches=list(re.finditer(pattern,source))
-                    if len(matches)!=5 or re.sub(pattern,'',source).strip():
+                    if len(matches)!=iframe_review[1] or re.sub(pattern,'',source).strip():
                         issue('reviewed_source_changed')
                     else:
                         for match in matches:single_video('youtube',match.group(1))

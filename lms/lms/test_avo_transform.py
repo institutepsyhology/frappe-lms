@@ -153,11 +153,26 @@ class TransformTests(unittest.TestCase):
         ids=['6mqNJuP-uuw','s0crnbKYQa4','jPjMD0ag-hI','V7mbYkbdDNk','D_2I-zv4UuI']
         html='\n'.join('<iframe width="560" height="315" src="https://www.youtube.com/embed/'+i+'" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>' for i in ids)
         root={'name':'page','children':[{'name':'text','fields':{'html':html}}]}
-        with patch.dict(module.REVIEWED_YOUTUBE_IFRAMES,{('mv-centr','5','13'):hashlib.sha256(html.encode()).hexdigest()}):
+        with patch.dict(module.REVIEWED_YOUTUBE_IFRAMES,{('mv-centr','5','13'):(hashlib.sha256(html.encode()).hexdigest(),5)}):
             result=plan_import(sample(root,'ape'))
             self.assertTrue(result['ready'],result['issues'])
             self.assertEqual([b['data']['youtube'].rsplit('/',1)[-1] for b in result['blocks']],ids)
             root['children'][0]['fields']['html']=html+'<p>Не пропускать</p>'
+            self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
+    def test_reviewed_single_youtube_iframe_is_scoped_and_complete(self):
+        import hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        html='<iframe width="560" height="315" src="https://www.youtube.com/embed/6mqNJuP-uuw" frameborder="0" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>'
+        root={'name':'page','children':[{'name':'text','fields':{'html':html}}]}
+        key=('mv-centr','5','13')
+        with patch.dict(module.REVIEWED_YOUTUBE_IFRAMES,{key:(hashlib.sha256(html.encode()).hexdigest(),1)}):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertEqual(len(result['blocks']),1)
+            self.assertTrue(result['blocks'][0]['data']['youtube'].endswith('6mqNJuP-uuw'))
+            root['children'][0]['fields']['html'] += html
             self.assertFalse(plan_import(sample(root,'ape'))['ready'])
 
     def test_reviewed_formatted_button_keeps_text_and_destination(self):
