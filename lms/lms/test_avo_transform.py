@@ -10,6 +10,40 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_reviewed_material_links_preserve_all_eight_and_reject_unlinked_text(self):
+        import hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        html='<div>'+''.join('<p><a href="https://example.test/'+str(i)+'">Материал '+str(i)+'</a></p>' for i in range(8))+'</div>'
+        root={'name':'page','children':[{'name':'text','fields':{'html':html}}]}
+        with patch.dict(module.REVIEWED_LINK_LISTS,{('mv-centr','5','13'):hashlib.sha256(html.encode()).hexdigest()}):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertEqual(len(result['blocks']),8)
+            self.assertIn('example.test/7',str(result['blocks'][-1]))
+            root['children'][0]['fields']['html']=html+'<p>Дополнительный текст</p>'
+            changed=plan_import(sample(root,'ape'))
+            self.assertNotIn('reviewed_material_links_extracted',changed['warnings'])
+            if changed['ready']:
+                import base64
+                rendered=''.join(base64.b64decode(b['data']['encodedHtml']).decode() if b['type']=='htmlBlock' else b['data'].get('text','') for b in changed['blocks'])
+                self.assertIn('Дополнительный текст',rendered)
+
+    def test_reviewed_embedded_jpeg_keeps_complete_html_and_rejects_changes(self):
+        import base64,hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        raw=b'\xff\xd8\xffreviewed-image\xff\xd9'
+        image=base64.b64encode(raw).decode()
+        html='<p>Задание</p><p><img data-filename="screen.jpg" style="box-sizing: border-box; border: 0px; vertical-align: middle; max-width: 100%; width: 604px;" src="data:image/jpeg;base64,'+image+'" /></p>'
+        root={'name':'page','children':[{'name':'text','fields':{'html':html}}]}
+        with patch.dict(module.REVIEWED_EMBEDDED_JPEG,{('mv-centr','5','13'):hashlib.sha256(html.encode()).hexdigest()}),patch.object(module,'REVIEWED_JPEG_SHA256',hashlib.sha256(raw).hexdigest()):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertEqual(base64.b64decode(result['blocks'][0]['data']['encodedHtml']).decode(),html)
+            root['children'][0]['fields']['html']=html+'<script>alert(1)</script>'
+            self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
     def test_reviewed_youtube_embeds_and_adjacent_html_preserve_order(self):
         import hashlib,base64
         from unittest.mock import patch

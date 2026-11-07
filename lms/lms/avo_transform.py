@@ -138,6 +138,14 @@ REVIEWED_MIXED_YOUTUBE = {
     ('mv-centr','607','4373'): ('256ef16b78481fd2adf9875017c90b11eccf8955188650cb0321eca87e3b4e91',3),
     ('mv-centr','594','4246'): ('cd853eb2deb4ea2fa8bbc66aeaec76cce4b2c12ee289cef7bea0617b761ab1d4',1),
 }
+REVIEWED_EMBEDDED_JPEG = {
+    ('mv-centr','592','4201'): '002e5abb3ede736f4e8a0847d3aef4fabaf46ef7c301c98c99f60bbb7eae320e',
+    ('mv-centr','593','4214'): 'ff43571fe3d081a390b4eb5c74f8dbc838fbf7fd5168a3d1ff919fc005414a0b',
+    ('mv-centr','607','4379'): 'ff43571fe3d081a390b4eb5c74f8dbc838fbf7fd5168a3d1ff919fc005414a0b',
+}
+REVIEWED_JPEG_SHA256 = 'b0d4910fc474d15883656b16985b74c1f72e23dbc4156296cab283c083d276a5'
+REVIEWED_LINK_LISTS = {('mv-centr','593','4219'):
+    '0a63588d9dcfc9128bf95c1c1571c9fa319f6ca7c19eaa47b0dfc35e4067b107'}
 # Owner removed the old manager contact instruction, keeping the rest of
 # these lessons. Bind both the full source and its text to the reviewed image.
 CONFIRMED_OMIT_MANAGER = {
@@ -1075,6 +1083,55 @@ def plan_import(payload, image_urls=None):
                     issue('unsafe_or_unrecognized_html')
                     continue
                 if omitted: omit_trainer()
+                if (REVIEWED_LINK_LISTS.get((account,course,lesson)) == _sha256_text(original_html)
+                        and (account,course,lesson) in REVIEWED_LINK_LISTS and not node.get('children')):
+                    class LinkList(HTMLParser):
+                        def __init__(self):super().__init__(convert_charrefs=True);self.current=None;self.items=[];self.valid=True
+                        def handle_starttag(self,tag,attrs):
+                            if tag not in ('div','a','span','br','p'):self.valid=False
+                            if tag=='a':
+                                urls=[v for k,v in attrs if k=='href']
+                                if self.current is not None or len(urls)!=1:self.valid=False
+                                self.current=[urls[0] if len(urls)==1 else '',[]]
+                        def handle_endtag(self,tag):
+                            if tag=='a':
+                                if self.current is None:self.valid=False
+                                else:self.items.append(self.current);self.current=None
+                        def handle_data(self,data):
+                            if self.current is not None:self.current[1].append(data)
+                            elif data.strip():self.valid=False
+                        def handle_comment(self,data):self.valid=False
+                    parser=LinkList()
+                    try:
+                        parser.feed(source);parser.close()
+                        links=[(url,' '.join(''.join(parts).split())) for url,parts in parser.items]
+                        if not parser.valid or parser.current is not None or len(links)!=8 or any(not _url(url) or not label or _possible_trainer_action(label) for url,label in links):
+                            raise ValueError('unrecognized_links')
+                    except (ValueError,RecursionError):
+                        issue('unsafe_or_unrecognized_html')
+                    else:
+                        for url,label in links:paragraph('<a href="'+escape(url,quote=True)+'">'+escape(label)+'</a>')
+                        if 'reviewed_material_links_extracted' not in plan['warnings']:plan['warnings'].append('reviewed_material_links_extracted')
+                    continue
+                if (REVIEWED_EMBEDDED_JPEG.get((account,course,lesson)) == _sha256_text(original_html)
+                        and (account,course,lesson) in REVIEWED_EMBEDDED_JPEG and not node.get('children')):
+                    pattern=(r'<img data-filename="screen\.jpg" style="box-sizing: border-box; border: 0px; vertical-align: middle; max-width: 100%; width: 604px;" '
+                             r'src="data:image/jpeg;base64,([A-Za-z0-9+/=]+)"\s*/>')
+                    matches=list(re.finditer(pattern,source))
+                    try:
+                        if len(matches)!=1 or len(source.encode('utf-8'))>200000:raise ValueError('unrecognized_image')
+                        raw=base64.b64decode(matches[0].group(1),validate=True)
+                        if (hashlib.sha256(raw).hexdigest()!=REVIEWED_JPEG_SHA256
+                                or not raw.startswith(b'\xff\xd8\xff') or not raw.endswith(b'\xff\xd9')):raise ValueError('unrecognized_image')
+                        without_image=source[:matches[0].start()]+source[matches[0].end():]
+                        make_html_block(without_image)
+                    except (ValueError,UnicodeError,RecursionError):
+                        issue('unsafe_or_unrecognized_html')
+                    else:
+                        blocks.append({'type':'htmlBlock','data':{'encodedHtml':base64.b64encode(source.encode('utf-8')).decode('ascii'),'height':1600}})
+                        if 'reviewed_embedded_image_preserved' not in plan['warnings']:plan['warnings'].append('reviewed_embedded_image_preserved')
+                        if 'ape_static_html_frame_unverified' not in plan['warnings']:plan['warnings'].append('ape_static_html_frame_unverified')
+                    continue
                 mixed=REVIEWED_MIXED_YOUTUBE.get((account,course,lesson))
                 if mixed and mixed[0] == _sha256_text(original_html) and not node.get('children'):
                     pattern=(r'<iframe (?:allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen="" frameborder="0" height="315" src="(https://www\.youtube\.com/embed/[A-Za-z0-9_-]{11})" width="560"'
