@@ -10,6 +10,20 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_reviewed_remote_image_keeps_html_and_rejects_unreviewed_changes(self):
+        import base64,hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        tag='<img alt="" src="https://example.test/picture.jpg" />'
+        html='<p>Задание</p><p>'+tag+'</p>'
+        root={'name':'page','children':[{'name':'text','fields':{'html':html}}]}
+        with patch.dict(module.REVIEWED_REMOTE_IMAGES,{('mv-centr','5','13'):(hashlib.sha256(html.encode()).hexdigest(),tag)}):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertEqual(base64.b64decode(result['blocks'][0]['data']['encodedHtml']).decode(),html)
+            root['children'][0]['fields']['html']=html.replace('picture.jpg','other.jpg')
+            self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
     def test_vimeo_video_is_reported_instead_of_transferred(self):
         root={'name':'page','children':[{'name':'video','fields':{'videoProvider':'vimeo','videoSrc':'https://vimeo.com/488989277'}}]}
         result=plan_import(sample(root,'ape'))

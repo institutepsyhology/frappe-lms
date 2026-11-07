@@ -148,6 +148,9 @@ REVIEWED_EMBEDDED_JPEG = {
     ('mv-centr','607','4379'): 'ff43571fe3d081a390b4eb5c74f8dbc838fbf7fd5168a3d1ff919fc005414a0b',
 }
 REVIEWED_JPEG_SHA256 = 'b0d4910fc474d15883656b16985b74c1f72e23dbc4156296cab283c083d276a5'
+REVIEWED_REMOTE_IMAGES = {('mv-centr','258','1159'):
+    ('06971963815c423c5fabd2955e9c30379c86c33297bd24c3b6dd8fd1b6205d2c',
+     '<img alt="" style="width: 604px; height: 400px;" src="https://f1.autoweboffice.ru/mvcentr/1159.jpg" />')}
 REVIEWED_LINK_LISTS = {('mv-centr','593','4219'):
     '0a63588d9dcfc9128bf95c1c1571c9fa319f6ca7c19eaa47b0dfc35e4067b107'}
 # Owner removed the old manager contact instruction, keeping the rest of
@@ -236,6 +239,7 @@ def reviewed_selection(root, account, course, lesson):
 # Explicit user decision for these exact snapshots: keep the assignment text
 # and omit the empty answer form for now. The original remains in the snapshot.
 CONFIRMED_TEXT_ONLY_ANSWER_FORMS = {
+    ('mv-centr', '223', '892'): '0d1d361c05b50cc7c5040b06496b266b5b84038b016bd54a0a0c19731ae30ca3',
     ('mv-centr', '25', '115'): '402edcfd7b360ce9d6c9b8c628457be2f7a14ad10e482601b43bb89ab851a53f',
     ('mv-centr', '101', '464'): '9c36aafe11bc53c2562516276fbd033ec77af4b736dfccb60b60e17b264f1368',
 }
@@ -1108,6 +1112,19 @@ def plan_import(payload, image_urls=None):
                     issue('unsafe_or_unrecognized_html')
                     continue
                 if omitted: omit_trainer()
+                remote_image=REVIEWED_REMOTE_IMAGES.get((account,course,lesson))
+                if remote_image and remote_image[0] == _sha256_text(original_html) and not node.get('children'):
+                    tag=remote_image[1]
+                    try:
+                        if source.count(tag)!=1 or len(source.encode('utf-8'))>200000:raise ValueError('unrecognized_image')
+                        make_html_block(source.replace(tag,'',1))
+                    except (ValueError,UnicodeError,RecursionError):
+                        issue('unsafe_or_unrecognized_html')
+                    else:
+                        blocks.append({'type':'htmlBlock','data':{'encodedHtml':base64.b64encode(source.encode('utf-8')).decode('ascii'),'height':1600}})
+                        if 'reviewed_remote_image_preserved' not in plan['warnings']:plan['warnings'].append('reviewed_remote_image_preserved')
+                        if 'ape_static_html_frame_unverified' not in plan['warnings']:plan['warnings'].append('ape_static_html_frame_unverified')
+                    continue
                 if (REVIEWED_LINK_LISTS.get((account,course,lesson)) == _sha256_text(original_html)
                         and (account,course,lesson) in REVIEWED_LINK_LISTS and not node.get('children')):
                     class LinkList(HTMLParser):

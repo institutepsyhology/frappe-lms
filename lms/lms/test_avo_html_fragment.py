@@ -91,6 +91,11 @@ class StaticFragmentTests(unittest.TestCase):
                     html+html):
             with self.assertRaises(ValueError):strip_empty_answer_form(bad)
 
+    def test_single_empty_answer_form_is_removed_without_touching_text(self):
+        html='<p>Текст задания</p><form action="/answer" method="post" enctype="multipart/form-data"><div class="answer-form">&nbsp;</div></form><p>Материалы</p>'
+        self.assertEqual(strip_empty_answer_form(html),'<p>Текст задания</p><p>Материалы</p>')
+        with self.assertRaises(ValueError):strip_empty_answer_form(html.replace('&nbsp;','Ответ ученика'))
+
     def test_preserves_reviewed_formatting_and_extension_attributes(self):
         html = ('<div class="lesson-mission-wrapper" style="margin: 0px 0px 10px; line-height: 1.1">'
                 '<span class="redactor-inline-converted" style="background-color: transparent; font-weight: 700">'

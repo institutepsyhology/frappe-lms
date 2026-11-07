@@ -452,7 +452,12 @@ def import_course(client,journal,course,expected,apply):
     if existing == expected:
         journal.event(course,None,'existing_structure_unverified'); return 'already_present'
     checks=[]; image_sets={}; needs_review=False
-    for p in payloads:
+    # Existing draft lessons are intentionally left as they were. Their
+    # identity, account and exact prefix order were checked by outline();
+    # reinterpreting their historic source could conflict with owner edits.
+    if existing:
+        journal.event(course,None,'existing_prefix_preserved',['existing_content_not_reverified'])
+    for p in payloads[len(existing):]:
         # The live schema was widened to 512. The server also checks the
         # sanitized title against its actual site metadata before writing.
         too_long=[]
@@ -472,9 +477,7 @@ def import_course(client,journal,course,expected,apply):
         journal.event(course,p['lesson_id'],'lesson_preflight',result['warnings'])
         checks.append(result)
     if needs_review: raise Review('course_needs_review')
-    if any(r.get('action') != 'already_imported' for r in checks[:len(existing)]):
-        raise Review('existing_lesson_conflict')
-    if any(r.get('action') == 'already_imported' for r in checks[len(existing):]):
+    if any(r.get('action') == 'already_imported' for r in checks):
         raise Review('course_order_conflict')
     if not apply:
         journal.event(course,None,'course_ready');return 'ready'

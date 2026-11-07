@@ -203,6 +203,13 @@ class BatchTests(unittest.TestCase):
         with self.assertRaisesRegex(mod.Review,'course_order_conflict'):self.run_course(client,Journal())
         self.assertEqual(client.writes,[])
 
+    def test_existing_prefix_is_preserved_without_reinterpreting_or_rewriting_it(self):
+        client=Client(unsupported=1);client.existing=[1];journal=Journal()
+        self.run_course(client,journal)
+        self.assertEqual(client.writes,[2])
+        self.assertEqual(client.existing,[1,2])
+        self.assertIn((24,None,'existing_prefix_preserved',['existing_content_not_reverified']),journal.events)
+
     def test_uncertain_write_stops_immediately(self):
         client=Client(write_fails=True)
         journal=Journal()

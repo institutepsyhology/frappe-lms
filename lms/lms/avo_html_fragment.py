@@ -185,7 +185,7 @@ def strip_empty_answer_form(source):
     if not isinstance(source,str) or not source:raise ValueError('invalid_html')
     starts=[0]+[i+1 for i,c in enumerate(source) if c=='\n']
     class Form(HTMLParser):
-        def __init__(self):super().__init__(convert_charrefs=True);self.stack=[];self.start=None;self.end=None;self.classes=set()
+        def __init__(self):super().__init__(convert_charrefs=True);self.stack=[];self.start=None;self.end=None;self.classes=set();self.div_count=0
         def source_index(self):
             line,column=self.getpos()
             return starts[line-1]+column
@@ -199,6 +199,7 @@ def strip_empty_answer_form(source):
                 self.start=self.source_index();self.stack.append(tag);return
             if self.stack:
                 if tag!='div' or len(dict(attrs))!=len(attrs) or set(dict(attrs))-{'class','style'}:raise ValueError('unsupported_form')
+                self.div_count+=1
                 values=set((dict(attrs).get('class') or '').split())
                 if not values.issubset({'answer-form','answer-form-content','answer-textarea-container'}):raise ValueError('unsupported_form')
                 self.classes.update(values);self.stack.append(tag)
@@ -220,8 +221,9 @@ def strip_empty_answer_form(source):
         def handle_pi(self,data):
             if self.stack:raise ValueError('unsupported_form')
     parser=Form();parser.feed(source);parser.close()
-    if (parser.stack or parser.start is None or parser.end is None or
-            parser.classes!={'answer-form','answer-form-content','answer-textarea-container'}):
+    known_classes=(parser.classes=={'answer-form','answer-form-content','answer-textarea-container'}
+                   or (parser.classes=={'answer-form'} and parser.div_count==1))
+    if parser.stack or parser.start is None or parser.end is None or not known_classes:
         raise ValueError('unsupported_form')
     return source[:parser.start]+source[parser.end:]
 
