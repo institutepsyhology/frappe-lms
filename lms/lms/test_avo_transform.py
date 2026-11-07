@@ -259,6 +259,37 @@ class TransformTests(unittest.TestCase):
             root['children'][0]['fields']['html']=html+'<script>bad</script>'
             self.assertFalse(plan_import(sample(root,'ape'))['ready'])
 
+    def test_owner_omits_only_confirmed_buttons_from_exact_snapshot(self):
+        import hashlib,json
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        root={'name':'page','children':[
+            {'name':'button','fields':{'html':'Домашнее задание','linkType':'url','url':''}},
+            {'name':'button','fields':{'html':'Оставить заявку менеджеру','linkType':'url','url':'{goods_ordering_12}'}},
+            {'name':'text','fields':{'html':'<p>Материал</p>'}}]}
+        digest=hashlib.sha256(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+        key=('mv-centr','5','13')
+        with patch.dict(module.CONFIRMED_OMIT_NAMED_EMPTY_BUTTONS,{key:(digest,'Домашнее задание')}), patch.dict(module.CONFIRMED_OMIT_MANAGER_APPLICATIONS,{key:digest}):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertIn('Материал',str(result['blocks']))
+            root['children'][1]['fields']['url']='{goods_ordering_13}'
+            self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
+    def test_reviewed_two_audio_links_uses_selected_first_only(self):
+        import hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        url='https://disk.yandex.by/d/abcdef123 isk.yandex.ru/d/other123'
+        root={'name':'page','children':[{'name':'button','fields':{'html':'АУДИОЗАПИСЬ 2','linkType':'url','url':url}}]}
+        with patch.dict(module.REVIEWED_AUDIO_TWO_LINKS,{('mv-centr','5','13'):hashlib.sha256(url.encode()).hexdigest()}):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertIn('disk.yandex.by/d/abcdef123',str(result['blocks']))
+            self.assertNotIn('other123',str(result['blocks']))
+            root['children'][0]['fields']['url']=url+'x'
+            self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
     def test_reviewed_formatted_button_keeps_text_and_destination(self):
         import hashlib
         from unittest.mock import patch

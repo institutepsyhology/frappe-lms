@@ -143,6 +143,24 @@ CONFIRMED_OMIT_EMPTY_BUTTONS = {('mv-centr','952','9422'):
     ('mv-centr','981','9837'): 'c756eef9c43d449b0b4e93a8d5b43f5fda51bb649368fd49a22564520eb463cf',
     ('mv-centr','976','9761'): '02d5ec2c4d47eaa7b06852f473947cc94bb06217bd4e771455c16aeba63f5e54',
     ('mv-centr','996','10037'): '70af0a33be4251af7c5e4281132009a54ea7adee9086c81cc2afc4c1088d6fad'}
+CONFIRMED_OMIT_NAMED_EMPTY_BUTTONS = {
+    ('mv-centr','879','8271'): ('fe2e6822579b94173da5e74e6720541c2cb2a846f9bfbe38aa23fd5695dbcec2','ДЗ ПО 15 АРКАНУ - РАСКЛАД'),
+    ('mv-centr','918','9024'): ('eee44ee81aabad6b769d363df2451c5b719010eecc0e4cf67d790c686272901d','АУДИОЗАПИСЬ'),
+}
+CONFIRMED_OMIT_MANAGER_APPLICATIONS = {
+    ('mv-centr','969','9624'): 'a334b62ddbcfc6bacbd12292728795e55bb5845f0c081242b0fb3866039da89a',
+    ('mv-centr','969','9625'): '7e543e7af46bddd17eb751cc483e6428238e2b7d9f909a537a258aaf09abebd4',
+    ('mv-centr','969','9626'): 'ac8140a5e6d272f44093b77879f2c7228273e17fe9c158ac22565ee998595e7c',
+    ('mv-centr','973','9650'): '136946b60948c7bfe646854468a25d832daadea9320b6e69e4264b3eb2891923',
+    ('mv-centr','973','9651'): '4d3c1bc0a88e055660bd7849717d6fc6c3374dee60b23af54f3ef6f29aae67fa',
+    ('mv-centr','973','9653'): '1db4469c9b617f9decb05a91232d66236097902021b65540ef2b73db57909f2c',
+    ('mv-centr','974','9656'): '664ba76d4ac5c1da5ecfc9b5c4163278ffc59d3449f92e32efaa5fe4fa965060',
+    ('mv-centr','974','9657'): '486291f4bf999facfd22fab541cc2d95798d4b8e683fb9a66d7d4bd9514e828a',
+    ('mv-centr','974','9658'): 'e577f30b9d0012d41aca239e7d5cd2da53663114ffc56e7737b0874b639df972',
+}
+REVIEWED_AUDIO_TWO_LINKS = {
+    ('mv-centr','938','9267'): '7b74bb1d758629640fd18955ad0b053f44a0baff9d854b01bee7c64033a3ad5d',
+}
 # Manually checked Google file links with one extra 'h' in their scheme.
 # The correction is permitted only for the exact reviewed source HTML.
 REVIEWED_LINK_TYPOS = {
@@ -992,9 +1010,13 @@ def plan_import(payload, image_urls=None):
         vk_root_hash = _sha256_text(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False)) if vk_rule else None
         if vk_rule and vk_root_hash != vk_rule[0]: issue('reviewed_source_changed')
         omit_rule = CONFIRMED_OMIT_EMPTY_BUTTONS.get((account,course,lesson))
-        root_digest = _sha256_text(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False)) if omit_rule else None
+        named_omit_rule = CONFIRMED_OMIT_NAMED_EMPTY_BUTTONS.get((account,course,lesson))
+        manager_omit_rule = CONFIRMED_OMIT_MANAGER_APPLICATIONS.get((account,course,lesson))
+        root_digest = _sha256_text(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False)) if (omit_rule or named_omit_rule or manager_omit_rule) else None
         if omit_rule and root_digest != omit_rule:
             issue('reviewed_source_changed')
+        if named_omit_rule and root_digest != named_omit_rule[0]: issue('reviewed_source_changed')
+        if manager_omit_rule and root_digest != manager_omit_rule: issue('reviewed_source_changed')
         if (account,course,lesson) in REVIEWED_SELECTIONS and selection is None:
             issue('reviewed_source_changed')
         if selection and selection[0] in ('placeholder','welcome','removed'):
@@ -1517,6 +1539,15 @@ def plan_import(payload, image_urls=None):
                 if _possible_trainer_action(fields.get('html')):
                     issue('ambiguous_trainer_action')
                     continue
+                if (named_omit_rule and root_digest == named_omit_rule[0] and not node.get('children')
+                        and fields.get('html') == named_omit_rule[1] and fields.get('url') == ''):
+                    if 'user_omitted_empty_button' not in plan['warnings']:plan['warnings'].append('user_omitted_empty_button')
+                    continue
+                if (manager_omit_rule and root_digest == manager_omit_rule and not node.get('children')
+                        and fields.get('html') == 'Оставить заявку менеджеру'
+                        and isinstance(fields.get('url'),str) and re.fullmatch(r'\{goods_ordering_[0-9]+\}',fields['url'])):
+                    if 'user_omitted_manager_application' not in plan['warnings']:plan['warnings'].append('user_omitted_manager_application')
+                    continue
                 if (omit_rule and root_digest == omit_rule and not node.get('children')
                         and fields.get('html') in ('АУДИОЗАПИСЬ 2','АУДИОЗАПИСЬ') and fields.get('url') == ''):
                     if 'user_omitted_empty_button' not in plan['warnings']:
@@ -1527,6 +1558,14 @@ def plan_import(payload, image_urls=None):
                 if isinstance(button_url,str): button_url = button_url.strip()
                 label = fields.get('html')
                 if isinstance(label,str): label = re.sub(r'<br\s*/?>', ' ', label, flags=re.I).strip()
+                audio_two_hash = REVIEWED_AUDIO_TWO_LINKS.get((account,course,lesson))
+                if audio_two_hash and _sha256_text(fields.get('url')) == audio_two_hash and label == 'АУДИОЗАПИСЬ 2':
+                    match = re.fullmatch(r'(https://disk\.yandex\.by/d/[A-Za-z0-9_-]+)\s+isk\.yandex\.ru/d/[A-Za-z0-9_-]+', button_url)
+                    if not match:
+                        issue('reviewed_source_changed')
+                        continue
+                    button_url = match.group(1)
+                    if 'reviewed_button_url_corrected' not in plan['warnings']:plan['warnings'].append('reviewed_button_url_corrected')
                 note_hash = REVIEWED_AUDIO_URL_WITH_NOTE.get((account,course,lesson))
                 if note_hash and _sha256_text(fields.get('url')) == note_hash and label == 'АУДИОЗАПИСЬ':
                     match = re.fullmatch(r'ко 2 видео\s+(https://drive\.google\.com/file/d/[A-Za-z0-9_-]+/view\?usp=sharing)', button_url)

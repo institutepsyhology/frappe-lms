@@ -38,8 +38,8 @@ REPORT = DATA / 'ОТЧЁТ-перенос-mv-centr.md'
 PROBLEMS_REPORT = DATA / 'ПРОБЛЕМНЫЕ-УРОКИ-mv-centr.md'
 # User-confirmed disposable test lessons. These are lesson IDs, not course IDs.
 EXCLUDED_LESSONS = {17, 19, 23, 5695, 5704, 5697, 5705, 6345, 6398, 9140}
-# Owner excluded the obsolete course 50 and test course 849 (its only lesson 9140).
-EXCLUDED_COURSES = {50, 849}
+# Owner excluded the obsolete course 50 and test courses 837 and 849.
+EXCLUDED_COURSES = {50, 837, 849}
 # Only the verified image for this source snapshot; unknown images stop.
 REVIEWED_IMAGES = {(258,1150,'92ab32ec-5836-4443-998d-16b2ec13a2c0'):
     ('44c98968db4973a119db3bbc00ca36392c1466e1b631596e1fff0ac4a2474ea2',
