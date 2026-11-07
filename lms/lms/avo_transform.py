@@ -129,7 +129,11 @@ REVIEWED_LINK_TYPOS = {
     ('mv-centr','379','2027'): '4267a3e9b1acabaa4018038d1e7ff522e45a9359ac3b54625fa89120c93bf3e3',
 }
 REVIEWED_BUTTON_LABELS = {('mv-centr','94','434'):
-    '6445561bd99aaba2c622d99d399ce3388a216dd2adf0d897a3d865d2f67a9874'}
+    '6445561bd99aaba2c622d99d399ce3388a216dd2adf0d897a3d865d2f67a9874',
+    ('mv-centr','411','2247'): '1d0f79878a6a3070ddc5110f8f89039510fbc18091ae9b3787a1d919583c16b3',
+    ('mv-centr','433','2418'): '66efec3b4be5286924aaafc43c6c02fdcd4a106f6524cf8a18aa5cc05f6f91af'}
+REVIEWED_YOUTUBE_URLS = {('mv-centr','385','2064'):
+    ('c9d40cfec263b64602ce737fe6f887372f328b0f4fbf4df302308ce4e515712a','https://youtu.be/vj6WMLWnUIs')}
 REVIEWED_YOUTUBE_IFRAMES = {('mv-centr','324','1517'):
     '28bde2b88d985e479944a8e825fbce88090208af873a4fc669914279944ee60b'}
 REVIEWED_MIXED_YOUTUBE = {
@@ -987,6 +991,22 @@ def plan_import(payload, image_urls=None):
                                 {'provider': other.get('videoProvider'), 'url': other.get('videoSrc')}])
                 elif id(node) in legacy_skip:
                     pass
+                elif (fields.get('videoProvider') == 'vimeo' and fields.get('videoProvider2') in (None,'')
+                      and fields.get('videoSrc2') in (None,'') and isinstance(fields.get('videoSrc'),str)):
+                    value=fields['videoSrc']
+                    match=re.fullmatch(r'https://(?:www\.)?vimeo\.com/([1-9][0-9]{0,15})/?',value)
+                    if not match:
+                        issue('video_url_invalid')
+                    else:
+                        blocks.append({'type':'embed','data':{'service':'vimeo','source':value,
+                            'embed':'https://player.vimeo.com/video/'+match.group(1),'width':580,'height':320,'caption':''}})
+                        if 'vimeo_embed_unverified' not in plan['warnings']:plan['warnings'].append('vimeo_embed_unverified')
+                elif (fields.get('videoProvider') == 'youtube' and fields.get('videoProvider2') == 'rutube'
+                      and (account,course,lesson) in REVIEWED_YOUTUBE_URLS
+                      and _sha256_text(fields.get('videoSrc')) == REVIEWED_YOUTUBE_URLS[(account,course,lesson)][0]):
+                    video_pair([{'provider':'youtube','url':REVIEWED_YOUTUBE_URLS[(account,course,lesson)][1]},
+                                {'provider':'rutube','url':fields.get('videoSrc2')}])
+                    if 'reviewed_video_url_corrected' not in plan['warnings']:plan['warnings'].append('reviewed_video_url_corrected')
                 elif (vk_rule and vk_root_hash == vk_rule[0]
                       and (account,course,lesson) in (('mv-centr','173','698'),('mv-centr','177','710'))
                       and fields.get('videoProvider') == 'youtube' and fields.get('videoProvider2') == 'embedded'

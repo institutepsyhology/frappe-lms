@@ -10,6 +10,30 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_vimeo_video_is_preserved_in_native_embed_and_rejects_other_hosts(self):
+        root={'name':'page','children':[{'name':'video','fields':{'videoProvider':'vimeo','videoSrc':'https://vimeo.com/488989277'}}]}
+        result=plan_import(sample(root,'ape'))
+        self.assertTrue(result['ready'],result['issues'])
+        self.assertEqual(result['blocks'][0]['data']['service'],'vimeo')
+        self.assertEqual(result['blocks'][0]['data']['embed'],'https://player.vimeo.com/video/488989277')
+        for url in ('https://vimeo.com.evil.test/123','https://vimeo.com/123?x=1','javascript:alert(1)'):
+            root['children'][0]['fields']['videoSrc']=url
+            self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
+    def test_reviewed_youtube_typo_keeps_rutube_pair(self):
+        import hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        broken='https:/youtu.be/6mqNJuP-uuw';good='https://youtu.be/6mqNJuP-uuw'
+        root={'name':'page','children':[{'name':'video','fields':{'videoProvider':'youtube','videoSrc':broken,'videoProvider2':'rutube','videoSrc2':'https://rutube.ru/video/0123456789abcdef0123456789abcdef/'}}]}
+        with patch.dict(module.REVIEWED_YOUTUBE_URLS,{('mv-centr','5','13'):(hashlib.sha256(broken.encode()).hexdigest(),good)}):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertEqual(result['blocks'][0]['data']['youtube'],good)
+            self.assertTrue(result['blocks'][0]['data']['rutube'])
+            root['children'][0]['fields']['videoSrc']=broken+'x'
+            self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
     def test_reviewed_material_links_preserve_all_eight_and_reject_unlinked_text(self):
         import hashlib
         from unittest.mock import patch
