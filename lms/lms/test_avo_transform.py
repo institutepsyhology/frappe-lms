@@ -10,6 +10,55 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_owner_excludes_trainer_links_across_block_types(self):
+        root={'name':'page','children':[
+            {'name':'text','fields':{'html':'<p>Материал <a href="https://example.test/file">Файл</a></p><p><a href="https://example.test/question"><b>Вопрос тренеру</b></a></p>'}},
+            {'name':'button','fields':{'html':'ЗАДАТЬ ВОПРОС ТРЕНЕРУ','linkType':'url','url':'https://example.test/question'}},
+            {'name':'header','fields':{'html':'<h2><a href="https://example.test/question">Задать вопрос тренеру</a></h2>','format':'h2'}},
+            {'name':'button','fields':{'html':'Презентация','linkType':'url','url':'https://example.test/slides'}},
+        ]}
+        result=plan_import(sample(root,'ape'))
+        self.assertTrue(result['ready'],result['issues'])
+        self.assertIn('owner_omitted_trainer_link',result['warnings'])
+        output=str(result['blocks'])
+        self.assertNotIn('example.test/question',output)
+        self.assertIn('example.test/file',output)
+        self.assertIn('example.test/slides',output)
+
+    def test_trainer_policy_preserves_unrelated_text_and_preview_links(self):
+        p=sample([{'type':'text','order':1,'text':'Ваш тренер подготовил материал'},
+                  {'type':'links','order':2,'items':[{'label':'Вопрос тренеру','url':'https://example.test/question'},
+                                                      {'label':'Аудио','url':'https://example.test/audio'}]}])
+        result=plan_import(p)
+        self.assertTrue(result['ready'],result['issues'])
+        self.assertIn('Ваш тренер подготовил материал',str(result['blocks']))
+        self.assertNotIn('example.test/question',str(result['blocks']))
+        self.assertIn('example.test/audio',str(result['blocks']))
+
+    def test_trainer_link_removal_preserves_adjacent_content_and_rejects_broken_anchor(self):
+        from lms.lms.avo_transform import _strip_trainer_links
+        value='<p>До <a href="https://example.test/q"><strong>Задать&nbsp;вопрос тренеру</strong></a> после <a href="https://example.test/material">Материал</a></p>'
+        cleaned, omitted=_strip_trainer_links(value)
+        self.assertTrue(omitted)
+        self.assertEqual(cleaned,'<p>До  после <a href="https://example.test/material">Материал</a></p>')
+        with self.assertRaises(ValueError):
+            _strip_trainer_links('<p><a href="https://example.test/q">Вопрос тренеру')
+
+    def test_reviewed_html_removes_trainer_link_without_mutating_source(self):
+        import base64,copy,hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        text='<div><p>Задание</p><p><a href="https://example.test/trainer">Вопрос тренеру</a></p></div>'
+        root={'name':'page','children':[{'name':'text','fields':{'html':text},'children':[]}]}
+        p=sample(root,'ape');before=copy.deepcopy(p)
+        with patch.dict(module.CONFIRMED_HTML_FIELDS,{('mv-centr','5','13'):hashlib.sha256(text.encode()).hexdigest()}):
+            result=plan_import(p)
+        self.assertTrue(result['ready'],result['issues'])
+        html=base64.b64decode(result['blocks'][0]['data']['encodedHtml']).decode()
+        self.assertIn('Задание',html)
+        self.assertNotIn('example.test/trainer',html)
+        self.assertEqual(p,before)
+
     def test_heading_preserves_formatted_link_and_long_text(self):
         text='А'*450+' <span style="color: red"><a href="https://example.test" target="_blank"><b>ссылка</b></a></span>'
         root={'name':'page','children':[{'name':'header','fields':{'html':'<h5>'+text+'</h5>','format':'h5'}}]}

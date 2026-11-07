@@ -20,6 +20,63 @@ PRIVATE_FILE = re.compile(r"^/private/files/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,180}$")
 ALLOWED_TAGS = {"p", "br", "strong", "b", "em", "i", "u", "s", "a", "ul", "ol", "li",
                 "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "code"}
 
+
+def _trainer_label(markup):
+    """Match only the owner's excluded trainer-question action, not other text."""
+    if not isinstance(markup, str):
+        return False
+    class Text(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.parts = []
+        def handle_data(self, data):
+            self.parts.append(data)
+    parser = Text()
+    parser.feed(markup)
+    label = ' '.join(' '.join(parser.parts).split())
+    return bool(re.fullmatch(r'(?:задать\s+)?вопрос(?:ы)?\s+тренеру[.!?]*', label, re.I))
+
+
+def _strip_trainer_links(source):
+    """Remove only complete trainer-question anchors, preserving surrounding HTML."""
+    if not isinstance(source, str):
+        return source, False
+    starts = [0] + [i + 1 for i, ch in enumerate(source) if ch == '\n']
+    class Links(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.active = None
+            self.ranges = []
+        def position(self):
+            line, column = self.getpos()
+            return starts[line - 1] + column
+        def handle_starttag(self, tag, attrs):
+            if tag == 'a':
+                if self.active is not None:
+                    raise ValueError('nested_anchor')
+                self.active = [self.position(), []]
+        def handle_data(self, data):
+            if self.active is not None:
+                self.active[1].append(data)
+        def handle_endtag(self, tag):
+            if tag == 'a' and self.active is not None:
+                end = self.position()
+                match = re.match(r'</\s*a\s*>', source[end:], re.I)
+                if not match:
+                    raise ValueError('invalid_anchor')
+                if _trainer_label(' '.join(self.active[1])):
+                    self.ranges.append((self.active[0], end + len(match.group(0))))
+                self.active = None
+    parser = Links()
+    parser.feed(source)
+    parser.close()
+    if parser.active is not None:
+        raise ValueError('unclosed_anchor')
+    result = source
+    for start, end in reversed(parser.ranges):
+        result = result[:start] + result[end:]
+    return result, bool(parser.ranges)
+
 # Explicit owner decision: use only the second of two concatenated YouTube
 # links in this exact source field. A changed source digest requires review.
 # The original complete field remains in the private source snapshot.
@@ -541,6 +598,10 @@ def plan_import(payload, image_urls=None):
         if code not in issues:
             issues.append(code)
 
+    def omit_trainer():
+        if 'owner_omitted_trainer_link' not in plan['warnings']:
+            plan['warnings'].append('owner_omitted_trainer_link')
+
     def paragraph(text):
         if not _safe_html(text):
             issue("unsafe_or_unrecognized_html")
@@ -607,9 +668,17 @@ def plan_import(payload, image_urls=None):
             video_pair(item.get("players"))
         elif kind == "text":
             if "html" in item:
-                paragraph(item["html"])
+                try:
+                    value, omitted = _strip_trainer_links(item["html"])
+                except (ValueError, RecursionError):
+                    issue('unsafe_or_unrecognized_html')
+                    return
+                if omitted: omit_trainer()
+                if _trainer_label(value): omit_trainer()
+                else: paragraph(value)
             elif isinstance(item.get("text"), str):
-                paragraph(escape(item["text"]).replace("\n", "<br>"))
+                if _trainer_label(item['text']): omit_trainer()
+                else: paragraph(escape(item["text"]).replace("\n", "<br>"))
             else:
                 issue("invalid_text")
         elif kind in ("links", "audio"):
@@ -618,6 +687,9 @@ def plan_import(payload, image_urls=None):
                 issue("invalid_links")
                 return
             for link in values:
+                if isinstance(link, dict) and _trainer_label(link.get('label')):
+                    omit_trainer()
+                    continue
                 if not isinstance(link, dict) or not _url(link.get("url")) or not isinstance(link.get("label"), str):
                     issue("invalid_link")
                     continue
@@ -784,6 +856,9 @@ def plan_import(payload, image_urls=None):
                 allowed = {'anchor', 'html', 'format'}
                 markup = fields.get('html')
                 source_format = fields.get('format')
+                if not node.get('children') and _trainer_label(markup):
+                    omit_trainer()
+                    continue
                 if (CONFIRMED_OMIT_HEADERS.get((account,course,lesson)) == _sha256_text(markup)
                         and (account,course,lesson) in CONFIRMED_OMIT_HEADERS
                         and not node.get('children') and not fields.get('anchor')
@@ -804,10 +879,20 @@ def plan_import(payload, image_urls=None):
             elif kind == "text":
                 if fields.get("anchor") or any(v not in (None, "", False, [], {}) for k, v in fields.items() if k not in ("html", "anchor")):
                     issue("unsupported_text_settings")
+                original_html = fields.get('html')
+                try:
+                    source, omitted = _strip_trainer_links(original_html)
+                except (ValueError, RecursionError):
+                    issue('unsafe_or_unrecognized_html')
+                    continue
+                if omitted: omit_trainer()
+                if _trainer_label(source) and not node.get('children'):
+                    omit_trainer()
+                    continue
                 if (CONFIRMED_HTML_FIELDS.get((account,course,lesson)) == _sha256_text(fields.get('html'))
                         and (account,course,lesson) in CONFIRMED_HTML_FIELDS and node.get('children',[])==[]):
                     try:
-                        block=make_html_block(fields.get('html'))
+                        block=make_html_block(source)
                     except (ValueError,UnicodeError,RecursionError):
                         issue('unsafe_or_unrecognized_html')
                     else:
@@ -816,18 +901,17 @@ def plan_import(payload, image_urls=None):
                             if 'ape_static_html_frame_unverified' not in plan['warnings']:plan['warnings'].append('ape_static_html_frame_unverified')
                     continue
                 try:
-                    normalized, changed = _normalize_ape_text(fields.get('html'))
+                    normalized, changed = _normalize_ape_text(source)
                     if changed and 'ape_text_formatting_not_reconstructed' not in plan['warnings']:
                         plan['warnings'].append('ape_text_formatting_not_reconstructed')
                     if id(node) not in legacy_skip:
                         paragraph(normalized)
                 except (ValueError, RecursionError):
                     try:
-                        block = make_html_block(fields.get('html'))
+                        block = make_html_block(source)
                     except (ValueError, UnicodeError, RecursionError):
-                        source = fields.get('html')
                         audio_hash = CONFIRMED_DRIVE_AUDIO_LINKS.get((account,course,lesson))
-                        if audio_hash is not None and audio_hash == _sha256_text(source):
+                        if audio_hash is not None and audio_hash == _sha256_text(original_html):
                             try:
                                 audio_blocks=split_reviewed_audio_links(source)
                             except (ValueError, UnicodeError, RecursionError):
@@ -839,7 +923,7 @@ def plan_import(payload, image_urls=None):
                                         if warning not in plan['warnings']:plan['warnings'].append(warning)
                         else:
                             expected_hash = CONFIRMED_TEXT_ONLY_ANSWER_FORMS.get((account,course,lesson))
-                            confirmed = expected_hash is not None and expected_hash == _sha256_text(source)
+                            confirmed = expected_hash is not None and expected_hash == _sha256_text(original_html)
                             if confirmed:
                                 try:
                                     block = make_html_block(strip_empty_answer_form(source))
@@ -858,6 +942,9 @@ def plan_import(payload, image_urls=None):
                             if 'ape_static_html_frame_unverified' not in plan['warnings']:
                                 plan['warnings'].append('ape_static_html_frame_unverified')
             elif kind == 'button':
+                if not node.get('children') and _trainer_label(fields.get('html')):
+                    omit_trainer()
+                    continue
                 if (omit_rule and root_digest == omit_rule and not node.get('children')
                         and fields.get('html') == 'АУДИОЗАПИСЬ 2' and fields.get('url') == ''):
                     if 'user_omitted_empty_button' not in plan['warnings']:
