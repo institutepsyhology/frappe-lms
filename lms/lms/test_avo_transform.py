@@ -204,6 +204,19 @@ class TransformTests(unittest.TestCase):
         root['children'][1]['children']=None
         self.assertFalse(plan_import(sample(root,'ape'))['ready'])
 
+    def test_reviewed_video_typo_corrected_only_for_exact_source(self):
+        import hashlib
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        url='hhttps://youtu.be/6mqNJuP-uuw'
+        root={'name':'page','children':[{'name':'video','fields':{'videoProvider':'youtube','videoSrc':url}}]}
+        with patch.dict(module.REVIEWED_VIDEO_URL_CLEANUP,{('mv-centr','5','13'):(hashlib.sha256(url.encode()).hexdigest(),'extra_h')}):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertTrue(result['blocks'][0]['data']['youtube'].endswith('6mqNJuP-uuw'))
+            root['children'][0]['fields']['videoSrc']=url+'x'
+            self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
     def test_reviewed_formatted_button_keeps_text_and_destination(self):
         import hashlib
         from unittest.mock import patch

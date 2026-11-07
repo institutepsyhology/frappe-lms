@@ -157,6 +157,12 @@ REVIEWED_BUTTON_LABELS = {('mv-centr','94','434'):
     ('mv-centr','439','2503'): '1c49311c3404a417e1c3f81c6842f68f8bcc84eb6c0032f9864d8959f2074635'}
 REVIEWED_YOUTUBE_URLS = {('mv-centr','385','2064'):
     ('c9d40cfec263b64602ce737fe6f887372f328b0f4fbf4df302308ce4e515712a','https://youtu.be/vj6WMLWnUIs')}
+REVIEWED_VIDEO_URL_CLEANUP = {
+    ('mv-centr','622','4586'): ('53696f0375d0e20bb883975f67ac296a185c17b28ed85b4bcbd8818dec44781c','extra_h'),
+    ('mv-centr','696','5394'): ('53696f0375d0e20bb883975f67ac296a185c17b28ed85b4bcbd8818dec44781c','extra_h'),
+    ('mv-centr','938','9274'): ('6c6dc9af7755ee40056a0bcbad246a962040ec62d1d4c9670147de91aab18d23','extra_h'),
+    ('mv-centr','941','9293'): ('0554a3f6e3689a46b119a17e471d794d89f95c24be4ff5c9b714df74e1c8f883','space'),
+}
 REVIEWED_YOUTUBE_IFRAMES = {('mv-centr','324','1517'):
     ('28bde2b88d985e479944a8e825fbce88090208af873a4fc669914279944ee60b', 5),
     ('mv-centr','555','3831'):
@@ -1005,6 +1011,19 @@ def plan_import(payload, image_urls=None):
             if not isinstance(fields, dict):
                 issue("invalid_fields")
                 continue
+            video_cleanup = REVIEWED_VIDEO_URL_CLEANUP.get((account,course,lesson)) if kind == 'video' else None
+            if video_cleanup and fields.get('videoProvider') == 'youtube' and _sha256_text(fields.get('videoSrc')) == video_cleanup[0]:
+                value = fields['videoSrc']
+                if video_cleanup[1] == 'extra_h' and value.startswith('hhttps://'):
+                    value = value[1:]
+                elif video_cleanup[1] == 'space' and value.startswith(' https://'):
+                    value = value.strip()
+                else:
+                    issue('reviewed_source_changed')
+                    continue
+                fields = dict(fields, videoSrc=value)
+                if 'reviewed_video_url_corrected' not in plan['warnings']:
+                    plan['warnings'].append('reviewed_video_url_corrected')
             # Empty editor blocks contain no content; leave nonempty or
             # unfamiliar fields for review and keep the source snapshot.
             if (kind == 'code' and set(fields).issubset({'anchor','html'})
