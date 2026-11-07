@@ -165,7 +165,7 @@
   },
   {
    "fieldname": "content",
-   "fieldtype": "Text",
+   "fieldtype": "Long Text",
    "ignore_xss_filter": 1,
    "label": "Content"
   },
