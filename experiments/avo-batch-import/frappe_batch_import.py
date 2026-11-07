@@ -177,6 +177,7 @@ class Journal:
                 latest[cid] = (ident,status,json.loads(codes),pending.get(cid))
                 pending.pop(cid,None)
         descriptions = {'source_not_ready':'исходный снимок не готов',
+            'vimeo_video_unavailable':'видео Vimeo не работает — нужна замена',
             'manifest_missing_or_changed':'нет подтверждённого состава курса',
             'unsupported_spacer':'разделитель (будет игнорироваться после обновления)',
             'spacer_renderer_not_installed':'разделитель (будет игнорироваться после обновления)',

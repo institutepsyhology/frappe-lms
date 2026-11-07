@@ -712,6 +712,16 @@ def plan_import(payload, image_urls=None):
         if code not in issues:
             issues.append(code)
 
+    def contains_vimeo(value):
+        pending=[value]
+        while pending:
+            item=pending.pop()
+            if isinstance(item,dict):pending.extend(item.values())
+            elif isinstance(item,list):pending.extend(item)
+            elif isinstance(item,str) and re.search(r'(?i)(?:^|[^a-z0-9.-])(?:www\.|player\.)?vimeo\.com(?=[:/?#\s"\']|$)',item):
+                return True
+        return False
+
     def omit_trainer():
         if 'owner_omitted_trainer_link' not in plan['warnings']:
             plan['warnings'].append('owner_omitted_trainer_link')
@@ -834,6 +844,7 @@ def plan_import(payload, image_urls=None):
             raise ValueError("invalid_content")
         if len(content) > MAX_BLOCKS:
             raise ValueError("too_many_blocks")
+        if contains_vimeo(content):issue('vimeo_video_unavailable')
         order = [item.get("order") for item in content if isinstance(item, dict) and "order" in item]
         if order and (len(order) != len(content) or any(type(x) is not int or x < 1 for x in order)
                       or order != sorted(set(order))):
@@ -845,6 +856,8 @@ def plan_import(payload, image_urls=None):
         if not isinstance(root, dict) or root.get("name") != "page":
             raise ValueError("invalid_ape_root")
         selection = reviewed_selection(root,account,course,lesson)
+        if not (selection and selection[0] in ('placeholder','welcome','removed')) and contains_vimeo(root):
+            issue('vimeo_video_unavailable')
         manager_rule = CONFIRMED_OMIT_MANAGER.get((account,course,lesson))
         manager_root_hash = _sha256_text(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False)) if manager_rule else None
         if manager_rule and manager_root_hash != manager_rule[0]:issue('reviewed_source_changed')
@@ -991,16 +1004,8 @@ def plan_import(payload, image_urls=None):
                                 {'provider': other.get('videoProvider'), 'url': other.get('videoSrc')}])
                 elif id(node) in legacy_skip:
                     pass
-                elif (fields.get('videoProvider') == 'vimeo' and fields.get('videoProvider2') in (None,'')
-                      and fields.get('videoSrc2') in (None,'') and isinstance(fields.get('videoSrc'),str)):
-                    value=fields['videoSrc']
-                    match=re.fullmatch(r'https://(?:www\.)?vimeo\.com/([1-9][0-9]{0,15})/?',value)
-                    if not match:
-                        issue('video_url_invalid')
-                    else:
-                        blocks.append({'type':'embed','data':{'service':'vimeo','source':value,
-                            'embed':'https://player.vimeo.com/video/'+match.group(1),'width':580,'height':320,'caption':''}})
-                        if 'vimeo_embed_unverified' not in plan['warnings']:plan['warnings'].append('vimeo_embed_unverified')
+                elif fields.get('videoProvider') == 'vimeo':
+                    issue('vimeo_video_unavailable')
                 elif (fields.get('videoProvider') == 'youtube' and fields.get('videoProvider2') == 'rutube'
                       and (account,course,lesson) in REVIEWED_YOUTUBE_URLS
                       and _sha256_text(fields.get('videoSrc')) == REVIEWED_YOUTUBE_URLS[(account,course,lesson)][0]):

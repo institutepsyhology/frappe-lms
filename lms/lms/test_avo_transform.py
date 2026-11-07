@@ -10,15 +10,25 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
-    def test_vimeo_video_is_preserved_in_native_embed_and_rejects_other_hosts(self):
+    def test_vimeo_video_is_reported_instead_of_transferred(self):
         root={'name':'page','children':[{'name':'video','fields':{'videoProvider':'vimeo','videoSrc':'https://vimeo.com/488989277'}}]}
         result=plan_import(sample(root,'ape'))
-        self.assertTrue(result['ready'],result['issues'])
-        self.assertEqual(result['blocks'][0]['data']['service'],'vimeo')
-        self.assertEqual(result['blocks'][0]['data']['embed'],'https://player.vimeo.com/video/488989277')
-        for url in ('https://vimeo.com.evil.test/123','https://vimeo.com/123?x=1','javascript:alert(1)'):
-            root['children'][0]['fields']['videoSrc']=url
-            self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+        self.assertFalse(result['ready'])
+        self.assertIn('vimeo_video_unavailable',result['issues'])
+        self.assertNotIn('embed',[b['type'] for b in result['blocks']])
+        root={'name':'page','children':[{'name':'text','fields':{'html':'<p><a href="https://vimeo.com/123">Видео</a></p>'}}]}
+        self.assertIn('vimeo_video_unavailable',plan_import(sample(root,'ape'))['issues'])
+
+    def test_owner_approved_placeholder_does_not_import_old_vimeo(self):
+        import hashlib,json
+        from unittest.mock import patch
+        from lms.lms import avo_transform as module
+        root={'name':'page','children':[{'name':'video','fields':{'videoProvider':'vimeo','videoSrc':'https://vimeo.com/123'}}]}
+        digest=hashlib.sha256(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+        with patch.dict(module.REVIEWED_SELECTIONS,{('mv-centr','5','13'):(digest,'placeholder',0)}):
+            result=plan_import(sample(root,'ape'))
+            self.assertTrue(result['ready'],result['issues'])
+            self.assertNotIn('vimeo.com',str(result['blocks']))
 
     def test_reviewed_youtube_typo_keeps_rutube_pair(self):
         import hashlib
