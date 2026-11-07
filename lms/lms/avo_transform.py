@@ -143,6 +143,8 @@ REVIEWED_MIXED_YOUTUBE = {
     ('mv-centr','593','4208'): ('256ef16b78481fd2adf9875017c90b11eccf8955188650cb0321eca87e3b4e91',3),
     ('mv-centr','607','4373'): ('256ef16b78481fd2adf9875017c90b11eccf8955188650cb0321eca87e3b4e91',3),
     ('mv-centr','594','4246'): ('cd853eb2deb4ea2fa8bbc66aeaec76cce4b2c12ee289cef7bea0617b761ab1d4',1),
+    ('mv-centr','503','3235'): ('fff89d3793f0de8c93a71ddf41b3d3daa6e564dae7875e5e14e80b65292c7749',1),
+    ('mv-centr','604','4336'): ('3be4940caa942c7427bca15647a5d55d5dd1378fa1a67ea61b5e2b832a7a28ad',1),
 }
 REVIEWED_EMBEDDED_JPEG = {
     ('mv-centr','592','4201'): '002e5abb3ede736f4e8a0847d3aef4fabaf46ef7c301c98c99f60bbb7eae320e',
@@ -151,6 +153,9 @@ REVIEWED_EMBEDDED_JPEG = {
 }
 REVIEWED_JPEG_SHA256 = 'b0d4910fc474d15883656b16985b74c1f72e23dbc4156296cab283c083d276a5'
 REVIEWED_REMOTE_IMAGES = {('mv-centr','258','1159'):
+    ('06971963815c423c5fabd2955e9c30379c86c33297bd24c3b6dd8fd1b6205d2c',
+     '<img alt="" style="width: 604px; height: 400px;" src="https://f1.autoweboffice.ru/mvcentr/1159.jpg" />'),
+    ('mv-centr','358','1829'):
     ('06971963815c423c5fabd2955e9c30379c86c33297bd24c3b6dd8fd1b6205d2c',
      '<img alt="" style="width: 604px; height: 400px;" src="https://f1.autoweboffice.ru/mvcentr/1159.jpg" />')}
 REVIEWED_LINK_LISTS = {('mv-centr','593','4219'):
