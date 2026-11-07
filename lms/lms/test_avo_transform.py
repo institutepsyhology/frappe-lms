@@ -10,6 +10,20 @@ def sample(content, fmt="preview"):
 
 
 class TransformTests(unittest.TestCase):
+    def test_static_list_in_header_is_preserved_as_html(self):
+        import base64
+        html='<ul><li style="text-align: left;"><h3>Первая тема</h3></li><li><h3>Вторая тема</h3></li></ul>'
+        root={'name':'page','children':[{'name':'header','fields':{'html':html,'format':'h1'}}]}
+        result=plan_import(sample(root,'ape'))
+        self.assertTrue(result['ready'],result['issues'])
+        block=result['blocks'][0]
+        self.assertEqual(base64.b64decode(block['data']['encodedHtml']).decode(),html)
+        self.assertGreaterEqual(block['data']['height'],180)
+        root['children'][0]['fields']['html']='<ul><li><script>alert(1)</script></li></ul>'
+        self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+        root['children'][0]['fields']['html']='<ul><li><a href="https://example.test">Материал</a></li></ul>'
+        self.assertFalse(plan_import(sample(root,'ape'))['ready'])
+
     def test_reviewed_duplicate_vk_editor_field_preserves_visible_alternative(self):
         import hashlib,json
         from unittest.mock import patch

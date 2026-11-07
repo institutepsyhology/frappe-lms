@@ -1020,6 +1020,24 @@ def plan_import(payload, image_urls=None):
                         if 'ape_static_html_frame_unverified' not in plan['warnings']:
                             plan['warnings'].append('ape_static_html_frame_unverified')
                     continue
+                # Some AVO header blocks actually contain a static list of
+                # lesson topics. Keep the complete list instead of flattening
+                # or dropping it; links/embedded content need separate review.
+                if (not node.get('children') and not fields.get('anchor') and source_format in ('h1','h2','h3','h4','h5','h6')
+                        and not any(v not in (None,'',False,[],{}) for k,v in fields.items() if k not in allowed)
+                        and isinstance(markup,str) and re.match(r'\s*<(?:ul|ol)(?:\s|>)',markup,re.I)
+                        and not re.search(r'<\s*(?:a|iframe)\b',markup,re.I)):
+                    try:
+                        block=make_html_block(markup)
+                    except (ValueError,UnicodeError,RecursionError):
+                        issue('unsupported_header')
+                    else:
+                        plain=unescape(re.sub(r'<[^>]+>',' ',markup))
+                        lines=(len(plain)+41)//42+len(re.findall(r'<li(?:\s|>)',markup,re.I))
+                        block['data']['height']=max(180,min(900,100+38*lines))
+                        blocks.append(block)
+                        if 'ape_static_html_frame_unverified' not in plan['warnings']:plan['warnings'].append('ape_static_html_frame_unverified')
+                    continue
                 match = re.fullmatch(r'\s*<h([1-6])>(.*?)</h\1>\s*', markup, re.I | re.S) if isinstance(markup, str) else None
                 if (fields.get('anchor') or any(v not in (None, '', False, [], {}) for k, v in fields.items() if k not in allowed)
                         or source_format not in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6') or not match
