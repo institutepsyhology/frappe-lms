@@ -89,6 +89,18 @@ def main():
                     counts["create_error"] += 1
                     break
             counts["created"] += 1
+        except urllib.error.HTTPError as exc:
+            # Only publish the HTTP status and the server's exception class.
+            try:
+                error = json.load(exc)
+                exception_type = str(error.get("exc_type") or "unknown")
+                if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,100}", exception_type):
+                    exception_type = "unknown"
+            except Exception:
+                exception_type = "unreadable"
+            counts["http_" + str(exc.code) + "_" + exception_type] += 1
+            counts["create_error"] += 1
+            break
         except Exception:
             # The response may contain credentials or personal data: never print it.
             counts["create_error"] += 1
