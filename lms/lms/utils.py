@@ -300,7 +300,7 @@ def get_instructors(doctype: str, docname: str):
 
 
 def get_average_rating(course: str):
-	ratings = [review.rating for review in get_reviews(course)]
+	ratings = [review.rating for review in _get_reviews(course)]
 	if not len(ratings):
 		return None
 	return sum(ratings) / len(ratings)
@@ -309,6 +309,10 @@ def get_average_rating(course: str):
 @frappe.whitelist(allow_guest=True)
 @rate_limit(limit=500, seconds=60 * 60)
 def get_reviews(course: str):
+	return _get_reviews(course)
+
+
+def _get_reviews(course: str):
 	reviews = frappe.get_all(
 		"LMS Course Review",
 		{"course": course},

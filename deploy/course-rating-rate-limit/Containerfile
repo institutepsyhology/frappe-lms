@@ -1,0 +1,6 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER root
+COPY apply.py /tmp/course-rating-fix.py
+RUN python /tmp/course-rating-fix.py && python -m py_compile /home/frappe/frappe-bench/apps/lms/lms/lms/utils.py && rm /tmp/course-rating-fix.py
+USER frappe
