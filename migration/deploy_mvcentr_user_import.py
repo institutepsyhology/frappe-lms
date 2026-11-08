@@ -46,7 +46,9 @@ def main():
     os.chmod(folder / 'env.before', 0o600)
     shutil.copyfile(SOURCE, folder / 'avo_user_import.py')
     digest = hashlib.sha256(SOURCE.read_bytes()).hexdigest()
-    (folder / 'Dockerfile').write_text('FROM ' + OLD + '\nCOPY --chown=frappe:frappe avo_user_import.py /home/frappe/frappe-bench/apps/lms/lms/lms/avo_user_import.py\n')
+    base_tag = 'company-lms:avo-user-base-' + stamp
+    run(['docker', 'tag', OLD, base_tag])
+    (folder / 'Dockerfile').write_text('FROM ' + base_tag + '\nCOPY --chown=frappe:frappe avo_user_import.py /home/frappe/frappe-bench/apps/lms/lms/lms/avo_user_import.py\n')
     run(['docker', 'build', '--network=none', '--pull=false', '-t', 'company-lms:avo-user-import-' + stamp, str(folder)], timeout=600)
     image = run(['docker', 'image', 'inspect', 'company-lms:avo-user-import-' + stamp, '--format', '{{.Id}}'])
     test = "import hashlib;print(hashlib.sha256(open('/home/frappe/frappe-bench/apps/lms/lms/lms/avo_user_import.py','rb').read()).hexdigest())"
