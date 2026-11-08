@@ -13,4 +13,8 @@ def execute():
          "insert_after": "custom_avo_account", "no_copy": 1, "permlevel": 1},
         {"fieldname": "custom_avo_telegram_username", "label": "Telegram Username", "fieldtype": "Data",
          "insert_after": "custom_avo_telegram_id", "no_copy": 1, "permlevel": 1},
+        {"fieldname": "custom_avo_vk_id", "label": "VK ID", "fieldtype": "Data",
+         "insert_after": "custom_avo_telegram_username", "no_copy": 1, "permlevel": 1},
+        {"fieldname": "custom_avo_vk_username", "label": "VK Username", "fieldtype": "Data",
+         "insert_after": "custom_avo_vk_id", "no_copy": 1, "permlevel": 1},
     ]}, update=True)
