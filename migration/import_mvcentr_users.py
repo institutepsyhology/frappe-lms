@@ -97,7 +97,7 @@ def main():
                 if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,100}", exception_type):
                     exception_type = "unknown"
                 diagnostic = json.dumps(error, ensure_ascii=False).lower()
-                for label, terms in {"password": ("password", "парол"), "email": ("email", "e-mail", "электронн"), "phone": ("phone", "телефон"), "duplicate": ("duplicate", "already exists", "существует"), "validation": ("validation", "invalid", "недопуст")}.items():
+                for label, terms in {"password": ("password", "парол"), "email": ("email", "e-mail", "электронн"), "phone": ("phone", "телефон"), "duplicate": ("duplicate", "already exists", "существует"), "validation": ("validation", "invalid", "недопуст"), "password_weak": ("too weak", "password strength", "password is weak", "password_strength", "weak password"), "password_short": ("at least", "minimum password", "minimum_password", "characters long", "length of the password"), "csrf": ("csrf",), "mandatory": ("mandatory", "required field", "обязательн")}.items():
                     if any(term in diagnostic for term in terms):
                         counts["diagnostic_" + label] += 1
             except Exception:
