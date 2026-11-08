@@ -96,6 +96,10 @@ def main():
                 exception_type = str(error.get("exc_type") or "unknown")
                 if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,100}", exception_type):
                     exception_type = "unknown"
+                diagnostic = json.dumps(error, ensure_ascii=False).lower()
+                for label, terms in {"password": ("password", "парол"), "email": ("email", "e-mail", "электронн"), "phone": ("phone", "телефон"), "duplicate": ("duplicate", "already exists", "существует"), "validation": ("validation", "invalid", "недопуст")}.items():
+                    if any(term in diagnostic for term in terms):
+                        counts["diagnostic_" + label] += 1
             except Exception:
                 exception_type = "unreadable"
             counts["http_" + str(exc.code) + "_" + exception_type] += 1
