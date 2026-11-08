@@ -5,7 +5,7 @@ from frappe.utils import validate_email_address
 
 @frappe.whitelist(methods=["POST"])
 def import_user(data):
-    if frappe.session.user != "Administrator":
+    if frappe.session.user != "Administrator" or frappe.local.site != "my-lk.mv-centr.ru":
         frappe.throw("Administrator required", frappe.PermissionError)
     data = frappe.parse_json(data)
     if not isinstance(data, dict):
