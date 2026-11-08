@@ -1,5 +1,6 @@
 """Verify the first eligible imported user without revealing contact data."""
 import collections
+import http.cookiejar
 import importlib.util
 import json
 import urllib.parse
@@ -23,10 +24,19 @@ fields = ["custom_avo_contact_id", "custom_avo_account", "custom_avo_telegram_id
 matches = all(str(doc.get(f) or "") == data[f] for f in fields)
 body = urllib.parse.urlencode({"usr": data["email"], "pwd": data["new_password"]}).encode()
 try:
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), auth.NoRedirect())
+    jar = http.cookiejar.CookieJar()
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), auth.NoRedirect(), urllib.request.HTTPCookieProcessor(jar))
     with opener.open(urllib.request.Request(m.SITE + "/api/method/login", data=body), timeout=20) as response:
-        login = json.load(response).get("message") == "Logged In"
-except Exception:
+        result = json.load(response)
+        print(json.dumps({"login_http_status": response.status, "message_type": type(result.get("message")).__name__, "has_home_page": "home_page" in result, "has_full_name": "full_name" in result}))
+        has_session = any(c.name == "sid" and c.value != "Guest" for c in jar)
+        with opener.open(m.SITE + "/api/method/frappe.auth.get_logged_user", timeout=20) as check:
+            login = has_session and json.load(check).get("message") == data["email"]
+except urllib.error.HTTPError as exc:
+    print(json.dumps({"login_http_status": exc.code}))
+    login = False
+except Exception as exc:
+    print(json.dumps({"login_error_type": type(exc).__name__}))
     login = False
 print(json.dumps({"fields_match": matches, "password_login": login}))
 
