@@ -81,7 +81,9 @@ def main():
             if exc.code != 404:
                 counts["read_error"] += 1
                 break
-        request = urllib.request.Request(SITE + "/api/v2/document/User", data=json.dumps(data).encode(),
+        data.pop("user_type", None)
+        data.pop("send_welcome_email", None)
+        request = urllib.request.Request(SITE + "/api/method/lms.lms.avo_user_import.import_user", data=json.dumps({"data": data}).encode(),
                                          headers={**headers, "Content-Type": "application/json"}, method="POST")
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
