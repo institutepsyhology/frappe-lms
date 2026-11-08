@@ -106,6 +106,9 @@ def main():
                 exception_type = "unreadable"
             counts["http_" + str(exc.code) + "_" + exception_type] += 1
             counts["create_error"] += 1
+            if exception_type == "UniqueValidationError":
+                counts["unique_conflict_skipped"] += 1
+                continue
             break
         except Exception:
             # The response may contain credentials or personal data: never print it.
