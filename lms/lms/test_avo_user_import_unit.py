@@ -13,6 +13,7 @@ class ImportTest(unittest.TestCase):
         self.frappe = types.ModuleType("frappe")
         f = self.frappe
         f.session = types.SimpleNamespace(user="Administrator")
+        f.local = types.SimpleNamespace(site="my-lk.mv-centr.ru")
         f.PermissionError = PermissionError
         f.ValidationError = ValueError
         f.DuplicateEntryError = RuntimeError
