@@ -1,0 +1,6 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER root
+COPY apply.py /tmp/fix-section-translation.py
+RUN /home/frappe/frappe-bench/env/bin/python /tmp/fix-section-translation.py && rm /tmp/fix-section-translation.py
+USER frappe
