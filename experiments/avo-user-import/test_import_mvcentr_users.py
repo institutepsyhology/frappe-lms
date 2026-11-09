@@ -53,7 +53,7 @@ class ImportTest(unittest.TestCase):
         self.assertEqual(result['stopped_consecutive_issues'], 1)
         self.assertEqual(log.call_count, 10)
 
-    def test_timeout_during_existing_user_check_is_logged_and_stops(self):
+    def test_timeout_during_write_is_logged_and_stops(self):
         records = [(123, {'contact': {'email': 'test@example.test'}, 'credentials': {'password': 'sample'}})]
         helper = types.SimpleNamespace(authenticated_headers=lambda site: {})
         loader = types.SimpleNamespace(exec_module=lambda obj: None)
@@ -66,8 +66,8 @@ class ImportTest(unittest.TestCase):
              patch.object(module.urllib.request, 'urlopen', side_effect=module.urllib.error.URLError('timed out')), \
              patch('sys.argv', ['import', '--apply']), contextlib.redirect_stdout(output):
             module.main()
-        self.assertEqual(json.loads(output.getvalue())['read_error'], 1)
-        log.assert_called_once_with(123, 'read_error')
+        self.assertEqual(json.loads(output.getvalue())['create_error'], 1)
+        log.assert_called_once_with(123, 'write_outcome_unknown')
 
     def test_unresolved_write_stops_before_any_network_request(self):
         entry = json.dumps({'contact_id': 123, 'account': 'mv-centr', 'status': 'write_outcome_unknown'}) + '\n'

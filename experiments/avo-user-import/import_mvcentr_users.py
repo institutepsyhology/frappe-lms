@@ -9,6 +9,7 @@ import importlib.util
 import json
 import re
 import sqlite3
+import time
 from datetime import datetime, timezone
 import urllib.error
 import urllib.request
@@ -25,6 +26,7 @@ ROOT = workspace_root()
 SITE = "https://my-lk.mv-centr.ru"
 EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+\Z")
 JOURNAL = ROOT / "exports/contacts-api-all-fields/mvcentr-user-import-events.jsonl"
+EXCLUDED_CONTACTS = {10}
 
 
 def log_event(ident, status):
@@ -33,6 +35,20 @@ def log_event(ident, status):
     with JOURNAL.open("a", encoding="utf-8") as out:
         out.write(json.dumps({"at": datetime.now(timezone.utc).isoformat(), "contact_id": ident,
                               "account": "mv-centr", "status": status}, ensure_ascii=True) + "\n")
+
+
+def read_user(request):
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                return json.load(response).get("data") or {}
+        except urllib.error.HTTPError as exc:
+            if exc.code not in (429, 500, 502, 503, 504) or attempt == 2:
+                raise
+        except (urllib.error.URLError, TimeoutError, OSError):
+            if attempt == 2:
+                raise
+        time.sleep(2 ** attempt)
 
 
 def load():
@@ -73,6 +89,7 @@ def main():
     counts = collections.Counter()
     consecutive_issues = 0
     known_conflicts = set()
+    known_created = set()
     unresolved_writes = set()
     if args.apply and JOURNAL.exists():
         with JOURNAL.open(encoding="utf-8") as entries:
@@ -81,7 +98,9 @@ def main():
                 if event.get("account") != "mv-centr" or type(event.get("contact_id")) is not int:
                     raise ValueError("invalid_journal_entry")
                 if event.get("status") == "unique_conflict": known_conflicts.add(event["contact_id"])
-                elif event.get("status") == "created_verified": known_conflicts.discard(event["contact_id"])
+                elif event.get("status") in ("created_verified", "present_verified"):
+                    known_conflicts.discard(event["contact_id"])
+                    known_created.add(event["contact_id"])
                 if event.get("status") in ("write_outcome_unknown", "readback_mismatch"):
                     unresolved_writes.add(event["contact_id"])
                 elif event.get("status") in ("created_verified", "resolved_not_created"):
@@ -97,6 +116,13 @@ def main():
         spec.loader.exec_module(helper)
         headers = helper.authenticated_headers("my-lk.mv-centr.ru")
     for ident, record in load():
+        if args.apply and ident in EXCLUDED_CONTACTS:
+            counts["excluded_by_owner"] += 1
+            continue
+        if args.apply and ident in known_created:
+            counts["existing_skipped"] += 1
+            consecutive_issues = 0
+            continue
         if args.apply and ident in known_conflicts:
             counts["known_conflict_skipped"] += 1
             consecutive_issues += 1
@@ -129,30 +155,6 @@ def main():
         # REST resources are checked before creation; do not touch any existing account.
         from urllib.parse import quote
         url = SITE + "/api/v2/document/User/" + quote(data["email"], safe="")
-        try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=20) as response:
-                existing = json.load(response).get("data") or {}
-                if (existing.get("custom_avo_account") == "mv-centr" and
-                        str(existing.get("custom_avo_contact_id") or "") == str(ident)):
-                    counts["existing_skipped"] += 1
-                    consecutive_issues = 0
-                else:
-                    counts["existing_email_conflict"] += 1
-                    log_event(ident, "existing_email_conflict")
-                    consecutive_issues += 1
-                    if consecutive_issues >= 10:
-                        counts["stopped_consecutive_issues"] += 1
-                        break
-                continue
-        except urllib.error.HTTPError as exc:
-            if exc.code != 404:
-                counts["read_error"] += 1
-                log_event(ident, "read_error")
-                break
-        except (urllib.error.URLError, TimeoutError, OSError):
-            counts["read_error"] += 1
-            log_event(ident, "read_error")
-            break
         data.pop("user_type", None)
         data.pop("send_welcome_email", None)
         request = urllib.request.Request(SITE + "/api/method/lms.lms.avo_user_import.import_user", data=json.dumps({"data": data}).encode(),
@@ -162,8 +164,7 @@ def main():
                 if response.status not in (200, 201):
                     counts["create_error"] += 1
                     break
-            with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=20) as response:
-                saved = json.load(response).get("data") or {}
+            saved = read_user(urllib.request.Request(url, headers=headers))
             if saved.get("custom_avo_account") != "mv-centr" or str(saved.get("custom_avo_contact_id") or "") != str(ident):
                 counts["readback_mismatch"] += 1
                 log_event(ident, "readback_mismatch")
@@ -186,7 +187,7 @@ def main():
                 exception_type = "unreadable"
             counts["http_" + str(exc.code) + "_" + exception_type] += 1
             counts["create_error"] += 1
-            if exception_type == "UniqueValidationError":
+            if exception_type in ("UniqueValidationError", "DuplicateEntryError"):
                 counts["unique_conflict_skipped"] += 1
                 log_event(ident, "unique_conflict")
                 consecutive_issues += 1
