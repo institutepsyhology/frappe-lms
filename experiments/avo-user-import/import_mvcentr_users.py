@@ -65,12 +65,31 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--limit", type=int, default=1)
+    parser.add_argument("--retry-conflicts", action="store_true", help="повторить ранее отмеченные конфликты")
     args = parser.parse_args()
     if args.limit < 1:
         parser.error("limit must be positive")
     frequencies = collections.Counter(email_of(record) for _, record in load())
     counts = collections.Counter()
     consecutive_issues = 0
+    known_conflicts = set()
+    unresolved_writes = set()
+    if args.apply and JOURNAL.exists():
+        with JOURNAL.open(encoding="utf-8") as entries:
+            for line in entries:
+                event = json.loads(line)
+                if event.get("account") != "mv-centr" or type(event.get("contact_id")) is not int:
+                    raise ValueError("invalid_journal_entry")
+                if event.get("status") == "unique_conflict": known_conflicts.add(event["contact_id"])
+                elif event.get("status") == "created_verified": known_conflicts.discard(event["contact_id"])
+                if event.get("status") in ("write_outcome_unknown", "readback_mismatch"):
+                    unresolved_writes.add(event["contact_id"])
+                elif event.get("status") in ("created_verified", "resolved_not_created"):
+                    unresolved_writes.discard(event["contact_id"])
+        if unresolved_writes:
+            print(json.dumps({"unresolved_write_outcomes": len(unresolved_writes), "stopped": True}))
+            return
+        if args.retry_conflicts: known_conflicts.clear()
     headers = {}
     if args.apply:
         spec = importlib.util.spec_from_file_location("frappe_headers", ROOT / "frappe-mcp/headers.py")
@@ -78,6 +97,13 @@ def main():
         spec.loader.exec_module(helper)
         headers = helper.authenticated_headers("my-lk.mv-centr.ru")
     for ident, record in load():
+        if args.apply and ident in known_conflicts:
+            counts["known_conflict_skipped"] += 1
+            consecutive_issues += 1
+            if consecutive_issues >= 10:
+                counts["stopped_consecutive_issues"] += 1
+                break
+            continue
         data = payload(ident, record)
         if not data:
             counts["missing_email_or_password"] += 1
