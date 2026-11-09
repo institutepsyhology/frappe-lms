@@ -197,9 +197,15 @@ def main():
                 continue
             log_event(ident, "create_error")
             break
-        except Exception:
+        except Exception as exc:
             # The response may contain credentials or personal data: never print it.
             counts["create_error"] += 1
+            if isinstance(exc, urllib.error.URLError):
+                counts["transport_error"] += 1
+            elif isinstance(exc, TimeoutError):
+                counts["timeout"] += 1
+            else:
+                counts["unexpected_error"] += 1
             log_event(ident, "write_outcome_unknown")
             break
         if counts["created"] >= args.limit:
