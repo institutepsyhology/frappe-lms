@@ -3,6 +3,31 @@ import frappe
 from frappe.utils import validate_email_address
 
 
+def _insert_imported_user(user):
+    """Bypass the hourly signup throttle only during this user's before_insert.
+
+    The import flag is request-local and is restored before validation and all
+    later lifecycle hooks. Ordinary registration remains throttled.
+    """
+    original = user.run_method
+
+    def run_method(method, *args, **kwargs):
+        if method != 'before_insert':
+            return original(method, *args, **kwargs)
+        previous = frappe.flags.in_import
+        frappe.flags.in_import = True
+        try:
+            return original(method, *args, **kwargs)
+        finally:
+            frappe.flags.in_import = previous
+
+    user.run_method = run_method
+    try:
+        user.insert(ignore_permissions=True)
+    finally:
+        del user.run_method
+
+
 @frappe.whitelist(methods=["POST"])
 def import_user(data):
     if frappe.session.user != "Administrator" or frappe.local.site != "my-lk.mv-centr.ru":
@@ -23,5 +48,5 @@ def import_user(data):
     user = frappe.get_doc({"doctype": "User", **data, "email": email.lower(),
                            "user_type": "Website User", "send_welcome_email": 0})
     user.flags.ignore_password_policy = True
-    user.insert(ignore_permissions=True)
+    _insert_imported_user(user)
     return {"created": True}

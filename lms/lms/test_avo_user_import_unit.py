@@ -14,6 +14,7 @@ class ImportTest(unittest.TestCase):
         f = self.frappe
         f.session = types.SimpleNamespace(user="Administrator")
         f.local = types.SimpleNamespace(site="my-lk.mv-centr.ru")
+        f.flags = types.SimpleNamespace(in_import=False)
         f.PermissionError = PermissionError
         f.ValidationError = ValueError
         f.DuplicateEntryError = RuntimeError
@@ -22,7 +23,11 @@ class ImportTest(unittest.TestCase):
         f.whitelist = lambda **kw: lambda fn: fn
         f.db = types.SimpleNamespace(exists=lambda *a: False)
         def get_doc(data):
-            doc = types.SimpleNamespace(data=data, flags=types.SimpleNamespace(), insert=lambda **kw: None)
+            class FakeDoc:
+                def __init__(self): self.data=data; self.flags=types.SimpleNamespace(); self.during=[]
+                def run_method(self, method): self.during.append((method,f.flags.in_import))
+                def insert(self, **kw): self.run_method('before_insert'); self.run_method('validate')
+            doc = FakeDoc()
             self.docs.append(doc)
             return doc
         f.get_doc = get_doc
@@ -42,6 +47,8 @@ class ImportTest(unittest.TestCase):
         self.assertTrue(self.docs[0].flags.ignore_password_policy)
         self.assertEqual(self.docs[0].data["new_password"], "weak")
         self.assertEqual(self.docs[0].data["send_welcome_email"], 0)
+        self.assertEqual(self.docs[0].during, [('before_insert',True),('validate',False)])
+        self.assertFalse(self.frappe.flags.in_import)
 
     def test_rejects_non_administrator(self):
         self.frappe.session.user = "student@example.invalid"
