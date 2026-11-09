@@ -10,7 +10,7 @@ from frappe.custom.doctype.property_setter.property_setter import make_property_
 
 
 def main(site):
-    if site not in ('access-stage2.local', 'my-lk.mv-centr.ru'):
+    if site not in ('access-stage2.local', 'my-lk.mv-centr.ru', 'my-lk.iomp.ru', 'my-lk.mastervision.su'):
         raise RuntimeError('unexpected_site')
     frappe.init(site=site)
     frappe.connect()
