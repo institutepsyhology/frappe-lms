@@ -123,6 +123,10 @@ def main():
                 counts["read_error"] += 1
                 log_event(ident, "read_error")
                 break
+        except (urllib.error.URLError, TimeoutError, OSError):
+            counts["read_error"] += 1
+            log_event(ident, "read_error")
+            break
         data.pop("user_type", None)
         data.pop("send_welcome_email", None)
         request = urllib.request.Request(SITE + "/api/method/lms.lms.avo_user_import.import_user", data=json.dumps({"data": data}).encode(),

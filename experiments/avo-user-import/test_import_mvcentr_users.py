@@ -52,6 +52,21 @@ class ImportTest(unittest.TestCase):
         self.assertEqual(result['stopped_consecutive_issues'], 1)
         self.assertEqual(log.call_count, 10)
 
+    def test_timeout_during_existing_user_check_is_logged_and_stops(self):
+        records = [(123, {'contact': {'email': 'test@example.test'}, 'credentials': {'password': 'sample'}})]
+        helper = types.SimpleNamespace(authenticated_headers=lambda site: {})
+        loader = types.SimpleNamespace(exec_module=lambda obj: None)
+        output = io.StringIO()
+        with patch.object(module, 'load', side_effect=lambda: iter(records)), \
+             patch.object(module, 'log_event') as log, \
+             patch.object(module.importlib.util, 'spec_from_file_location', return_value=types.SimpleNamespace(loader=loader)), \
+             patch.object(module.importlib.util, 'module_from_spec', return_value=helper), \
+             patch.object(module.urllib.request, 'urlopen', side_effect=module.urllib.error.URLError('timed out')), \
+             patch('sys.argv', ['import', '--apply']), contextlib.redirect_stdout(output):
+            module.main()
+        self.assertEqual(json.loads(output.getvalue())['read_error'], 1)
+        log.assert_called_once_with(123, 'read_error')
+
 
 if __name__ == '__main__':
     unittest.main()
