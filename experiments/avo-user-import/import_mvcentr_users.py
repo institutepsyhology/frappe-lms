@@ -13,6 +13,7 @@ import time
 from datetime import datetime, timezone
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
 from pathlib import Path
 
 def workspace_root():
@@ -27,6 +28,28 @@ SITE = "https://my-lk.mv-centr.ru"
 EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+\Z")
 JOURNAL = ROOT / "exports/contacts-api-all-fields/mvcentr-user-import-events.jsonl"
 EXCLUDED_CONTACTS = {10}
+
+
+@contextmanager
+def single_import():
+    """Prevent concurrent imports from writing the same source contacts."""
+    import msvcrt
+    path = JOURNAL.with_name('mvcentr-user-import.lock')
+    with path.open('a+b') as lock:
+        lock.seek(0, 2)
+        if lock.tell() == 0:
+            lock.write(b'0')
+            lock.flush()
+        lock.seek(0)
+        try:
+            msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError as exc:
+            raise RuntimeError('another_import_is_running') from exc
+        try:
+            yield
+        finally:
+            lock.seek(0)
+            msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -198,6 +221,8 @@ def main():
             counts["created"] += 1
             consecutive_issues = 0
             log_event(ident, "created_verified")
+            if counts["created"] % 25 == 0:
+                print(json.dumps({"progress_created": counts["created"]}), flush=True)
         except urllib.error.HTTPError as exc:
             # Only publish the HTTP status and the server's exception class.
             try:
@@ -243,4 +268,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    with single_import():
+        main()
