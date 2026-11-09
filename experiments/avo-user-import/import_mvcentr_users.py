@@ -154,7 +154,7 @@ def main():
                 event = json.loads(line)
                 if event.get("account") != "mv-centr" or type(event.get("contact_id")) is not int:
                     raise ValueError("invalid_journal_entry")
-                if event.get("status") == "unique_conflict": known_conflicts.add(event["contact_id"])
+                if event.get("status") in ("unique_conflict", "validation_conflict"): known_conflicts.add(event["contact_id"])
                 elif event.get("status") in ("created_verified", "present_verified"):
                     known_conflicts.discard(event["contact_id"])
                     known_created.add(event["contact_id"])
@@ -251,6 +251,15 @@ def main():
             if exception_type in ("UniqueValidationError", "DuplicateEntryError"):
                 counts["unique_conflict_skipped"] += 1
                 log_event(ident, "unique_conflict")
+                consecutive_issues += 1
+                if consecutive_issues >= 10:
+                    counts["stopped_consecutive_issues"] += 1
+                    break
+                continue
+            if (exc.code == 417 and exception_type == "ValidationError"
+                    and 'in throttle_user_creation' not in str(error.get('exc') or '')):
+                counts["validation_conflict_skipped"] += 1
+                log_event(ident, "validation_conflict")
                 consecutive_issues += 1
                 if consecutive_issues >= 10:
                     counts["stopped_consecutive_issues"] += 1

@@ -110,6 +110,15 @@ class ImportTest(unittest.TestCase):
             self.assertEqual(send.call_count,1)
             sleep.assert_not_called()
 
+    def test_background_reports_errors_and_conflict_only_outcomes(self):
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent))
+        import run_background
+        self.assertTrue(run_background.was_stopped({'created': 1, 'create_error': 1}, 0))
+        self.assertTrue(run_background.was_stopped({'unresolved_write_outcomes': 1}, 0))
+        self.assertTrue(run_background.was_stopped({'created': 1}, 1))
+        self.assertFalse(run_background.was_stopped({'created': 1, 'create_error': 2, 'unique_conflict_skipped': 2}, 0))
+
 
 if __name__ == '__main__':
     unittest.main()
