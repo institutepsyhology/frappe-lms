@@ -139,9 +139,12 @@ def main():
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--limit", type=int, default=1)
     parser.add_argument("--retry-conflicts", action="store_true", help="повторить ранее отмеченные конфликты")
+    parser.add_argument("--interval", type=float, default=1.0, help="пауза между созданиями в секундах")
     args = parser.parse_args()
     if args.limit < 1:
         parser.error("limit must be positive")
+    if not 0.5 <= args.interval <= 60:
+        parser.error("interval must be between 0.5 and 60 seconds")
     frequencies = collections.Counter(email_of(record) for _, record in load())
     counts = collections.Counter()
     consecutive_issues = 0
@@ -230,6 +233,7 @@ def main():
             log_event(ident, "created_verified")
             if counts["created"] % 25 == 0:
                 print(json.dumps({"progress_created": counts["created"]}), flush=True)
+            time.sleep(args.interval)
         except urllib.error.HTTPError as exc:
             # Only publish the HTTP status and the server's exception class.
             try:
