@@ -20,18 +20,25 @@ def main(site):
         setters = frappe.get_all('Property Setter', filters={'doc_type':'User','field_name':'mobile_no','property':'unique'}, fields=['name','value'])
         if len(setters)>1 or (setters and str(setters[0]['value'])!='0'):
             raise RuntimeError('unexpected_property_setter')
+        index_setters = frappe.get_all('Property Setter', filters={'doc_type':'User','field_name':'mobile_no','property':'search_index'}, fields=['name','value'])
+        if len(index_setters)>1 or (index_setters and str(index_setters[0]['value'])!='1'):
+            raise RuntimeError('unexpected_index_property_setter')
         indexes = frappe.db.sql('SHOW INDEX FROM `tabUser` WHERE Column_name = %s', ('mobile_no',), as_dict=True)
-        if len(indexes)!=1 or indexes[0]['Key_name']!='mobile_no' or indexes[0]['Seq_in_index']!=1:
+        if len(indexes)>1 or (indexes and (indexes[0]['Key_name']!='mobile_no' or indexes[0]['Seq_in_index']!=1)):
             raise RuntimeError('unexpected_mobile_index')
-        was_unique = indexes[0]['Non_unique']==0
+        was_unique = bool(indexes) and indexes[0]['Non_unique']==0
         if not setters:
             make_property_setter('User','mobile_no','unique','0','Check')
-            frappe.db.commit()
+        if not index_setters:
+            make_property_setter('User','mobile_no','search_index','1','Check')
+        frappe.db.commit()
         frappe.clear_cache(doctype='User')
         if int(frappe.get_meta('User').get_field('mobile_no').unique or 0)!=0:
             raise RuntimeError('property_setter_not_applied')
         if was_unique:
             frappe.db.sql('ALTER TABLE `tabUser` DROP INDEX `mobile_no`, ADD INDEX `mobile_no` (`mobile_no`)')
+        elif not indexes:
+            frappe.db.sql('ALTER TABLE `tabUser` ADD INDEX `mobile_no` (`mobile_no`)')
         indexes = frappe.db.sql('SHOW INDEX FROM `tabUser` WHERE Column_name = %s', ('mobile_no',), as_dict=True)
         if len(indexes)!=1 or indexes[0]['Non_unique']!=1:
             raise RuntimeError('index_not_updated')
