@@ -36,6 +36,18 @@ class ImportTest(unittest.TestCase):
         record = {'contact': {'email': 'invalid'}, 'credentials': {'password': 'sample'}}
         self.assertIsNone(module.payload(123, record))
 
+    def test_readback_requires_all_migrated_fields_to_match(self):
+        record = {'contact': {'email':'test@example.test','name':'Test','phone_number':'9999','telegram_user':'sample'},
+                  'credentials': {'password':'sample'}}
+        data = module.payload(123, record)
+        saved = {k:v for k,v in data.items() if k != 'new_password'}
+        self.assertTrue(module.saved_matches(saved, data))
+        saved['mobile_no'] = '0000'
+        self.assertFalse(module.saved_matches(saved, data))
+        saved['mobile_no'] = data['mobile_no']
+        saved['custom_avo_telegram_username'] = ''
+        self.assertFalse(module.saved_matches(saved, data))
+
     def test_ten_consecutive_unusable_records_stop_batch(self):
         records = [(i, {'contact': {'email': ''}, 'credentials': {}}) for i in range(1, 12)]
         helper = types.SimpleNamespace(authenticated_headers=lambda site: {})

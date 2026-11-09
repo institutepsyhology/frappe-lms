@@ -127,6 +127,13 @@ def payload(ident, record):
             "custom_avo_vk_username": str(c.get("vk_user") or "")}
 
 
+def saved_matches(saved, data):
+    fields = ("email", "first_name", "middle_name", "last_name", "mobile_no", "custom_avo_contact_id",
+              "custom_avo_account", "custom_avo_telegram_id", "custom_avo_telegram_username",
+              "custom_avo_vk_id", "custom_avo_vk_username")
+    return all(str(saved.get(key) or "") == str(data.get(key) or "") for key in fields)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true")
@@ -214,7 +221,7 @@ def main():
                 counts["create_error"] += 1
                 break
             saved = read_user(urllib.request.Request(url, headers=headers))
-            if saved.get("custom_avo_account") != "mv-centr" or str(saved.get("custom_avo_contact_id") or "") != str(ident):
+            if not saved_matches(saved, data):
                 counts["readback_mismatch"] += 1
                 log_event(ident, "readback_mismatch")
                 break
