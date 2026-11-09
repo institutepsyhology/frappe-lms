@@ -205,6 +205,9 @@ def main():
                 exception_type = "unreadable"
             counts["http_" + str(exc.code) + "_" + exception_type] += 1
             counts["create_error"] += 1
+            if 300 <= exc.code < 400 or exc.code >= 500:
+                log_event(ident, "write_outcome_unknown")
+                break
             if exception_type in ("UniqueValidationError", "DuplicateEntryError"):
                 counts["unique_conflict_skipped"] += 1
                 log_event(ident, "unique_conflict")
