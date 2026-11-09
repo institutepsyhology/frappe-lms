@@ -51,6 +51,25 @@ def read_user(request):
         time.sleep(2 ** attempt)
 
 
+def create_user(request):
+    """Only retry a definitive server-side throttle rejection, never a timeout."""
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return response.status
+        except urllib.error.HTTPError as exc:
+            try:
+                exc.avo_error = json.load(exc)
+            except Exception:
+                exc.avo_error = {}
+            trace = str(exc.avo_error.get('exc') or '')
+            throttled = (exc.code == 417 and exc.avo_error.get('exc_type') == 'ValidationError'
+                         and 'in throttle_user_creation' in trace)
+            if not throttled or attempt == 2:
+                raise
+            time.sleep(60)
+
+
 def load():
     db = sqlite3.connect((ROOT / "exports/contacts-api-all-fields/contacts.sqlite").resolve().as_uri() + "?mode=ro", uri=True)
     for ident, raw in db.execute("SELECT id, record_json FROM contacts ORDER BY id"):
@@ -160,10 +179,9 @@ def main():
         request = urllib.request.Request(SITE + "/api/method/lms.lms.avo_user_import.import_user", data=json.dumps({"data": data}).encode(),
                                          headers={**headers, "Content-Type": "application/json"}, method="POST")
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
-                if response.status not in (200, 201):
-                    counts["create_error"] += 1
-                    break
+            if create_user(request) not in (200, 201):
+                counts["create_error"] += 1
+                break
             saved = read_user(urllib.request.Request(url, headers=headers))
             if saved.get("custom_avo_account") != "mv-centr" or str(saved.get("custom_avo_contact_id") or "") != str(ident):
                 counts["readback_mismatch"] += 1
@@ -175,7 +193,7 @@ def main():
         except urllib.error.HTTPError as exc:
             # Only publish the HTTP status and the server's exception class.
             try:
-                error = json.load(exc)
+                error = getattr(exc, 'avo_error', None) or {}
                 exception_type = str(error.get("exc_type") or "unknown")
                 if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]{0,100}", exception_type):
                     exception_type = "unknown"

@@ -81,6 +81,23 @@ class ImportTest(unittest.TestCase):
         self.assertEqual(json.loads(output.getvalue())['unresolved_write_outcomes'], 1)
         network.assert_not_called()
 
+    def test_only_confirmed_throttle_is_retried(self):
+        from urllib.error import HTTPError, URLError
+        body = json.dumps({'exc_type':'ValidationError','exc':'File user.py, line 1450, in throttle_user_creation'}).encode()
+        rejected = HTTPError('https://example.test',417,'error',{},io.BytesIO(body))
+        class Response:
+            status = 200
+            def __enter__(self): return self
+            def __exit__(self,*args): pass
+        with patch.object(module.urllib.request,'urlopen',side_effect=[rejected,Response()]) as send, patch.object(module.time,'sleep') as sleep:
+            self.assertEqual(module.create_user('request'),200)
+            self.assertEqual(send.call_count,2)
+            sleep.assert_called_once_with(60)
+        with patch.object(module.urllib.request,'urlopen',side_effect=URLError('timeout')) as send, patch.object(module.time,'sleep') as sleep:
+            with self.assertRaises(URLError):module.create_user('request')
+            self.assertEqual(send.call_count,1)
+            sleep.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()
