@@ -29,6 +29,14 @@ JOURNAL = ROOT / "exports/contacts-api-all-fields/mvcentr-user-import-events.jso
 EXCLUDED_CONTACTS = {10}
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+DIRECT_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+
+
 def log_event(ident, status):
     if type(ident) is not int or ident < 1 or not re.fullmatch(r"[a-z_]{1,50}", status):
         raise ValueError("invalid_journal_entry")
@@ -40,7 +48,7 @@ def log_event(ident, status):
 def read_user(request):
     for attempt in range(3):
         try:
-            with urllib.request.urlopen(request, timeout=20) as response:
+            with DIRECT_OPENER.open(request, timeout=20) as response:
                 return json.load(response).get("data") or {}
         except urllib.error.HTTPError as exc:
             if exc.code not in (429, 500, 502, 503, 504) or attempt == 2:
@@ -55,7 +63,7 @@ def create_user(request):
     """Only retry a definitive server-side throttle rejection, never a timeout."""
     for attempt in range(3):
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with DIRECT_OPENER.open(request, timeout=30) as response:
                 return response.status
         except urllib.error.HTTPError as exc:
             try:

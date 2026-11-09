@@ -63,7 +63,7 @@ class ImportTest(unittest.TestCase):
              patch.object(module, 'JOURNAL', types.SimpleNamespace(exists=lambda: False)), \
              patch.object(module.importlib.util, 'spec_from_file_location', return_value=types.SimpleNamespace(loader=loader)), \
              patch.object(module.importlib.util, 'module_from_spec', return_value=helper), \
-             patch.object(module.urllib.request, 'urlopen', side_effect=module.urllib.error.URLError('timed out')), \
+             patch.object(module.DIRECT_OPENER, 'open', side_effect=module.urllib.error.URLError('timed out')), \
              patch('sys.argv', ['import', '--apply']), contextlib.redirect_stdout(output):
             module.main()
         self.assertEqual(json.loads(output.getvalue())['create_error'], 1)
@@ -75,7 +75,7 @@ class ImportTest(unittest.TestCase):
         output = io.StringIO()
         with patch.object(module, 'load', side_effect=lambda: iter([])), \
              patch.object(module, 'JOURNAL', journal), \
-             patch.object(module.urllib.request, 'urlopen') as network, \
+             patch.object(module.DIRECT_OPENER, 'open') as network, \
              patch('sys.argv', ['import', '--apply']), contextlib.redirect_stdout(output):
             module.main()
         self.assertEqual(json.loads(output.getvalue())['unresolved_write_outcomes'], 1)
@@ -89,11 +89,11 @@ class ImportTest(unittest.TestCase):
             status = 200
             def __enter__(self): return self
             def __exit__(self,*args): pass
-        with patch.object(module.urllib.request,'urlopen',side_effect=[rejected,Response()]) as send, patch.object(module.time,'sleep') as sleep:
+        with patch.object(module.DIRECT_OPENER,'open',side_effect=[rejected,Response()]) as send, patch.object(module.time,'sleep') as sleep:
             self.assertEqual(module.create_user('request'),200)
             self.assertEqual(send.call_count,2)
             sleep.assert_called_once_with(60)
-        with patch.object(module.urllib.request,'urlopen',side_effect=URLError('timeout')) as send, patch.object(module.time,'sleep') as sleep:
+        with patch.object(module.DIRECT_OPENER,'open',side_effect=URLError('timeout')) as send, patch.object(module.time,'sleep') as sleep:
             with self.assertRaises(URLError):module.create_user('request')
             self.assertEqual(send.call_count,1)
             sleep.assert_not_called()
