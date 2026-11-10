@@ -8,6 +8,7 @@ import json
 import re
 import sys
 import time
+import msvcrt
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -93,14 +94,27 @@ def main():
             if not same or saved.get('email_id'):
                 event(ident,'write_outcome_unknown');counts['stopped']='readback_mismatch';break
             event(ident,'created_verified');counts['created']+=1
+            if counts['created'] % 25 == 0:
+                print(json.dumps({'progress_created':counts['created']}),flush=True)
         except urllib.error.HTTPError as exc:
             event(ident,'write_outcome_unknown' if exc.code>=500 or 300<=exc.code<400 else 'rejected')
             counts['stopped']='http_'+str(exc.code);break
         except Exception:
             event(ident,'write_outcome_unknown');counts['stopped']='write_outcome_unknown';break
         if counts['created']>=args.limit:break
-        time.sleep(1)
+        # Share capacity with the separate User importer without saturating Frappe.
+        time.sleep(2)
     print(json.dumps(counts))
 
 
-if __name__=='__main__':main()
+if __name__=='__main__':
+    lock_path=JOURNAL.with_name('mvcentr-noemail-contact-import.lock')
+    with lock_path.open('a+b') as lock:
+        lock.seek(0,2)
+        if lock.tell()==0:lock.write(b'0');lock.flush()
+        lock.seek(0)
+        try:msvcrt.locking(lock.fileno(),msvcrt.LK_NBLCK,1)
+        except OSError:raise SystemExit('another_import_is_running')
+        try:main()
+        finally:
+            lock.seek(0);msvcrt.locking(lock.fileno(),msvcrt.LK_UNLCK,1)

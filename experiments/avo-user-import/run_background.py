@@ -1,5 +1,6 @@
 """Run the private MV-Centr import with a status file and a completion alert."""
 import ctypes
+import argparse
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,8 @@ import import_mvcentr_users as migration
 
 STATUS = migration.JOURNAL.with_name('mvcentr-user-import-status.json')
 LOG = migration.JOURNAL.with_name('mvcentr-user-import-run.log')
+SCRIPT = 'import_mvcentr_users.py'
+LABEL = 'пользователей'
 
 
 def write_status(data):
@@ -37,7 +40,7 @@ def main():
     write_status(state)
     result = None
     with LOG.open('a', encoding='utf-8') as log:
-        process = subprocess.Popen([sys.executable, '-u', str(HERE/'import_mvcentr_users.py'), '--apply', '--limit', '250000'],
+        process = subprocess.Popen([sys.executable, '-u', str(HERE/SCRIPT), '--apply', '--limit', '250000'],
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace',
                                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
         for line in process.stdout:
@@ -55,8 +58,8 @@ def main():
     state['result']={k:v for k,v in result.items() if isinstance(k,str) and isinstance(v,int)}
     state['exit_code']=code
     write_status(state)
-    message = ('Перенос контактов МВЦ остановился и требует проверки.' if stopped
-               else 'Обработка выгрузки МВЦ завершена. Проверьте итоговый отчёт.')
+    message = (f'Перенос {LABEL} МВЦ остановился и требует проверки.' if stopped
+               else f'Обработка {LABEL} МВЦ завершена. Проверьте итоговый отчёт.')
     try:
         ctypes.windll.user32.MessageBoxW(0, message, 'Перенос контактов МВЦ', 0x40 | 0x1000)
     except Exception:
@@ -64,7 +67,16 @@ def main():
 
 
 if __name__ == '__main__':
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--no-email',action='store_true')
+    args=parser.parse_args()
+    if args.no_email:
+        STATUS=STATUS.with_name('mvcentr-noemail-contact-status.json')
+        LOG=LOG.with_name('mvcentr-noemail-contact-run.log')
+        SCRIPT='import_contacts_no_email.py'
+        LABEL='контактов без почты'
     lock_path = STATUS.with_name('mvcentr-user-import-worker.lock')
+    if args.no_email:lock_path=STATUS.with_name('mvcentr-noemail-contact-worker.lock')
     with lock_path.open('a+b') as lock:
         lock.seek(0,2)
         if lock.tell()==0: lock.write(b'0');lock.flush()
