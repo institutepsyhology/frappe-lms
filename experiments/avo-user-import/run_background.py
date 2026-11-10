@@ -56,6 +56,8 @@ def main():
     stopped = was_stopped(result, code)
     state['status']='stopped' if stopped else 'completed'
     state['result']={k:v for k,v in result.items() if isinstance(k,str) and isinstance(v,int)}
+    if isinstance(result.get('stopped'),str):
+        state['reason']=result['stopped']
     state['exit_code']=code
     write_status(state)
     message = (f'Перенос {LABEL} МВЦ остановился и требует проверки.' if stopped

@@ -55,15 +55,16 @@ def main():
     parser.add_argument('--contact',type=int)
     args=parser.parse_args()
     if args.limit<1 or (args.contact is not None and args.contact<1):parser.error('invalid limit or ID')
-    done=set();unknown=set()
+    done=set();unknown=set();rejected=set()
     if args.apply and JOURNAL.exists():
         with JOURNAL.open(encoding='utf-8') as f:
             for line in f:
                 x=json.loads(line);ident=x.get('contact_id')
                 if x.get('account')!='mv-centr' or type(ident)!=int:raise ValueError('invalid_journal')
-                if x.get('status')=='created_verified':done.add(ident);unknown.discard(ident)
+                if x.get('status')=='created_verified':done.add(ident);unknown.discard(ident);rejected.discard(ident)
                 elif x.get('status')=='write_outcome_unknown':unknown.add(ident)
                 elif x.get('status')=='resolved_not_created':unknown.discard(ident)
+                elif x.get('status')=='rejected':rejected.add(ident)
     if unknown:
         print(json.dumps({'stopped':'unresolved_write','count':len(unknown)}));return
     headers={}
@@ -71,14 +72,20 @@ def main():
         spec=importlib.util.spec_from_file_location('h',source.ROOT/'frappe-mcp/headers.py')
         helper=importlib.util.module_from_spec(spec);spec.loader.exec_module(helper)
         headers=helper.authenticated_headers('my-lk.mv-centr.ru')
-    counts={'eligible':0,'created':0,'already_recorded':0}
+    counts={'eligible':0,'created':0,'already_recorded':0,'rejected_skipped':0}
+    consecutive_issues=0
     for ident,record in source.load():
         if ident in source.EXCLUDED_CONTACTS or (args.contact is not None and ident!=args.contact):continue
         data=payload(ident,record)
         if data is None:continue
         counts['eligible']+=1
         if not args.apply:continue
-        if ident in done:counts['already_recorded']+=1;continue
+        if ident in done:
+            counts['already_recorded']+=1;consecutive_issues=0;continue
+        if ident in rejected:
+            counts['rejected_skipped']+=1;consecutive_issues+=1
+            if consecutive_issues>=10:counts['stopped']='consecutive_rejections';break
+            continue
         req=urllib.request.Request(source.SITE+'/api/v2/document/Contact',
              data=json.dumps(data,ensure_ascii=False).encode('utf-8'),
              headers={**headers,'Content-Type':'application/json'},method='POST')
@@ -93,10 +100,14 @@ def main():
                 same=same and saved.get('mobile_no')==data['phone_nos'][0]['phone']
             if not same or saved.get('email_id'):
                 event(ident,'write_outcome_unknown');counts['stopped']='readback_mismatch';break
-            event(ident,'created_verified');counts['created']+=1
+            event(ident,'created_verified');counts['created']+=1;consecutive_issues=0
             if counts['created'] % 25 == 0:
                 print(json.dumps({'progress_created':counts['created']}),flush=True)
         except urllib.error.HTTPError as exc:
+            if exc.code == 409:
+                event(ident,'rejected');counts['rejected_skipped']+=1;consecutive_issues+=1
+                if consecutive_issues>=10:counts['stopped']='consecutive_rejections';break
+                continue
             event(ident,'write_outcome_unknown' if exc.code>=500 or 300<=exc.code<400 else 'rejected')
             counts['stopped']='http_'+str(exc.code);break
         except Exception:
