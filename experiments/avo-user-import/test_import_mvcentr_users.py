@@ -48,6 +48,13 @@ class ImportTest(unittest.TestCase):
         saved['custom_avo_telegram_username'] = ''
         self.assertFalse(module.saved_matches(saved, data))
 
+    def test_readback_email_is_query_filter_not_path(self):
+        from urllib.parse import urlsplit, parse_qs
+        url=module.user_readback_url('test/name@example.test')
+        self.assertEqual(urlsplit(url).path, '/api/v2/document/User')
+        filters=json.loads(parse_qs(urlsplit(url).query)['filters'][0])
+        self.assertEqual(filters,[['name','=','test/name@example.test']])
+
     def test_ten_consecutive_unusable_records_stop_batch(self):
         records = [(i, {'contact': {'email': ''}, 'credentials': {}}) for i in range(1, 12)]
         helper = types.SimpleNamespace(authenticated_headers=lambda site: {})

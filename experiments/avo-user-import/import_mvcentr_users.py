@@ -72,7 +72,10 @@ def read_user(request):
     for attempt in range(3):
         try:
             with DIRECT_OPENER.open(request, timeout=20) as response:
-                return json.load(response).get("data") or {}
+                rows = json.load(response).get("data")
+                if not isinstance(rows, list) or len(rows) != 1:
+                    raise ValueError('user_readback_not_unique')
+                return rows[0]
         except urllib.error.HTTPError as exc:
             if exc.code not in (429, 500, 502, 503, 504) or attempt == 2:
                 raise
@@ -132,6 +135,15 @@ def saved_matches(saved, data):
               "custom_avo_account", "custom_avo_telegram_id", "custom_avo_telegram_username",
               "custom_avo_vk_id", "custom_avo_vk_username")
     return all(str(saved.get(key) or "") == str(data.get(key) or "") for key in fields)
+
+
+def user_readback_url(email):
+    from urllib.parse import urlencode
+    fields = ["email", "first_name", "middle_name", "last_name", "mobile_no", "custom_avo_contact_id",
+              "custom_avo_account", "custom_avo_telegram_id", "custom_avo_telegram_username",
+              "custom_avo_vk_id", "custom_avo_vk_username"]
+    return SITE + '/api/v2/document/User?' + urlencode({
+        'filters':json.dumps([['name','=',email]]), 'fields':json.dumps(fields), 'limit':2})
 
 
 def main():
@@ -213,8 +225,7 @@ def main():
             counts["eligible"] += 1
             continue
         # REST resources are checked before creation; do not touch any existing account.
-        from urllib.parse import quote
-        url = SITE + "/api/v2/document/User/" + quote(data["email"], safe="")
+        url = user_readback_url(data["email"])
         data.pop("user_type", None)
         data.pop("send_welcome_email", None)
         request = urllib.request.Request(SITE + "/api/method/lms.lms.avo_user_import.import_user", data=json.dumps({"data": data}).encode(),
