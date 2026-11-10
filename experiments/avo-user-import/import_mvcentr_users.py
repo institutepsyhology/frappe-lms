@@ -151,12 +151,19 @@ def main():
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--limit", type=int, default=1)
     parser.add_argument("--retry-conflicts", action="store_true", help="повторить ранее отмеченные конфликты")
+    parser.add_argument("--ids-file", type=Path, help="приватный JSON-массив ID для выборочного переноса")
     parser.add_argument("--interval", type=float, default=1.0, help="пауза между созданиями в секундах")
     args = parser.parse_args()
     if args.limit < 1:
         parser.error("limit must be positive")
     if not 0.5 <= args.interval <= 60:
         parser.error("interval must be between 0.5 and 60 seconds")
+    selected = None
+    if args.ids_file:
+        values = json.loads(args.ids_file.read_text(encoding="utf-8-sig"))
+        if not isinstance(values, list) or any(type(v) is not int or v < 1 for v in values):
+            raise ValueError('invalid_selection')
+        selected = set(values)
     frequencies = collections.Counter(email_of(record) for _, record in load())
     counts = collections.Counter()
     consecutive_issues = 0
@@ -188,6 +195,8 @@ def main():
         spec.loader.exec_module(helper)
         headers = helper.authenticated_headers("my-lk.mv-centr.ru")
     for ident, record in load():
+        if selected is not None and ident not in selected:
+            continue
         if args.apply and ident in EXCLUDED_CONTACTS:
             counts["excluded_by_owner"] += 1
             continue

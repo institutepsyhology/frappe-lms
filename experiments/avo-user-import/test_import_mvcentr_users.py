@@ -13,6 +13,16 @@ spec.loader.exec_module(module)
 
 
 class ImportTest(unittest.TestCase):
+    def test_selection_only_processes_requested_ids(self):
+        records=[(101,{'contact':{'email':'a@example.test'},'credentials':{'password':'x'}}),
+                 (102,{'contact':{'email':'b@example.test'},'credentials':{'password':'x'}})]
+        out=io.StringIO()
+        with patch.object(module,'load',side_effect=lambda:iter(records)), \
+             patch.object(module.Path,'read_text',return_value='[102]'), \
+             patch('sys.argv',['import','--ids-file','selection.json']), contextlib.redirect_stdout(out):
+            module.main()
+        self.assertEqual(json.loads(out.getvalue()),{'eligible':1})
+
     def test_event_contains_only_identifier_and_status(self):
         mock = mock_open()
         with patch('builtins.open', mock), patch.object(module.Path, 'open', mock):

@@ -70,15 +70,23 @@ def main():
 
 if __name__ == '__main__':
     parser=argparse.ArgumentParser()
-    parser.add_argument('--no-email',action='store_true')
+    mode=parser.add_mutually_exclusive_group()
+    mode.add_argument('--no-email',action='store_true')
+    mode.add_argument('--priority-list',action='store_true')
     args=parser.parse_args()
     if args.no_email:
         STATUS=STATUS.with_name('mvcentr-noemail-contact-status.json')
         LOG=LOG.with_name('mvcentr-noemail-contact-run.log')
         SCRIPT='import_contacts_no_email.py'
         LABEL='контактов без почты'
+    elif args.priority_list:
+        STATUS=STATUS.with_name('mvcentr-priority-contact-status.json')
+        LOG=LOG.with_name('mvcentr-priority-contact-run.log')
+        SCRIPT='import_priority_list.py'
+        LABEL='контактов из списка'
     lock_path = STATUS.with_name('mvcentr-user-import-worker.lock')
     if args.no_email:lock_path=STATUS.with_name('mvcentr-noemail-contact-worker.lock')
+    if args.priority_list:lock_path=STATUS.with_name('mvcentr-priority-contact-worker.lock')
     with lock_path.open('a+b') as lock:
         lock.seek(0,2)
         if lock.tell()==0: lock.write(b'0');lock.flush()
