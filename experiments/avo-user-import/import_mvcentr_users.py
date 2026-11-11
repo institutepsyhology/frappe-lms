@@ -173,8 +173,8 @@ def main():
     args = parser.parse_args()
     if args.limit < 1:
         parser.error("limit must be positive")
-    if not 0.5 <= args.interval <= 60:
-        parser.error("interval must be between 0.5 and 60 seconds")
+    if not 0.1 <= args.interval <= 60:
+        parser.error("interval must be between 0.1 and 60 seconds")
     selected = None
     if args.ids_file:
         values = json.loads(args.ids_file.read_text(encoding="utf-8-sig"))

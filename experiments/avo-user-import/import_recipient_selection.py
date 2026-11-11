@@ -54,7 +54,7 @@ def main():
         try:msvcrt.locking(lock.fileno(),msvcrt.LK_NBLCK,1)
         except OSError as exc:raise RuntimeError('recipient_import_running') from exc
         try:
-            sys.argv=['recipient-import','--ids-file',str(selected),'--limit',str(args.limit),'--interval','0.5']
+            sys.argv=['recipient-import','--ids-file',str(selected),'--limit',str(args.limit),'--interval','0.1']
             if args.apply:sys.argv.append('--apply')
             source.main()
         finally:
