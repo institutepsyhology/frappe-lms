@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory = $true)][int]$ParentPid,
     [Parameter(Mandatory = $true)][int]$ChildPid,
     [switch]$CheckOnly,
-    [switch]$Batch
+    [switch]$Batch,
+    [switch]$Pilot
 )
 $ErrorActionPreference = 'Stop'
 $parent = Get-CimInstance Win32_Process -Filter "ProcessId = $ParentPid"
@@ -21,6 +22,14 @@ Stop-Process -Id $ChildPid -ErrorAction Stop
 Wait-Process -Id $ParentPid,$ChildPid -ErrorAction SilentlyContinue
 $exe = Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe'
 $worker = Join-Path $PSScriptRoot 'run_background.py'
+if ($Pilot) {
+    if (-not $Batch) { throw 'Pilot requires batch mode.' }
+    $output = & $exe (Join-Path $PSScriptRoot 'import_recipient_batches.py') --apply --limit 3
+    if ($LASTEXITCODE -ne 0) { throw 'Pilot exited with an error.' }
+    $result = $output | Select-Object -Last 1 | ConvertFrom-Json
+    if ($result.stopped -or $result.created -ne 3) { throw 'Pilot did not verify three contacts.' }
+    Write-Output 'pilot_verified=3'
+}
 $mode = if ($Batch) { '--recipients-batch' } else { '--recipients-nov11' }
 $process = Start-Process -FilePath $exe -ArgumentList @(('"' + $worker + '"'), $mode) -WindowStyle Hidden -PassThru
 Write-Output "restarted_worker_pid=$($process.Id)"
