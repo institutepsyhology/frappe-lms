@@ -3,7 +3,7 @@ FROM ${BASE_IMAGE}
 USER frappe
 WORKDIR /home/frappe/frappe-bench
 ADD --chown=frappe:0 overlay.tar apps/lms/
-RUN env/bin/python apps/lms/lms/test_avo_user_import_unit.py -q && \
+RUN env/bin/python apps/lms/lms/lms/test_avo_user_import_unit.py -q && \
     cd apps/lms/frontend && \
     node node_modules/vitest/vitest.mjs run --maxWorkers=1 src/tests/avoContactCard.test.ts src/tests/memberFormRoute.test.ts src/tests/membersSearch.test.ts && \
     NODE_OPTIONS=--max-old-space-size=1536 yarn build && \
