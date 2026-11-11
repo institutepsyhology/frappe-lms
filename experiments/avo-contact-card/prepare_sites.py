@@ -35,11 +35,14 @@ def copy_private(src,dst):
 
 
 def main():
-    if os.geteuid()!=0:raise RuntimeError('root_required')
+    if os.geteuid()!=0 or subprocess.check_output(['hostname'],text=True).strip()!='spb-3-vm-t6fa':
+        raise RuntimeError('unexpected_host_or_user')
     actual=run(['docker','inspect','--format','{{.Image}}',CONTAINER]).strip()
     if actual!=EXPECTED:raise RuntimeError('unexpected_active_image')
     mounts=json.loads(run(['docker','volume','inspect','company-lms_sites']))
     sites_root=Path(mounts[0]['Mountpoint']).resolve(strict=True)
+    info=(BASE/'backups').stat()
+    if info.st_uid!=0 or info.st_mode & 0o077:raise RuntimeError('backup_root_not_private')
     stamp=datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
     destination=BASE/'backups'/('contact-card-'+stamp);destination.mkdir(mode=0o700)
     results=[]
