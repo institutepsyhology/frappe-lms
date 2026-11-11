@@ -45,7 +45,7 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--apply',action='store_true')
     parser.add_argument('--limit',type=int,default=1)
-    parser.add_argument('--interval',type=float,default=0.5)
+    parser.add_argument('--interval',type=float,default=1.5)
     args=parser.parse_args()
     if args.limit<1 or not 0.5<=args.interval<=60:parser.error('invalid limit or interval')
     report=json.loads((source.ROOT/'exports/contacts-api-all-fields/report.json').read_text(encoding='utf-8'))
