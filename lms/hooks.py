@@ -77,6 +77,7 @@ setup_wizard_complete = "lms.demo.demo_data.create_demo_data"
 after_migrate = [
 	"lms.sqlite.build_index_in_background",
 	"lms.lms.support_credentials.ensure_role",
+	"lms.lms.credential_profiles.ensure_fields",
 	"lms.lms.avo_contact_fields.execute",
 	"lms.lms.avo_contact_identity.execute",
 	"lms.lms.doctype.lms_payment.lms_payment.add_unique_payment_id_constraint",

@@ -78,7 +78,7 @@ type Member = {
 
 const router = useRouter()
 const user = inject<any>('$user')!
-const canOpenCard = computed(() => Boolean(user.data?.is_system_manager || user.data?.name === 'Administrator' || user.data?.roles?.includes('LMS Credential Manager')))
+const canOpenCard = computed(() => Boolean(user.data?.is_system_manager || user.data?.name === 'Administrator' || user.data?.can_manage_credentials))
 const canEditMembers = computed(() => Boolean(user.data?.is_moderator || user.data?.name === 'Administrator'))
 defineModel('show')
 const search = ref('')

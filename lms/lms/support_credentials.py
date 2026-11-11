@@ -19,7 +19,9 @@ def ensure_role():
 
 
 def _authorized():
-    frappe.only_for(ROLE)
+    from lms.lms.credential_profiles import can_manage_credentials
+    if not can_manage_credentials():
+        frappe.throw(_('A permitted staff role profile is required.'), frappe.PermissionError)
 
 
 def _user(name):
@@ -32,8 +34,9 @@ def _support_target(name):
     user=_user(name)
     actor_roles=set(frappe.get_roles())
     target_roles=set(frappe.get_roles(user.name))
+    from lms.lms.credential_profiles import can_manage_credentials
     if (frappe.session.user != 'Administrator' and 'System Manager' not in actor_roles and
-        (user.user_type == 'System User' or bool(PRIVILEGED_ROLES & target_roles))):
+        (user.user_type == 'System User' or bool(PRIVILEGED_ROLES & target_roles) or can_manage_credentials(user.name))):
         frappe.throw(_('Only a system manager can manage a staff account password.'), frappe.PermissionError)
     return user
 
@@ -143,14 +146,4 @@ def set_new_password(name, password):
 
 @frappe.whitelist(methods=['POST'])
 def set_credential_role(name, enabled):
-    frappe.only_for('System Manager')
-    user=_user(name)
-    if enabled not in (0,1,'0','1',False,True):
-        frappe.throw(_('Invalid role value.'),frappe.ValidationError)
-    enabled = str(enabled) in ('1','True')
-    if enabled:
-        user.add_roles(ROLE)
-    else:
-        user.remove_roles(ROLE)
-    _audit('grant_role' if enabled else 'revoke_role',user.name)
-    return {'enabled':enabled}
+    frappe.throw(_('Configure password access in staff role profiles.'), frappe.PermissionError)

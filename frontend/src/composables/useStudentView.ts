@@ -31,6 +31,7 @@ const INSTRUCTOR_FLAGS = [
 	'is_instructor',
 	'is_evaluator',
 	'is_system_manager',
+	'can_manage_credentials',
 ] as const
 
 const INSTRUCTOR_ROLES = [

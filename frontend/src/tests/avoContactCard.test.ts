@@ -13,9 +13,9 @@ vi.mock('frappe-ui', () => ({
 vi.mock('vue-router', () => ({ useRouter: () => ({ replace:vi.fn() }) }))
 import Card from '@/components/Settings/AvoContactCard.vue'
 
-const make = (roles: string[], system = false) => mount(Card, {
+const make = (roles: string[], system = false, allowed = false) => mount(Card, {
 	props: { memberId:'member@example.invalid' },
-	global: { provide: { $user:{ data:{ name:'staff@example.invalid', is_system_manager:system, roles } } } },
+	global: { provide: { $user:{ data:{ name:'staff@example.invalid', is_system_manager:system, can_manage_credentials:allowed, roles } } } },
 })
 
 describe('AVO contact card', () => {
@@ -38,22 +38,24 @@ describe('AVO contact card', () => {
 		expect(callArgs?.[1].values.custom_no_marketing_email).toBe(true)
 		expect(wrapper.text()).toContain('Служебные письма')
 	})
-	it('does not expose password actions without the dedicated role', async () => {
-		const wrapper=make([],true)
+	it('does not expose passwords or individual grants without an authorized profile', async () => {
+		const wrapper=make(['LMS Credential Manager'])
 		await flushPromises()
 		expect(wrapper.text()).toContain('ID 42')
 		expect(wrapper.text()).not.toContain('Показать пароль')
-		expect(wrapper.text()).toContain('Дать право работы с паролями')
+		expect(wrapper.text()).not.toContain('Дать право работы с паролями')
 		expect(callMock.mock.calls.some(([url]) => url.endsWith('reveal'))).toBe(false)
 	})
-	it('retrieves a password only after an authorized person requests it', async () => {
-		const wrapper=make(['LMS Credential Manager'])
-		await flushPromises()
-		expect(wrapper.find('[data-testid="revealed-password"]').exists()).toBe(false)
-		const show=wrapper.findAll('button').find((button) => button.text()==='Показать пароль')!
-		await show.trigger('click')
+	it('shows the current password to administrators on opening the card', async () => {
+		const wrapper=make([],true)
 		await flushPromises()
 		expect(callMock).toHaveBeenCalledWith('lms.lms.support_credentials.reveal',{name:'member@example.invalid'})
+		expect(wrapper.find('[data-testid="revealed-password"]').text()).toBe('synthetic-test-secret')
+		expect(wrapper.text()).not.toContain('Дать право работы с паролями')
+	})
+	it('shows the password to an authorized job profile', async () => {
+		const wrapper=make([],false,true)
+		await flushPromises()
 		expect(wrapper.find('[data-testid="revealed-password"]').text()).toBe('synthetic-test-secret')
 	})
 	it('opens a contact without implying it has a login account', async () => {
@@ -66,7 +68,7 @@ describe('AVO contact card', () => {
 		expect(callMock.mock.calls.some(([url]) => url.endsWith('courses_for_user'))).toBe(false)
 	})
 	it('sets a new password only on explicit action and then clears the field', async () => {
-		const wrapper=make(['LMS Credential Manager'])
+		const wrapper=make([],false,true)
 		await flushPromises()
 		const field=wrapper.findAll('label').find((label) => label.text()==='Новый пароль')!
 		await field.find('input').setValue('synthetic-new-password')

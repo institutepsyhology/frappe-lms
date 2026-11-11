@@ -105,7 +105,7 @@ const isEdit = computed(() => props.memberID !== 'new')
 const isContact = computed(() => props.memberID.startsWith('avo-contact:'))
 const targetId = computed(() => isContact.value ? props.memberID.slice('avo-contact:'.length) : props.memberID)
 const canEditRoles = computed(() => Boolean(user.data?.is_moderator || user.data?.name === 'Administrator'))
-const canOpenCard = computed(() => Boolean(user.data?.is_system_manager || user.data?.name === 'Administrator' || user.data?.roles?.includes('LMS Credential Manager')))
+const canOpenCard = computed(() => Boolean(user.data?.is_system_manager || user.data?.name === 'Administrator' || user.data?.can_manage_credentials))
 
 // Only reached on a deep link or a reload — opened from Members.vue this pops
 // back to whatever page the settings dialog was floating over (useFormRoute.ts).

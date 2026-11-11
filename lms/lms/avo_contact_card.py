@@ -20,7 +20,9 @@ SITE_ACCOUNTS = {'my-lk.mv-centr.ru':'mv-centr', 'access-stage2.local':'mv-centr
 
 
 def _check_access():
-    frappe.only_for(['System Manager', 'LMS Credential Manager'])
+    from lms.lms.credential_profiles import can_manage_credentials
+    if not can_manage_credentials():
+        frappe.throw(_('A permitted staff role profile is required.'), frappe.PermissionError)
 
 
 def _document(kind, name):
@@ -38,9 +40,7 @@ def _present(doc):
               'middle_name':value('middle_name') or '', 'last_name':value('last_name') or '',
               'email':value('email') if doc.doctype == 'User' else value('email_id'),
               'mobile_no':value('mobile_no') or '', 'enabled':bool(value('enabled')) if doc.doctype == 'User' else None,
-              'created':str(doc.creation) if doc.creation else None,
-              'credential_manager': bool(doc.doctype == 'User' and frappe.db.exists('Has Role',
-                  {'parent':doc.name,'parenttype':'User','role':'LMS Credential Manager'}))}
+              'created':str(doc.creation) if doc.creation else None}
     for field in IDENTITY_FIELDS + SOCIAL_FIELDS:
         result[field] = value(field) or ''
     result['custom_no_marketing_email'] = bool(value('custom_no_marketing_email'))
@@ -86,7 +86,8 @@ def save_card(kind, name, values):
     doc = _document(kind, name)
     if kind == 'User' and frappe.session.user != 'Administrator' and 'System Manager' not in frappe.get_roles():
         from lms.lms.support_credentials import PRIVILEGED_ROLES
-        if doc.user_type == 'System User' or PRIVILEGED_ROLES.intersection(frappe.get_roles(doc.name)):
+        from lms.lms.credential_profiles import can_manage_credentials
+        if doc.user_type == 'System User' or PRIVILEGED_ROLES.intersection(frappe.get_roles(doc.name)) or can_manage_credentials(doc.name):
             frappe.throw(_('Only a system manager can edit a staff account.'), frappe.PermissionError)
     if isinstance(values, str):
         values = json.loads(values)

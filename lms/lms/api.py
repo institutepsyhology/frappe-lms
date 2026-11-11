@@ -80,6 +80,8 @@ def get_user_info():
 	user.is_student = not user.is_instructor and not user.is_moderator and not user.is_evaluator
 	user.is_fc_site = is_fc_site()
 	user.is_system_manager = "System Manager" in user.roles
+	from lms.lms.credential_profiles import can_manage_credentials
+	user.can_manage_credentials = can_manage_credentials(user.name)
 	user.sitename = frappe.local.site
 	user.developer_mode = frappe.conf.developer_mode
 	if user.is_fc_site and user.is_system_manager:
@@ -1090,7 +1092,9 @@ def get_member(member: str):
 	cannot answer "give me this one row": a member past the first page, or a
 	disabled one, came back empty and left the form unable to save.
 	"""
-	frappe.only_for(["Moderator", "LMS Credential Manager", "System Manager"])
+	from lms.lms.credential_profiles import can_manage_credentials
+	if not can_manage_credentials() and "Moderator" not in frappe.get_roles():
+		frappe.throw(_("Not permitted."), frappe.PermissionError)
 
 	if not isinstance(member, str):
 		frappe.throw(_("Invalid member."), frappe.ValidationError)
@@ -1109,7 +1113,9 @@ def get_member(member: str):
 
 @frappe.whitelist()
 def get_members(start: int = 0, search: str = None, role: str = "All", status: str = "Active"):
-	frappe.only_for(["Moderator", "LMS Credential Manager", "System Manager"])
+	from lms.lms.credential_profiles import can_manage_credentials
+	if not can_manage_credentials() and "Moderator" not in frappe.get_roles():
+		frappe.throw(_("Not permitted."), frappe.PermissionError)
 
 	lms_roles = LMS_ROLES
 	if not isinstance(role, str) or role not in (["All"] + lms_roles):
@@ -1136,8 +1142,7 @@ def get_members(start: int = 0, search: str = None, role: str = "All", status: s
 		or_filters["full_name"] = ["like", f"%{search}%"]
 		or_filters["email"] = ["like", f"%{search}%"]
 		or_filters["mobile_no"] = ["like", f"%{search}%"]
-		if (frappe.session.user == "Administrator" or
-			any(role in frappe.get_roles() for role in ("System Manager", "LMS Credential Manager"))):
+		if can_manage_credentials():
 			if frappe.get_meta("User").has_field("custom_avo_contact_id"):
 				or_filters["custom_avo_contact_id"] = ["like", f"%{search}%"]
 

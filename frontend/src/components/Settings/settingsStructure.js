@@ -1,5 +1,6 @@
 import { markRaw } from 'vue'
 import Members from '@/components/Settings/Members.vue'
+import CredentialProfiles from '@/components/Settings/CredentialProfiles.vue'
 import Categories from '@/components/Settings/Categories.vue'
 import EmailTemplatePage from '@/components/Settings/EmailTemplate/EmailTemplatePage.vue'
 import EmailConfig from '@/components/Settings/EmailAccount/EmailConfig.vue'
@@ -304,6 +305,12 @@ export const settingsStructure = [
 					'Manage users by adding or inviting them, and assign roles to control their access and permissions',
 				icon: 'lucide-user',
 				template: markRaw(Members),
+			},
+			{
+				label: 'Должности и доступы',
+				description: 'Право работы с паролями по должностям сотрудников',
+				icon: 'lucide-shield-check',
+				template: markRaw(CredentialProfiles),
 			},
 		],
 	},

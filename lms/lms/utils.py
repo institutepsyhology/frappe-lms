@@ -3465,9 +3465,12 @@ def can_modify_batch(batch: str) -> bool:
 
 def has_lms_role():
 	roles = frappe.get_roles()
-	lms_roles = set(LMS_ROLES) | {"LMS Credential Manager", "System Manager"}
+	lms_roles = set(LMS_ROLES) | {"System Manager"}
 	user_roles = set(roles)
-	return not lms_roles.isdisjoint(user_roles)
+	if not lms_roles.isdisjoint(user_roles):
+		return True
+	from lms.lms.credential_profiles import can_manage_credentials
+	return can_manage_credentials()
 
 
 def recalculate_course_progress(course: str, member: str):

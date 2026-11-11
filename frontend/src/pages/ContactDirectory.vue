@@ -9,5 +9,5 @@ import { computed, inject } from 'vue'
 import Members from '@/components/Settings/Members.vue'
 import type { SessionUser } from '@/types'
 const user=inject<SessionUser>('$user')!
-const allowed=computed(() => Boolean(user.data?.is_system_manager || user.data?.name === 'Administrator' || user.data?.roles?.includes('LMS Credential Manager')))
+const allowed=computed(() => Boolean(user.data?.is_system_manager || user.data?.name === 'Administrator' || user.data?.can_manage_credentials))
 </script>
