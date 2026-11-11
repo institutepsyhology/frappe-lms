@@ -86,7 +86,7 @@ class ImportTest(unittest.TestCase):
         output = io.StringIO()
         with patch.object(module, 'load', side_effect=lambda: iter(records)), \
              patch.object(module, 'log_event') as log, \
-             patch.object(module, 'JOURNAL', types.SimpleNamespace(exists=lambda: False)), \
+             patch.object(module, 'JOURNAL', types.SimpleNamespace(exists=lambda: False, with_name=lambda name:types.SimpleNamespace(exists=lambda:False))), \
              patch.object(module.importlib.util, 'spec_from_file_location', return_value=types.SimpleNamespace(loader=loader)), \
              patch.object(module.importlib.util, 'module_from_spec', return_value=helper), \
              patch('sys.argv', ['import', '--apply', '--limit', '10']), contextlib.redirect_stdout(output):
@@ -103,7 +103,7 @@ class ImportTest(unittest.TestCase):
         output = io.StringIO()
         with patch.object(module, 'load', side_effect=lambda: iter(records)), \
              patch.object(module, 'log_event') as log, \
-             patch.object(module, 'JOURNAL', types.SimpleNamespace(exists=lambda: False)), \
+             patch.object(module, 'JOURNAL', types.SimpleNamespace(exists=lambda: False, with_name=lambda name:types.SimpleNamespace(exists=lambda:False))), \
              patch.object(module.importlib.util, 'spec_from_file_location', return_value=types.SimpleNamespace(loader=loader)), \
              patch.object(module.importlib.util, 'module_from_spec', return_value=helper), \
              patch.object(module.DIRECT_OPENER, 'open', side_effect=module.urllib.error.URLError('timed out')), \
@@ -114,7 +114,7 @@ class ImportTest(unittest.TestCase):
 
     def test_unresolved_write_stops_before_any_network_request(self):
         entry = json.dumps({'contact_id': 123, 'account': 'mv-centr', 'status': 'write_outcome_unknown'}) + '\n'
-        journal = types.SimpleNamespace(exists=lambda: True, open=lambda **kw: io.StringIO(entry))
+        journal = types.SimpleNamespace(exists=lambda: True, open=lambda **kw: io.StringIO(entry), with_name=lambda name:types.SimpleNamespace(exists=lambda:False))
         output = io.StringIO()
         with patch.object(module, 'load', side_effect=lambda: iter([])), \
              patch.object(module, 'JOURNAL', journal), \
@@ -122,6 +122,15 @@ class ImportTest(unittest.TestCase):
              patch('sys.argv', ['import', '--apply']), contextlib.redirect_stdout(output):
             module.main()
         self.assertEqual(json.loads(output.getvalue())['unresolved_write_outcomes'], 1)
+        network.assert_not_called()
+
+    def test_existing_batch_checkpoint_blocks_legacy_import(self):
+        journal=types.SimpleNamespace(with_name=lambda name:types.SimpleNamespace(exists=lambda:True))
+        output=io.StringIO()
+        with patch.object(module,'JOURNAL',journal),patch.object(module.DIRECT_OPENER,'open') as network, \
+             patch('sys.argv',['import','--apply']),contextlib.redirect_stdout(output):
+            module.main()
+        self.assertEqual(json.loads(output.getvalue())['unresolved_batch'],1)
         network.assert_not_called()
 
     def test_only_confirmed_throttle_is_retried(self):

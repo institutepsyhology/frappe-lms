@@ -21,7 +21,9 @@ class ImportTest(unittest.TestCase):
         f.throw = lambda message, typ: (_ for _ in ()).throw(typ(message))
         f.parse_json = lambda data: data
         f.whitelist = lambda **kw: lambda fn: fn
-        f.db = types.SimpleNamespace(exists=lambda *a: False)
+        self.commits=[]
+        f.db = types.SimpleNamespace(exists=lambda *a: False, commit=lambda: self.commits.append('commit'),
+                                     rollback=lambda: self.commits.append('rollback'))
         def get_doc(data):
             class FakeDoc:
                 def __init__(self): self.data=data; self.name=data['email']; self.flags=types.SimpleNamespace(); self.during=[]
@@ -66,6 +68,18 @@ class ImportTest(unittest.TestCase):
         self.frappe.db.exists = lambda *args: False
         with self.assertRaises(ValueError):
             self.module.import_user({**self.data, "roles": ["System Manager"]})
+
+    def test_batch_stops_at_failure_and_commits_only_completed_users(self):
+        result = self.module.import_users_batch([self.data, {**self.data, 'roles':['System Manager']}, self.data])
+        self.assertEqual(result, {'processed':1, 'failed':True, 'reason':'rejected'})
+        self.assertEqual(self.commits, ['commit', 'rollback'])
+        self.assertEqual(len(self.docs), 1)
+
+    def test_batch_requires_admin_and_bounded_list(self):
+        for value in ([], [self.data] * 11, {'data':self.data}):
+            with self.assertRaises(ValueError): self.module.import_users_batch(value)
+        self.frappe.session.user = 'student@example.invalid'
+        with self.assertRaises(PermissionError): self.module.import_users_batch([self.data])
 
 
 if __name__ == "__main__":

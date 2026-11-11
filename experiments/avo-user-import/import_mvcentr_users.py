@@ -175,6 +175,9 @@ def main():
         parser.error("limit must be positive")
     if not 0.1 <= args.interval <= 60:
         parser.error("interval must be between 0.1 and 60 seconds")
+    if args.apply and JOURNAL.with_name('mvcentr-recipient-batch-pending.json').exists():
+        print(json.dumps({'stopped': True, 'unresolved_batch': 1}))
+        return
     selected = None
     if args.ids_file:
         values = json.loads(args.ids_file.read_text(encoding="utf-8-sig"))

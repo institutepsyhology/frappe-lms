@@ -109,6 +109,7 @@ if __name__ == '__main__':
     mode.add_argument('--priority-list',action='store_true')
     mode.add_argument('--passwords',action='store_true')
     mode.add_argument('--recipients-nov11',action='store_true')
+    mode.add_argument('--recipients-batch',action='store_true')
     args=parser.parse_args()
     if args.no_email:
         STATUS=STATUS.with_name('mvcentr-noemail-contact-status.json')
@@ -125,17 +126,17 @@ if __name__ == '__main__':
         LOG=LOG.with_name('mvcentr-support-password-run.log')
         SCRIPT='archive_verified_passwords.py'
         LABEL='паролей контактов'
-    elif args.recipients_nov11:
+    elif args.recipients_nov11 or args.recipients_batch:
         STATUS=STATUS.with_name('mvcentr-recipients-nov11-status.json')
         LOG=LOG.with_name('mvcentr-recipients-nov11-run.log')
-        SCRIPT='import_recipient_selection.py'
+        SCRIPT='import_recipient_batches.py' if args.recipients_batch else 'import_recipient_selection.py'
         LABEL='контактов из списка получателей'
-        RECIPIENT_RECOVERY=True
+        RECIPIENT_RECOVERY=not args.recipients_batch
     lock_path = STATUS.with_name('mvcentr-user-import-worker.lock')
     if args.no_email:lock_path=STATUS.with_name('mvcentr-noemail-contact-worker.lock')
     if args.priority_list:lock_path=STATUS.with_name('mvcentr-priority-contact-worker.lock')
     if args.passwords:lock_path=STATUS.with_name('mvcentr-support-password-worker.lock')
-    if args.recipients_nov11:lock_path=STATUS.with_name('mvcentr-recipients-nov11-worker.lock')
+    if args.recipients_nov11 or args.recipients_batch:lock_path=STATUS.with_name('mvcentr-recipients-nov11-worker.lock')
     with lock_path.open('a+b') as lock:
         lock.seek(0,2)
         if lock.tell()==0: lock.write(b'0');lock.flush()

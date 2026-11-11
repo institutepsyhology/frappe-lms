@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory = $true)][int]$ParentPid,
     [Parameter(Mandatory = $true)][int]$ChildPid,
-    [switch]$CheckOnly
+    [switch]$CheckOnly,
+    [switch]$Batch
 )
 $ErrorActionPreference = 'Stop'
 $parent = Get-CimInstance Win32_Process -Filter "ProcessId = $ParentPid"
@@ -20,5 +21,6 @@ Stop-Process -Id $ChildPid -ErrorAction Stop
 Wait-Process -Id $ParentPid,$ChildPid -ErrorAction SilentlyContinue
 $exe = Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe'
 $worker = Join-Path $PSScriptRoot 'run_background.py'
-$process = Start-Process -FilePath $exe -ArgumentList @(('"' + $worker + '"'), '--recipients-nov11') -WindowStyle Hidden -PassThru
+$mode = if ($Batch) { '--recipients-batch' } else { '--recipients-nov11' }
+$process = Start-Process -FilePath $exe -ArgumentList @(('"' + $worker + '"'), $mode) -WindowStyle Hidden -PassThru
 Write-Output "restarted_worker_pid=$($process.Id)"

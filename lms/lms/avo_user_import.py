@@ -54,3 +54,31 @@ def import_user(data):
     from lms.lms.support_credentials import store_new_user_password
     store_new_user_password(user.name, password)
     return {"created": True}
+
+
+@frappe.whitelist(methods=["POST"])
+def import_users_batch(records):
+    """Import up to ten users, committing each separately for safe recovery.
+
+    An interrupted request may have committed any prefix. The caller must
+    reconcile every source ID before retrying; the return value is not proof
+    that a user was saved correctly. Stop at the first rejected record.
+    """
+    if frappe.session.user != "Administrator" or frappe.local.site != "my-lk.mv-centr.ru":
+        frappe.throw("Administrator required", frappe.PermissionError)
+    records = frappe.parse_json(records)
+    if not isinstance(records, list) or not 1 <= len(records) <= 10:
+        frappe.throw("Invalid batch size", frappe.ValidationError)
+    processed = 0
+    for data in records:
+        try:
+            import_user(data)
+            frappe.db.commit()
+            processed += 1
+        except (frappe.DuplicateEntryError, frappe.ValidationError):
+            frappe.db.rollback()
+            return {"processed": processed, "failed": True, "reason": "rejected"}
+        except Exception:
+            frappe.db.rollback()
+            return {"processed": processed, "failed": True, "reason": "unexpected"}
+    return {"processed": processed, "failed": False}
