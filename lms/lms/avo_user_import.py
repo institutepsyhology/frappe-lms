@@ -49,4 +49,6 @@ def import_user(data):
                            "user_type": "Website User", "send_welcome_email": 0})
     user.flags.ignore_password_policy = True
     _insert_imported_user(user)
+    from lms.lms.support_credentials import store_new_user_password
+    store_new_user_password(user.name, password)
     return {"created": True}

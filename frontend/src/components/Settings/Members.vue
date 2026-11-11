@@ -4,7 +4,8 @@
 		:description="__(description)"
 		:columns="columns"
 		:rows="memberList"
-		:loading="Boolean(members.loading)"
+		:loading="Boolean(currentKind === 'Contact' ? contacts.loading : members.loading)"
+		:show-new="currentKind === 'User' && canEditMembers"
 		:has-next-page="hasNextPage"
 		v-model:search="search"
 		searchable
@@ -13,10 +14,12 @@
 		empty-icon="lucide-user"
 		@new="openNewMember"
 		@load-more="fetchMembers()"
-		@row-click="(member) => openProfile(member.username)"
+		@row-click="(member) => openEditMember(member)"
 	>
 		<template #header-bottom>
-			<Select
+			<Select v-if="canOpenCard" v-model="currentKind" class="w-44" aria-label="Тип записи" :options="kindOptions" />
+			<Select v-if="currentKind === 'User'" v-model="currentStatus" class="w-40" aria-label="Статус учётной записи" :options="statusOptions" />
+			<Select v-if="currentKind === 'User'"
 				v-model="currentRole"
 				class="w-40"
 				:aria-label="__('Filter by role')"
@@ -53,7 +56,7 @@
 <script setup lang="ts">
 import { call, createResource, Dialog, Select, toast } from 'frappe-ui'
 import { useRouter } from 'vue-router'
-import { ref, watch } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 import type { SettingsListColumn } from '@/types'
 import { SETTINGS_PAGE_LENGTH } from '@/composables/useSettingsListResource'
 import { openFormRoute } from '@/composables/useFormRoute'
@@ -67,13 +70,24 @@ type Member = {
 	name: string
 	roles?: string[]
 	user_image?: string
+	kind?: 'Contact'
+	email?: string
+	avo_id?: string
+	enabled?: boolean | 0 | 1
 }
 
 const router = useRouter()
-const show = defineModel('show')
+const user = inject<any>('$user')!
+const canOpenCard = computed(() => Boolean(user.data?.is_system_manager || user.data?.name === 'Administrator' || user.data?.roles?.includes('LMS Credential Manager')))
+const canEditMembers = computed(() => Boolean(user.data?.is_moderator || user.data?.name === 'Administrator'))
+defineModel('show')
 const search = ref('')
 const currentRole = ref('All')
+const currentKind = ref('User')
+const currentStatus = ref('All')
 const start = ref(0)
+const kindOptions = [{ label:'Пользователи', value:'User' }, { label:'Контакты без учётной записи', value:'Contact' }]
+const statusOptions = [{ label:'Все статусы', value:'All' }, { label:'Активные', value:'Active' }, { label:'Отключённые', value:'Disabled' }]
 
 const roleOptions = [
 	{ label: __('All'), value: 'All' },
@@ -111,8 +125,14 @@ const members = createResource({
 		search: search.value,
 		start: start.value,
 		role: currentRole.value,
+		status: currentStatus.value,
 	}),
 	auto: false,
+})
+const contacts = createResource({
+	url: 'lms.lms.avo_contact_card.list_source_contacts',
+	makeParams: () => ({ search:search.value, start:start.value }),
+	auto:false,
 })
 
 // createResource carries no request sequence and aborts nothing, so two calls
@@ -123,7 +143,7 @@ let requestToken = 0
 
 const fetchMembers = async () => {
 	const token = ++requestToken
-	const data = (await members.reload()) as Member[] | null
+	const data = (await (currentKind.value === 'Contact' ? contacts.reload() : members.reload())) as Member[] | null
 	if (token !== requestToken || !data) return
 	memberList.value = memberList.value.concat(data)
 	// Paged by what the server actually returned, not by the constant. An
@@ -141,7 +161,7 @@ const refreshMembers = () => {
 	return fetchMembers()
 }
 
-watch([search, currentRole], () => {
+watch([search, currentRole, currentKind, currentStatus], () => {
 	refreshMembers()
 })
 
@@ -161,24 +181,11 @@ const roleLabels: Record<string, string> = {
 	'Batch Evaluator': __('Evaluator'),
 }
 
-const openProfile = (username: string) => {
-	show.value = false
-	router.push({
-		name: 'Profile',
-		params: {
-			username: username,
-		},
-	})
-}
-
-// The settings dialog is deliberately left open behind these: opening a member
-// form is not a "leave settings" action the way openProfile() is, and the form
-// renders as a second dialog on top, the way the delete confirmation below
-// already stacks.
+// The settings dialog remains open behind the card.
 const openEditMember = (member: Member) => {
 	openFormRoute(router, {
 		name: 'MemberForm',
-		params: { memberID: member.name },
+		params: { memberID: member.kind === 'Contact' ? `avo-contact:${member.name}` : member.name },
 	})
 }
 
@@ -197,7 +204,7 @@ const columns: SettingsListColumn[] = [
 		label: __('User'),
 		type: 'stacked',
 		primary: (row) => row.full_name,
-		secondary: (row) => row.name,
+		secondary: (row) => row.kind === 'Contact' ? `${row.email || 'Без почты'} · АВО ID ${row.avo_id || '—'}` : `${row.name}${row.enabled === 0 || row.enabled === false ? ' · Отключён' : ''}`,
 		avatar: (row) => ({ image: row.user_image, label: row.full_name }),
 	},
 	{
@@ -213,7 +220,9 @@ const columns: SettingsListColumn[] = [
 		key: 'actions',
 		type: 'actions',
 		ariaLabel: (row) => __('Actions for {0}').format(row.full_name),
-		options: (row) => [
+		options: (row) => row.kind === 'Contact' || !canEditMembers.value ? [
+			{ label: 'Открыть карточку', onClick: () => openEditMember(row as Member) },
+		] : [
 			{
 				label: __('Edit member'),
 				onClick: () => openEditMember(row as Member),

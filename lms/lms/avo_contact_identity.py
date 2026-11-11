@@ -4,7 +4,7 @@ from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 
 def execute():
-    if frappe.local.site not in ('access-stage2.local', 'my-lk.mv-centr.ru'):
+    if frappe.local.site not in ('access-stage2.local', 'my-lk.mv-centr.ru', 'my-lk.iomp.ru', 'my-lk.mastervision.su'):
         raise RuntimeError('unexpected_site')
     fields = [
         {'fieldname':'custom_avo_contact_id','label':'AVO Contact ID','fieldtype':'Data',

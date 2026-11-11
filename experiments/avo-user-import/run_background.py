@@ -52,7 +52,7 @@ def main():
             else: result=row
         code=process.wait()
     result = result if isinstance(result,dict) else {}
-    state['created_this_run']=result.get('created', state['created_this_run'])
+    state['created_this_run']=result.get('created', result.get('stored', state['created_this_run']))
     stopped = was_stopped(result, code)
     state['status']='stopped' if stopped else 'completed'
     state['result']={k:v for k,v in result.items() if isinstance(k,str) and isinstance(v,int)}
@@ -73,6 +73,7 @@ if __name__ == '__main__':
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--no-email',action='store_true')
     mode.add_argument('--priority-list',action='store_true')
+    mode.add_argument('--passwords',action='store_true')
     args=parser.parse_args()
     if args.no_email:
         STATUS=STATUS.with_name('mvcentr-noemail-contact-status.json')
@@ -84,9 +85,15 @@ if __name__ == '__main__':
         LOG=LOG.with_name('mvcentr-priority-contact-run.log')
         SCRIPT='import_priority_list.py'
         LABEL='контактов из списка'
+    elif args.passwords:
+        STATUS=STATUS.with_name('mvcentr-support-password-status.json')
+        LOG=LOG.with_name('mvcentr-support-password-run.log')
+        SCRIPT='archive_verified_passwords.py'
+        LABEL='паролей контактов'
     lock_path = STATUS.with_name('mvcentr-user-import-worker.lock')
     if args.no_email:lock_path=STATUS.with_name('mvcentr-noemail-contact-worker.lock')
     if args.priority_list:lock_path=STATUS.with_name('mvcentr-priority-contact-worker.lock')
+    if args.passwords:lock_path=STATUS.with_name('mvcentr-support-password-worker.lock')
     with lock_path.open('a+b') as lock:
         lock.seek(0,2)
         if lock.tell()==0: lock.write(b'0');lock.flush()

@@ -157,6 +157,12 @@ const userDropdownOptions = computed(() => {
 			group: '',
 			items: [
 				{
+					icon: 'lucide-users',
+					label: 'Контакты',
+					onClick: () => router.push({ name:'ContactDirectory' }),
+					condition: () => userResource.data?.is_system_manager || userResource.data?.roles?.includes('LMS Credential Manager'),
+				},
+				{
 					icon: 'lucide-user',
 					label: __('My Profile'),
 					onClick: () => {

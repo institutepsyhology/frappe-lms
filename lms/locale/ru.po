@@ -11943,3 +11943,36 @@ msgstr "Нет"
 msgid "Days"
 msgstr "На несколько дней"
 
+msgid "The current password is unavailable. Set a new password or send a reset link."
+msgstr "Действующий пароль недоступен. Установите новый пароль или отправьте ссылку для его смены."
+
+msgid "Outgoing email is disabled on this site."
+msgstr "Отправка почты на этом сайте отключена."
+
+msgid "Configure an outgoing email account first."
+msgstr "Сначала настройте исходящую почту."
+
+msgid "Only a system manager can manage a staff account password."
+msgstr "Управлять паролем сотрудника может только системный администратор."
+
+msgid "Only a system manager can edit a staff account."
+msgstr "Редактировать учётную запись сотрудника может только системный администратор."
+
+msgid "Enter a valid new password for an active account."
+msgstr "Укажите новый пароль для активной учётной записи."
+
+msgid "This account has no active email login."
+msgstr "У этой учётной записи нет активного входа по почте."
+
+msgid "Your personal account access"
+msgstr "Доступ в ваш личный кабинет"
+
+msgid "Your login: {0}<br>Your password: {1}"
+msgstr "Ваш логин: {0}<br>Ваш пароль: {1}"
+
+msgid "The message could not be queued."
+msgstr "Не удалось поставить письмо в очередь отправки."
+
+msgid "Password encryption is not configured on this site."
+msgstr "Шифрование паролей на этом сайте ещё не настроено."
+

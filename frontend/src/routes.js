@@ -420,6 +420,11 @@ export const routes = [
 	// by NAME, not by path, so nothing depends on the prefix resolving;
 	// '/settings' and '/settings/:item' now fall through to NotFound.
 	{
+		path: '/contact-directory',
+		name: 'ContactDirectory',
+		component: () => import('@/pages/ContactDirectory.vue'),
+	},
+	{
 		path: '/settings/users/:memberID',
 		name: 'MemberForm',
 		component: () => import('@/pages/Forms/MemberForm.vue'),

@@ -1,7 +1,7 @@
 <template>
 	<FormShell
-		:title="isEdit ? __('Edit Member') : __('Add New Member')"
-		size="lg"
+		:title="isContact ? 'Карточка контакта' : isEdit ? __('Edit Member') : __('Add New Member')"
+		size="3xl"
 		@close="close"
 	>
 		<template #default>
@@ -9,7 +9,7 @@
 				{{ refusal }}
 			</div>
 			<div v-else data-testid="member-fields" class="space-y-4">
-				<FormControl
+				<FormControl v-if="!isContact"
 					v-model="member.email"
 					:label="__('Email')"
 					placeholder="jane@doe.com"
@@ -34,7 +34,7 @@
 						class="w-full"
 					/>
 				</div>
-				<div class="flex flex-col gap-2">
+				<div v-if="!isContact && canEditRoles" class="flex flex-col gap-2">
 					<div class="text-p-sm-medium text-ink-gray-7">
 						{{ __('Roles') }}
 					</div>
@@ -61,10 +61,11 @@
 						/>
 					</div>
 				</div>
+				<AvoContactCard v-if="isEdit && (isContact || memberRow) && canOpenCard" :key="targetId" ref="avoCard" :member-id="targetId" :kind="isContact ? 'Contact' : 'User'" />
 			</div>
 		</template>
 		<template #actions>
-			<div v-if="!refusal" class="flex items-center justify-end">
+			<div v-if="!refusal && !isContact && canEditRoles" class="flex items-center justify-end">
 				<HeaderButton
 					data-testid="member-save"
 					:label="__('Save')"
@@ -84,6 +85,7 @@ import { useOnboarding, useTelemetry } from 'frappe-ui/frappe'
 import BooleanSwitch from '@/components/Controls/BooleanSwitch.vue'
 import FormShell from '@/components/FormShell.vue'
 import HeaderButton from '@/components/HeaderButton.vue'
+import AvoContactCard from '@/components/Settings/AvoContactCard.vue'
 import { useFormRoute } from '@/composables/useFormRoute'
 import { notifyMembersChanged } from '@/stores/members'
 import { cleanError } from '@/utils'
@@ -100,6 +102,10 @@ const { updateOnboardingStep } = useOnboarding('learning')
 // House style for a route that serves both create and edit
 // (`/job-opening/:jobName/edit`, JobForm.vue:147-149).
 const isEdit = computed(() => props.memberID !== 'new')
+const isContact = computed(() => props.memberID.startsWith('avo-contact:'))
+const targetId = computed(() => isContact.value ? props.memberID.slice('avo-contact:'.length) : props.memberID)
+const canEditRoles = computed(() => Boolean(user.data?.is_moderator || user.data?.name === 'Administrator'))
+const canOpenCard = computed(() => Boolean(user.data?.is_system_manager || user.data?.name === 'Administrator' || user.data?.roles?.includes('LMS Credential Manager')))
 
 // Only reached on a deep link or a reload — opened from Members.vue this pops
 // back to whatever page the settings dialog was floating over (useFormRoute.ts).
@@ -122,7 +128,7 @@ const { close } = useFormRoute({ name: 'MobileYou' })
 const refusal = computed(() => {
 	if ((window as Window & { read_only_mode?: boolean }).read_only_mode)
 		return __('This site is in read-only mode.')
-	if (!user.data?.is_moderator)
+	if (!canEditRoles.value && (!isEdit.value || !canOpenCard.value))
 		return __('You are not permitted to manage members.')
 	return ''
 })
@@ -149,6 +155,7 @@ const roles = reactive({
 
 const initialRoles = reactive({ ...roles })
 const submitting = ref(false)
+const avoCard = ref<InstanceType<typeof AvoContactCard> | null>(null)
 
 // C4 — edit mode used to be seeded from the row Members.vue already held in
 // memory, which on a cold deep link does not exist.
@@ -167,7 +174,10 @@ const memberFetch = createResource({
 }) as unknown as Resource<MemberRow | null>
 
 onMounted(() => {
-	if (isEdit.value && !refusal.value) memberFetch.fetch()
+	if (isEdit.value && !isContact.value && !refusal.value) memberFetch.fetch()
+})
+watch(() => props.memberID, () => {
+	if (isEdit.value && !isContact.value && !refusal.value) memberFetch.fetch()
 })
 
 const memberRow = computed<MemberRow | null>(() =>
@@ -245,6 +255,7 @@ const addMember = async () => {
 const saveRoles = async () => {
 	submitting.value = true
 	try {
+		if (avoCard.value && !(await avoCard.value.save(true))) return
 		for (const key of Object.keys(ROLE_MAP) as (keyof typeof roles)[]) {
 			if (roles[key] !== initialRoles[key]) {
 				await call('lms.lms.api.save_role', {

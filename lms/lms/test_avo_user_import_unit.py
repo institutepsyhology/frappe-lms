@@ -24,7 +24,7 @@ class ImportTest(unittest.TestCase):
         f.db = types.SimpleNamespace(exists=lambda *a: False)
         def get_doc(data):
             class FakeDoc:
-                def __init__(self): self.data=data; self.flags=types.SimpleNamespace(); self.during=[]
+                def __init__(self): self.data=data; self.name=data['email']; self.flags=types.SimpleNamespace(); self.during=[]
                 def run_method(self, method): self.during.append((method,f.flags.in_import))
                 def insert(self, **kw): self.run_method('before_insert'); self.run_method('validate')
             doc = FakeDoc()
@@ -33,7 +33,10 @@ class ImportTest(unittest.TestCase):
         f.get_doc = get_doc
         utils = types.ModuleType("frappe.utils")
         utils.validate_email_address = lambda email, throw=False: "@" in email
-        self.modules = patch.dict(sys.modules, {"frappe": f, "frappe.utils": utils})
+        self.archived=[]
+        support = types.ModuleType('lms.lms.support_credentials')
+        support.store_new_user_password = lambda name, password: self.archived.append((name,password))
+        self.modules = patch.dict(sys.modules, {"frappe": f, "frappe.utils": utils, 'lms.lms.support_credentials': support})
         self.modules.start()
         self.addCleanup(self.modules.stop)
         spec = importlib.util.spec_from_file_location("avo_user_import", Path(__file__).with_name("avo_user_import.py"))
@@ -47,6 +50,7 @@ class ImportTest(unittest.TestCase):
         self.assertTrue(self.docs[0].flags.ignore_password_policy)
         self.assertEqual(self.docs[0].data["new_password"], "weak")
         self.assertEqual(self.docs[0].data["send_welcome_email"], 0)
+        self.assertEqual(self.archived, [('test@example.invalid','weak')])
         self.assertEqual(self.docs[0].during, [('before_insert',True),('validate',False)])
         self.assertFalse(self.frappe.flags.in_import)
 

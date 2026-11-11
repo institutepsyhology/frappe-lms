@@ -1067,7 +1067,7 @@ def update_chapter_index(chapter: str, course: str, idx: int):
 # Matches SETTINGS_PAGE_LENGTH in the frontend, which pages `start` by this.
 MEMBERS_PAGE_LENGTH = 13
 
-MEMBER_FIELDS = ["name", "full_name", "user_image", "username", "last_active"]
+MEMBER_FIELDS = ["name", "full_name", "user_image", "username", "last_active", "enabled"]
 
 
 def member_roles(member: str) -> list[str]:
@@ -1090,7 +1090,7 @@ def get_member(member: str):
 	cannot answer "give me this one row": a member past the first page, or a
 	disabled one, came back empty and left the form unable to save.
 	"""
-	frappe.only_for(["Moderator"])
+	frappe.only_for(["Moderator", "LMS Credential Manager", "System Manager"])
 
 	if not isinstance(member, str):
 		frappe.throw(_("Invalid member."), frappe.ValidationError)
@@ -1108,19 +1108,22 @@ def get_member(member: str):
 
 
 @frappe.whitelist()
-def get_members(start: int = 0, search: str = None, role: str = "All"):
-	frappe.only_for(["Moderator"])
+def get_members(start: int = 0, search: str = None, role: str = "All", status: str = "Active"):
+	frappe.only_for(["Moderator", "LMS Credential Manager", "System Manager"])
 
 	lms_roles = LMS_ROLES
 	if not isinstance(role, str) or role not in (["All"] + lms_roles):
 		frappe.throw(_("Invalid role filter."), frappe.ValidationError)
 	if search is not None and not isinstance(search, str):
 		frappe.throw(_("Invalid search query."), frappe.ValidationError)
+	if status not in ("All", "Active", "Disabled"):
+		frappe.throw(_("Invalid account status."), frappe.ValidationError)
 
 	filters = [
-		["enabled", "=", 1],
 		["name", "not in", ["Administrator", "Guest"]],
 	]
+	if status != "All":
+		filters.append(["enabled", "=", 1 if status == "Active" else 0])
 	or_filters = {}
 
 	if role != "All":
@@ -1132,6 +1135,11 @@ def get_members(start: int = 0, search: str = None, role: str = "All"):
 	if search:
 		or_filters["full_name"] = ["like", f"%{search}%"]
 		or_filters["email"] = ["like", f"%{search}%"]
+		or_filters["mobile_no"] = ["like", f"%{search}%"]
+		if (frappe.session.user == "Administrator" or
+			any(role in frappe.get_roles() for role in ("System Manager", "LMS Credential Manager"))):
+			if frappe.get_meta("User").has_field("custom_avo_contact_id"):
+				or_filters["custom_avo_contact_id"] = ["like", f"%{search}%"]
 
 	members = frappe.get_all(
 		"User",
