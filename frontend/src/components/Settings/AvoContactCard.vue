@@ -141,7 +141,7 @@ async function changeStatus() {
 async function changeEmail() {
 	if (!newEmail.value.trim()) return
 	emailSaving.value=true
-	try { if (!(await save(true))) return; const result=await call('lms.lms.avo_contact_card.change_user_email',{name:props.memberId,email:newEmail.value.trim()}); password.value=''; toast.success('Email изменён'); await router.replace({name:'MemberForm',params:{memberID:result.name}}) }
+	try { if (!(await save(true))) return; const result=await call('lms.lms.avo_contact_card.change_user_email',{name:props.memberId,email:newEmail.value.trim()}); password.value=''; toast.success('Email изменён'); if (router.currentRoute.value.name === 'AvoContactById') window.location.reload(); else await router.replace({name:'MemberForm',params:{memberID:result.name}}) }
 	catch (err) { toast.error(message(err,'Не удалось изменить email')) } finally { emailSaving.value=false }
 }
 </script>

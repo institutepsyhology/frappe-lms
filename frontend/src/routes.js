@@ -425,6 +425,12 @@ export const routes = [
 		component: () => import('@/pages/ContactDirectory.vue'),
 	},
 	{
+		path: '/settings/contacts/:avoId',
+		name: 'AvoContactById',
+		component: () => import('@/pages/Forms/AvoContactById.vue'),
+		props: true,
+	},
+	{
 		path: '/settings/users/:memberID',
 		name: 'MemberForm',
 		component: () => import('@/pages/Forms/MemberForm.vue'),

@@ -73,6 +73,7 @@ type Member = {
 	kind?: 'Contact'
 	email?: string
 	avo_id?: string
+	custom_avo_contact_id?: string
 	enabled?: boolean | 0 | 1
 }
 
@@ -183,6 +184,11 @@ const roleLabels: Record<string, string> = {
 
 // The settings dialog remains open behind the card.
 const openEditMember = (member: Member) => {
+	const avoId = member.kind === 'Contact' ? member.avo_id : member.custom_avo_contact_id
+	if (canOpenCard.value && avoId && /^[1-9][0-9]*$/.test(avoId)) {
+		openFormRoute(router, { name:'AvoContactById', params:{ avoId } })
+		return
+	}
 	openFormRoute(router, {
 		name: 'MemberForm',
 		params: { memberID: member.kind === 'Contact' ? `avo-contact:${member.name}` : member.name },

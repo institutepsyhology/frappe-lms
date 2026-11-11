@@ -1146,16 +1146,23 @@ def get_members(start: int = 0, search: str = None, role: str = "All", status: s
 			if frappe.get_meta("User").has_field("custom_avo_contact_id"):
 				or_filters["custom_avo_contact_id"] = ["like", f"%{search}%"]
 
+	fields = list(MEMBER_FIELDS)
+	if can_manage_credentials() and frappe.get_meta("User").has_field("custom_avo_contact_id"):
+		fields.extend(["custom_avo_contact_id", "custom_avo_account"])
 	members = frappe.get_all(
 		"User",
 		filters=filters,
-		fields=MEMBER_FIELDS,
+		fields=fields,
 		or_filters=or_filters,
 		page_length=MEMBERS_PAGE_LENGTH,
 		start=start,
 	)
 
 	for member in members:
+		if "custom_avo_contact_id" in fields:
+			from lms.lms.avo_contact_card import SITE_ACCOUNTS
+			if not SITE_ACCOUNTS.get(frappe.local.site) or member.get("custom_avo_account") != SITE_ACCOUNTS[frappe.local.site]:
+				member["custom_avo_contact_id"] = None
 		member.roles = member_roles(member.name)
 
 	return members

@@ -54,6 +54,25 @@ def get_card(kind, name):
 
 
 @frappe.whitelist()
+def resolve_source_id(source_id):
+    """Resolve an AVO ID within this site's account; never guess on conflicts."""
+    _check_access()
+    if not isinstance(source_id, str) or not source_id.isascii() or not source_id.isdigit() or len(source_id) > 20 or int(source_id) < 1:
+        frappe.throw(_('Invalid contact ID.'), frappe.ValidationError)
+    account = SITE_ACCOUNTS.get(frappe.local.site)
+    if not account:
+        frappe.throw(_('Unknown AVO account.'), frappe.ValidationError)
+    filters = {'custom_avo_account': account, 'custom_avo_contact_id': source_id}
+    users = frappe.get_all('User', filters=filters, fields=['name'], limit_page_length=2)
+    contacts = frappe.get_all('Contact', filters=filters, fields=['name', 'user'], limit_page_length=2)
+    if len(users) == 1 and len(contacts) <= 1 and all(c.user == users[0].name for c in contacts):
+        return {'kind': 'User', 'name': users[0].name}
+    if not users and len(contacts) == 1:
+        return {'kind': 'Contact', 'name': contacts[0].name}
+    frappe.throw(_('Contact ID not found or is ambiguous.'), frappe.ValidationError)
+
+
+@frappe.whitelist()
 def list_source_contacts(start=0, search=None):
     """Page imported contacts that have no linked User account."""
     _check_access()
