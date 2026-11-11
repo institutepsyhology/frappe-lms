@@ -59,7 +59,7 @@
 		</Dropdown>
 	</div>
 	<SettingsModal
-		v-if="userResource.data?.is_moderator"
+		v-if="canOpenSettings(userResource.data)"
 		v-model="showSettingsModal"
 	/>
 </template>
@@ -72,6 +72,7 @@ import { convertToTitleCase } from '@/utils'
 import { toggleTheme, theme } from '@/utils/theme'
 import { usersStore } from '@/stores/user'
 import { useSettings } from '@/stores/settings'
+import { canOpenSettings } from '@/utils/settingsAccess'
 import { h, watch, ref, computed } from 'vue'
 import { createDialog } from '@/utils/dialogs'
 import FrappeCloudIcon from '@/components/Icons/FrappeCloudIcon.vue'
@@ -199,7 +200,7 @@ const userDropdownOptions = computed(() => {
 						settingsStore.isSettingsOpen = true
 					},
 					condition: () => {
-						return userResource.data?.is_moderator
+						return canOpenSettings(userResource.data)
 					},
 				},
 				{
