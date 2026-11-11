@@ -21,5 +21,7 @@ def execute():
          'insert_after':'custom_avo_vk_id','no_copy':1,'permlevel':1},
         {'fieldname':'custom_avo_source_email','label':'AVO Source Email','fieldtype':'Data',
          'insert_after':'custom_avo_vk_username','no_copy':1,'permlevel':1},
+        {'fieldname':'custom_no_marketing_email','label':'Не отправлять рассылки','fieldtype':'Check',
+         'insert_after':'custom_avo_source_email','default':'0','no_copy':1,'permlevel':1},
     ]
     create_custom_fields({'Contact':fields}, update=True)

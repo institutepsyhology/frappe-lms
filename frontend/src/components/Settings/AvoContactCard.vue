@@ -20,6 +20,8 @@
 				<FormControl v-model="form.custom_avo_vk_username" label="ВКонтакте" />
 				<FormControl v-model="form.custom_avo_vk_id" label="ВКонтакте ID" />
 			</div>
+			<label class="flex items-center gap-2"><input v-model="noMarketing" type="checkbox" /> Не отправлять рассылки</label>
+			<p class="text-sm text-ink-gray-6">Служебные письма о счетах и восстановлении доступа разрешены.</p>
 			<div class="flex flex-wrap items-center gap-3">
 				<Button variant="solid" :loading="saving" @click="save(false)">Сохранить данные</Button>
 				<span class="text-sm text-ink-gray-6">{{ kind === 'Contact' ? 'Контакт без связанной учётной записи' : card.enabled ? 'Учётная запись активна' : 'Учётная запись отключена' }}</span>
@@ -89,6 +91,7 @@ const canUseCredentials = computed(() => Boolean(user.data?.name === 'Administra
 const card = ref<Card | null>(null)
 const courses = ref<Course[]>([])
 const form = reactive({ first_name:'', middle_name:'', last_name:'', email:'', mobile_no:'', custom_avo_telegram_username:'', custom_avo_telegram_id:'', custom_avo_vk_username:'', custom_avo_vk_id:'' })
+const noMarketing=ref(false)
 const loading=ref(true), error=ref(false), saving=ref(false), revealing=ref(false), sending=ref(false), resetting=ref(false), settingPassword=ref(false), roleSaving=ref(false), statusSaving=ref(false), emailSaving=ref(false), coursesLoading=ref(true), coursesError=ref(false)
 const password=ref('')
 const newPassword=ref('')
@@ -99,6 +102,7 @@ onMounted(async () => {
 	try {
 		card.value = await call('lms.lms.avo_contact_card.get_card', { kind:props.kind, name:props.memberId })
 		for (const key of Object.keys(form) as (keyof typeof form)[]) form[key] = card.value?.[key] || ''
+		noMarketing.value=Boolean(card.value?.custom_no_marketing_email)
 	} catch { error.value=true } finally { loading.value=false }
 	if (props.kind === 'Contact') { coursesLoading.value=false; return }
 	try { courses.value = await call('lms.lms.avo_contact_card.courses_for_user', { name:props.memberId }) }
@@ -107,7 +111,7 @@ onMounted(async () => {
 async function save(silent=false): Promise<boolean> {
 	if (!card.value) { toast.error('Дождитесь загрузки карточки'); return false }
 	saving.value=true
-	try { const values: Record<string,string>={...form}; if (props.kind === 'User') delete values.email; card.value=await call('lms.lms.avo_contact_card.save_card',{kind:props.kind,name:props.memberId,values}); if (!silent) toast.success('Данные сохранены'); return true }
+	try { const values: Record<string,string|boolean>={...form,custom_no_marketing_email:noMarketing.value}; if (props.kind === 'User') delete values.email; card.value=await call('lms.lms.avo_contact_card.save_card',{kind:props.kind,name:props.memberId,values}); if (!silent) toast.success('Данные сохранены'); return true }
 	catch (err) { toast.error(message(err,'Не удалось сохранить данные')); return false } finally { saving.value=false }
 }
 defineExpose({ save })

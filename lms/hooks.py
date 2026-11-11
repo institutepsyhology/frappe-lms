@@ -143,6 +143,8 @@ override_doctype_class = {
 CHILD_ROW_MOVE_GATE = "lms.lms.permissions.refuse_moving_child_rows_out_of_content_the_user_cannot_write"
 
 doc_events = {
+	"Email Group Member": {"validate": "lms.lms.avo_marketing.protect_group_member"},
+	"Contact": {"on_update": "lms.lms.avo_marketing.protect_document"},
 	"*": {
 		"on_change": [
 			"lms.lms.doctype.lms_badge.lms_badge.process_badges",
@@ -182,6 +184,7 @@ doc_events = {
 	"User": {
 		"validate": "lms.lms.user.validate_username_duplicates",
 		"before_insert": "lms.lms.user.add_lms_student_role",
+		"on_update": "lms.lms.avo_marketing.protect_document",
 	},
 }
 

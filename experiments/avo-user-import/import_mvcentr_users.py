@@ -114,6 +114,14 @@ def email_of(record):
     return str((record.get("contact") or {}).get("email") or "").strip().lower()
 
 
+def marketing_optout(record):
+    contact = record.get('contact') or {}
+    values = [contact.get('not_to_write'), contact.get('spam_clicked')]
+    if any(value not in ('0', '1') for value in values):
+        raise ValueError('invalid_source_marketing_flags')
+    return int('1' in values)
+
+
 def payload(ident, record):
     c = record.get("contact") or {}
     pwd = (record.get("credentials") or {}).get("password")
@@ -127,13 +135,14 @@ def payload(ident, record):
             "custom_avo_account": "mv-centr", "custom_avo_telegram_id": str(c.get("telegram_user_id") or ""),
             "custom_avo_telegram_username": str(c.get("telegram_user") or ""),
             "custom_avo_vk_id": str(c.get("vk_user_id") or ""),
-            "custom_avo_vk_username": str(c.get("vk_user") or "")}
+            "custom_avo_vk_username": str(c.get("vk_user") or ""),
+            "custom_no_marketing_email": marketing_optout(record)}
 
 
 def saved_matches(saved, data):
     fields = ("email", "first_name", "middle_name", "last_name", "mobile_no", "custom_avo_contact_id",
               "custom_avo_account", "custom_avo_telegram_id", "custom_avo_telegram_username",
-              "custom_avo_vk_id", "custom_avo_vk_username")
+              "custom_avo_vk_id", "custom_avo_vk_username", "custom_no_marketing_email")
     return all(str(saved.get(key) or "") == str(data.get(key) or "") for key in fields)
 
 
@@ -141,7 +150,7 @@ def user_readback_url(email):
     from urllib.parse import urlencode
     fields = ["email", "first_name", "middle_name", "last_name", "mobile_no", "custom_avo_contact_id",
               "custom_avo_account", "custom_avo_telegram_id", "custom_avo_telegram_username",
-              "custom_avo_vk_id", "custom_avo_vk_username"]
+              "custom_avo_vk_id", "custom_avo_vk_username", "custom_no_marketing_email"]
     return SITE + '/api/v2/document/User?' + urlencode({
         'filters':json.dumps([['name','=',email]]), 'fields':json.dumps(fields), 'limit':2})
 

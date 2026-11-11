@@ -43,6 +43,7 @@ def _present(doc):
                   {'parent':doc.name,'parenttype':'User','role':'LMS Credential Manager'}))}
     for field in IDENTITY_FIELDS + SOCIAL_FIELDS:
         result[field] = value(field) or ''
+    result['custom_no_marketing_email'] = bool(value('custom_no_marketing_email'))
     return result
 
 
@@ -89,11 +90,16 @@ def save_card(kind, name, values):
             frappe.throw(_('Only a system manager can edit a staff account.'), frappe.PermissionError)
     if isinstance(values, str):
         values = json.loads(values)
-    allowed = set(EDITABLE) | ({'email'} if kind == 'Contact' else set())
+    allowed = set(EDITABLE) | {'custom_no_marketing_email'} | ({'email'} if kind == 'Contact' else set())
     if not isinstance(values, dict) or set(values) - allowed:
         frappe.throw(_('Invalid contact fields.'), frappe.ValidationError)
     meta = frappe.get_meta(kind)
     for field, value in values.items():
+        if field == 'custom_no_marketing_email':
+            if type(value) not in (bool, int) or value not in (0, 1):
+                frappe.throw(_('Invalid marketing preference.'), frappe.ValidationError)
+            doc.set(field, int(value))
+            continue
         if not isinstance(value, str) or len(value) > 140 or (field != 'email' and not meta.has_field(field)):
             frappe.throw(_('Invalid contact field.'), frappe.ValidationError)
         if kind == 'Contact' and field == 'email':
@@ -120,6 +126,9 @@ def save_card(kind, name, values):
     if not doc.first_name and not doc.last_name:
         frappe.throw(_('Enter a first or last name.'), frappe.ValidationError)
     doc.save(ignore_permissions=True)
+    if doc.get('custom_no_marketing_email') and doc.get('custom_avo_account') and doc.get('custom_avo_contact_id'):
+        from lms.lms.avo_marketing import protect_existing_groups
+        protect_existing_groups(doc.custom_avo_account, [doc.custom_avo_contact_id])
     return _present(doc)
 
 

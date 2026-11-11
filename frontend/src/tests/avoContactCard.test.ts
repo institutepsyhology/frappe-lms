@@ -28,6 +28,16 @@ describe('AVO contact card', () => {
 			return { queued:true }
 		})
 	})
+	it('saves the marketing opt-out separately from transactional mail', async () => {
+		const wrapper=make([],true)
+		await flushPromises()
+		await wrapper.find('input[type="checkbox"]').setValue(true)
+		await wrapper.findAll('button').find((button) => button.text()==='Сохранить данные')!.trigger('click')
+		await flushPromises()
+		const callArgs=callMock.mock.calls.find(([url]) => url.endsWith('save_card'))
+		expect(callArgs?.[1].values.custom_no_marketing_email).toBe(true)
+		expect(wrapper.text()).toContain('Служебные письма')
+	})
 	it('does not expose password actions without the dedicated role', async () => {
 		const wrapper=make([],true)
 		await flushPromises()

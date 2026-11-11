@@ -36,6 +36,7 @@ def make_payload(ident, record):
               'custom_avo_vk_id':str(contact.get('vk_user_id') or ''),
               'custom_avo_vk_username':str(contact.get('vk_user') or ''),
               'custom_avo_source_email':str(contact.get('email') or ''),
+              'custom_no_marketing_email':source.marketing_optout(record),
               'email_ids':[{'email_id':email,'is_primary':1}]}
     phone = str(contact.get('phone_number') or '').strip()
     if phone:
@@ -86,7 +87,7 @@ def main():
             with source.DIRECT_OPENER.open(req,timeout=30) as response:saved=json.load(response).get('data') or {}
             keys=['first_name','last_name','middle_name','custom_avo_contact_id','custom_avo_account',
                   'custom_avo_telegram_id','custom_avo_telegram_username','custom_avo_vk_id',
-                  'custom_avo_vk_username','custom_avo_source_email']
+                  'custom_avo_vk_username','custom_avo_source_email','custom_no_marketing_email']
             ok=all(str(saved.get(k) or '')==str(data.get(k) or '') for k in keys)
             ok=ok and saved.get('email_id')==data['email_ids'][0]['email_id']
             if data.get('phone_nos'):ok=ok and saved.get('mobile_no')==data['phone_nos'][0]['phone']

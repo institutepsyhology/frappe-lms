@@ -14,21 +14,21 @@ module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
 
 class ContactTest(unittest.TestCase):
     def test_social_contact_never_gets_synthetic_email(self):
-        record={'contact':{'name':'Test','email':'','vk_user_id':'123','phone_number':'9999'}}
+        record={'contact':{'not_to_write':'0','spam_clicked':'0','name':'Test','email':'','vk_user_id':'123','phone_number':'9999'}}
         data=module.payload(166,record)
         self.assertNotIn('email_id',data)
         self.assertEqual(data['custom_avo_contact_id'],'166')
         self.assertEqual(data['custom_avo_vk_id'],'123')
         self.assertEqual(data['phone_nos'][0]['phone'],'9999')
     def test_valid_email_is_not_processed_in_this_batch(self):
-        self.assertIsNone(module.payload(1,{'contact':{'email':'test@example.test'}}))
+        self.assertIsNone(module.payload(1,{'contact':{'not_to_write':'0','spam_clicked':'0','email':'test@example.test'}}))
     def test_nameless_contact_gets_identifiable_label_not_fake_email(self):
-        data=module.payload(123,{'contact':{}})
+        data=module.payload(123,{'contact':{'not_to_write':'0','spam_clicked':'0',}})
         self.assertIn('123',data['first_name'])
         self.assertNotIn('email_id',data)
 
     def test_conflict_is_logged_and_next_contact_is_created(self):
-        records=[(101,{'contact':{'name':'A'}}),(102,{'contact':{'name':'B'}})]
+        records=[(101,{'contact':{'not_to_write':'0','spam_clicked':'0','name':'A'}}),(102,{'contact':{'not_to_write':'0','spam_clicked':'0','name':'B'}})]
         saved=module.payload(102,records[1][1])
         response=Mock()
         response.__enter__=Mock(return_value=io.BytesIO(json.dumps({'data':saved}).encode()))

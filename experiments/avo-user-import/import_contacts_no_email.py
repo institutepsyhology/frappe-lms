@@ -35,7 +35,8 @@ def payload(ident,record):
           'custom_avo_telegram_username':str(c.get('telegram_user') or ''),
           'custom_avo_vk_id':str(c.get('vk_user_id') or ''),
           'custom_avo_vk_username':str(c.get('vk_user') or ''),
-          'custom_avo_source_email':str(c.get('email') or '')}
+          'custom_avo_source_email':str(c.get('email') or ''),
+          'custom_no_marketing_email':source.marketing_optout(record)}
     phone=str(c.get('phone_number') or '').strip()
     if phone:data['phone_nos']=[{'phone':phone,'is_primary_mobile_no':1}]
     return data
@@ -94,7 +95,7 @@ def main():
                 saved=json.load(response).get('data') or {}
             keys=['first_name','middle_name','last_name','custom_avo_contact_id','custom_avo_account',
                   'custom_avo_telegram_id','custom_avo_telegram_username','custom_avo_vk_id',
-                  'custom_avo_vk_username','custom_avo_source_email']
+                  'custom_avo_vk_username','custom_avo_source_email','custom_no_marketing_email']
             same=all(str(saved.get(k) or '')==str(data.get(k) or '') for k in keys)
             if data.get('phone_nos'):
                 same=same and saved.get('mobile_no')==data['phone_nos'][0]['phone']

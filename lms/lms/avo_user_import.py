@@ -37,9 +37,11 @@ def import_user(data):
         frappe.throw("Invalid import data", frappe.ValidationError)
     allowed = {"email", "first_name", "middle_name", "last_name", "mobile_no", "new_password",
                "custom_avo_contact_id", "custom_avo_account", "custom_avo_telegram_id",
-               "custom_avo_telegram_username", "custom_avo_vk_id", "custom_avo_vk_username"}
+               "custom_avo_telegram_username", "custom_avo_vk_id", "custom_avo_vk_username", "custom_no_marketing_email"}
     if set(data) - allowed or data.get("custom_avo_account") != "mv-centr":
         frappe.throw("Invalid import data", frappe.ValidationError)
+    if data.get("custom_no_marketing_email", 0) not in (0, 1):
+        frappe.throw("Invalid marketing preference", frappe.ValidationError)
     email, password, source_id = data.get("email"), data.get("new_password"), data.get("custom_avo_contact_id")
     if not isinstance(email, str) or not validate_email_address(email, throw=False) or not isinstance(password, str) or not password or not str(source_id or "").isdigit():
         frappe.throw("Invalid import data", frappe.ValidationError)

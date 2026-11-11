@@ -13,9 +13,15 @@ spec.loader.exec_module(module)
 
 
 class ImportTest(unittest.TestCase):
+    def test_source_optout_combines_both_flags_and_rejects_unknown_values(self):
+        for left, right, expected in [('0','0',0),('1','0',1),('0','1',1),('1','1',1)]:
+            self.assertEqual(module.marketing_optout({'contact':{'not_to_write':left,'spam_clicked':right}}), expected)
+        with self.assertRaises(ValueError):
+            module.marketing_optout({'contact':{'not_to_write':'unknown','spam_clicked':'0'}})
+
     def test_selection_only_processes_requested_ids(self):
-        records=[(101,{'contact':{'email':'a@example.test'},'credentials':{'password':'x'}}),
-                 (102,{'contact':{'email':'b@example.test'},'credentials':{'password':'x'}})]
+        records=[(101,{'contact':{'not_to_write':'0','spam_clicked':'0','email':'a@example.test'},'credentials':{'password':'x'}}),
+                 (102,{'contact':{'not_to_write':'0','spam_clicked':'0','email':'b@example.test'},'credentials':{'password':'x'}})]
         out=io.StringIO()
         with patch.object(module,'load',side_effect=lambda:iter(records)), \
              patch.object(module.Path,'read_text',return_value='[102]'), \
@@ -34,7 +40,7 @@ class ImportTest(unittest.TestCase):
         self.assertEqual(set(record), {'at', 'contact_id', 'account', 'status'})
 
     def test_source_identifier_and_no_welcome_mail(self):
-        record = {'contact': {'email': 'Test@example.test', 'name': 'Test'},
+        record = {'contact': {'not_to_write':'0','spam_clicked':'0','email': 'Test@example.test', 'name': 'Test'},
                   'credentials': {'password': 'sample'}}
         data = module.payload(123, record)
         self.assertEqual(data['custom_avo_contact_id'], '123')
@@ -43,11 +49,11 @@ class ImportTest(unittest.TestCase):
         self.assertEqual(data['email'], 'test@example.test')
 
     def test_missing_or_invalid_email_not_imported(self):
-        record = {'contact': {'email': 'invalid'}, 'credentials': {'password': 'sample'}}
+        record = {'contact': {'not_to_write':'0','spam_clicked':'0','email': 'invalid'}, 'credentials': {'password': 'sample'}}
         self.assertIsNone(module.payload(123, record))
 
     def test_readback_requires_all_migrated_fields_to_match(self):
-        record = {'contact': {'email':'test@example.test','name':'Test','phone_number':'9999','telegram_user':'sample'},
+        record = {'contact': {'not_to_write':'0','spam_clicked':'0','email':'test@example.test','name':'Test','phone_number':'9999','telegram_user':'sample'},
                   'credentials': {'password':'sample'}}
         data = module.payload(123, record)
         saved = {k:v for k,v in data.items() if k != 'new_password'}
@@ -66,7 +72,7 @@ class ImportTest(unittest.TestCase):
         self.assertEqual(filters,[['name','=','test/name@example.test']])
 
     def test_ten_consecutive_unusable_records_stop_batch(self):
-        records = [(i, {'contact': {'email': ''}, 'credentials': {}}) for i in range(1, 12)]
+        records = [(i, {'contact': {'not_to_write':'0','spam_clicked':'0','email': ''}, 'credentials': {}}) for i in range(1, 12)]
         helper = types.SimpleNamespace(authenticated_headers=lambda site: {})
         loader = types.SimpleNamespace(exec_module=lambda obj: None)
         output = io.StringIO()
@@ -83,7 +89,7 @@ class ImportTest(unittest.TestCase):
         self.assertEqual(log.call_count, 10)
 
     def test_timeout_during_write_is_logged_and_stops(self):
-        records = [(123, {'contact': {'email': 'test@example.test'}, 'credentials': {'password': 'sample'}})]
+        records = [(123, {'contact': {'not_to_write':'0','spam_clicked':'0','email': 'test@example.test'}, 'credentials': {'password': 'sample'}})]
         helper = types.SimpleNamespace(authenticated_headers=lambda site: {})
         loader = types.SimpleNamespace(exec_module=lambda obj: None)
         output = io.StringIO()
