@@ -34,13 +34,14 @@ try:
         u=frappe.get_doc({'doctype':'User','email':email,'first_name':'Synthetic',
             'user_type':'Website User','send_welcome_email':0})
         u.insert(ignore_permissions=True)
-    from lms.lms.avo_user_import import _insert_imported_user
+    importer_spec=importlib.util.spec_from_file_location('importer_test','/tmp/avo_user_import_test.py')
+    importer=importlib.util.module_from_spec(importer_spec);importer_spec.loader.exec_module(importer)
     new_email='credential-import-stage@example.invalid'
     if frappe.db.exists('User',new_email):raise RuntimeError('synthetic_user_exists')
     created=frappe.get_doc({'doctype':'User','email':new_email,'first_name':'Synthetic',
         'user_type':'Website User','send_welcome_email':0,'new_password':'Imported Stage Password 683!'})
     created.flags.ignore_password_policy=True
-    _insert_imported_user(created)
+    importer._insert_imported_user(created)
     credentials.store_new_user_password(created.name,'Imported Stage Password 683!')
     assert credentials._current_password(created.name)=='Imported Stage Password 683!'
     user=frappe.get_doc('User',target)
