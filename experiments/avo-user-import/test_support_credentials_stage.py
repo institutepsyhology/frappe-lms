@@ -34,6 +34,15 @@ try:
         u=frappe.get_doc({'doctype':'User','email':email,'first_name':'Synthetic',
             'user_type':'Website User','send_welcome_email':0})
         u.insert(ignore_permissions=True)
+    from lms.lms.avo_user_import import _insert_imported_user
+    new_email='credential-import-stage@example.invalid'
+    if frappe.db.exists('User',new_email):raise RuntimeError('synthetic_user_exists')
+    created=frappe.get_doc({'doctype':'User','email':new_email,'first_name':'Synthetic',
+        'user_type':'Website User','send_welcome_email':0,'new_password':'Imported Stage Password 683!'})
+    created.flags.ignore_password_policy=True
+    _insert_imported_user(created)
+    credentials.store_new_user_password(created.name,'Imported Stage Password 683!')
+    assert credentials._current_password(created.name)=='Imported Stage Password 683!'
     user=frappe.get_doc('User',target)
     user.db_set('custom_avo_contact_id','993388401')
     user.db_set('custom_avo_account','mv-centr')
@@ -51,6 +60,17 @@ try:
     credentials.set_credential_role(viewer,1)
     frappe.set_user(viewer)
     assert credentials.reveal(target)['password']=='StagePassword!1'
+    encryption_key=frappe.conf.encryption_key
+    frappe.conf.encryption_key=None
+    try:
+        try:
+            credentials.set_new_password(target,'Stage Not Saved Password 681!')
+            raise RuntimeError('missing_key_accepted')
+        except frappe.ValidationError:
+            pass
+    finally:
+        frappe.conf.encryption_key=encryption_key
+    assert credentials._matches_current(target,'StagePassword!1')
     assert card.save_card('User',target,{'first_name':'Edited'})['first_name']=='Edited'
     try:
         credentials.reveal(viewer)
@@ -93,7 +113,7 @@ try:
         frappe.sendmail=original_sendmail
         credentials.ensure_mail_ready=mail_ready
     print(json.dumps({'source_verified':True,'unauthorized_denied':True,'role_allowed':True,
-        'fixed_recipient':True,'muted_mail_blocked':True,'new_password_works':True,'staff_account_protected':True,
+        'fixed_recipient':True,'muted_mail_blocked':True,'missing_key_blocked':True,'new_import_password':True,'new_password_works':True,'staff_account_protected':True,
         'stale_password_blocked':True,'rolled_back':True}))
 finally:
     frappe.db.rollback()
