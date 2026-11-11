@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 import msvcrt
+import time
 from datetime import datetime, timezone
 
 HERE = Path(__file__).resolve().parent
@@ -17,6 +18,7 @@ STATUS = migration.JOURNAL.with_name('mvcentr-user-import-status.json')
 LOG = migration.JOURNAL.with_name('mvcentr-user-import-run.log')
 SCRIPT = 'import_mvcentr_users.py'
 LABEL = 'пользователей'
+RECIPIENT_RECOVERY = False
 
 
 def write_status(data):
@@ -40,6 +42,9 @@ def main():
     write_status(state)
     result = None
     with LOG.open('a', encoding='utf-8') as log:
+      failures=0
+      total_created=0
+      while True:
         process = subprocess.Popen([sys.executable, '-u', str(HERE/SCRIPT), '--apply', '--limit', '250000'],
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace',
                                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
@@ -48,11 +53,40 @@ def main():
             try: row=json.loads(line)
             except (ValueError, TypeError): continue
             if 'progress_created' in row:
-                state['created_this_run']=row['progress_created'];write_status(state)
+                state['created_this_run']=total_created+row['progress_created'];write_status(state)
             else: result=row
         code=process.wait()
+        row_created=result.get('created',0) if isinstance(result,dict) else 0
+        total_created+=row_created
+        if row_created:failures=0
+        if not RECIPIENT_RECOVERY or not isinstance(result,dict) or not (result.get('transport_error') or result.get('timeout') or result.get('unexpected_error') or result.get('readback_mismatch')):
+            break
+        import recipient_recovery as recovery
+        try:
+            ident=recovery.unresolved_id()
+            outcome=None
+            while failures<10:
+                failures+=1;state['recovery_attempts']=failures;state['status']='reconciling';write_status(state)
+                try:
+                    first=recovery.inspect(ident)
+                    if first=='absent':
+                        time.sleep(min(5*failures,30));second=recovery.inspect(ident)
+                        outcome=second if second!='absent' else 'absent'
+                    else:outcome=first
+                    if outcome in ('present','absent','conflict'):break
+                except (OSError,ValueError):
+                    time.sleep(min(5*failures,30))
+            if outcome=='present':source_status='created_verified'
+            elif outcome=='absent':source_status='resolved_not_created'
+            else:break
+            migration.log_event(ident,source_status)
+            log.write(json.dumps({'recovered':source_status,'attempt':failures})+'\n');log.flush()
+            state['status']='running';write_status(state)
+            result=None
+        except Exception:
+            break
     result = result if isinstance(result,dict) else {}
-    state['created_this_run']=result.get('created', result.get('stored', state['created_this_run']))
+    state['created_this_run']=total_created if RECIPIENT_RECOVERY else result.get('created', result.get('stored', state['created_this_run']))
     stopped = was_stopped(result, code)
     state['status']='stopped' if stopped else 'completed'
     state['result']={k:v for k,v in result.items() if isinstance(k,str) and isinstance(v,int)}
@@ -96,6 +130,7 @@ if __name__ == '__main__':
         LOG=LOG.with_name('mvcentr-recipients-nov11-run.log')
         SCRIPT='import_recipient_selection.py'
         LABEL='контактов из списка получателей'
+        RECIPIENT_RECOVERY=True
     lock_path = STATUS.with_name('mvcentr-user-import-worker.lock')
     if args.no_email:lock_path=STATUS.with_name('mvcentr-noemail-contact-worker.lock')
     if args.priority_list:lock_path=STATUS.with_name('mvcentr-priority-contact-worker.lock')

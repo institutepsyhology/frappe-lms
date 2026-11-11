@@ -75,18 +75,28 @@ def main():
                 payload={'name':name,'source_id':str(ident),'password':password}
                 req=urllib.request.Request(source.SITE+'/api/method/lms.lms.support_credentials.import_verified',
                     data=json.dumps(payload).encode('utf-8'),headers={**headers,'Content-Type':'application/json'},method='POST')
-                try:
-                    with source.DIRECT_OPENER.open(req,timeout=40) as response:result=json.load(response).get('message')
-                    if not isinstance(result,dict) or type(result.get('stored')) is not bool:raise ValueError('invalid_response')
-                    counts['checked']+=1
-                    if result['stored']:
-                        event(ident,'stored');counts['stored']+=1;consecutive=0
-                        if counts['stored']%25==0:print(json.dumps({'progress_created':counts['stored']}),flush=True)
-                    else:event(ident,'mismatch');counts['mismatch']+=1;consecutive+=1
-                except urllib.error.HTTPError as exc:
-                    event(ident,'http_error');counts['stopped']='http_'+str(exc.code);return False
-                except Exception:
+                # This endpoint only archives a copy after matching the live
+                # password hash, so retrying the same request is idempotent.
+                result=None
+                for attempt in range(10):
+                    try:
+                        with source.DIRECT_OPENER.open(req,timeout=40) as response:result=json.load(response).get('message')
+                        if not isinstance(result,dict) or type(result.get('stored')) is not bool:raise ValueError('invalid_response')
+                        break
+                    except urllib.error.HTTPError as exc:
+                        if exc.code < 500 and exc.code != 429:
+                            event(ident,'http_error');counts['stopped']='http_'+str(exc.code);return False
+                        result=None
+                    except (OSError,ValueError):
+                        result=None
+                    if attempt<9:time.sleep(min(5*(attempt+1),30))
+                if result is None:
                     event(ident,'write_uncertain');counts['stopped']='write_uncertain';return False
+                counts['checked']+=1
+                if result['stored']:
+                    event(ident,'stored');counts['stored']+=1;consecutive=0
+                    if counts['stored']%25==0:print(json.dumps({'progress_created':counts['stored']}),flush=True)
+                else:event(ident,'mismatch');counts['mismatch']+=1;consecutive+=1
                 time.sleep(args.interval)
             else:counts['checked']+=1;consecutive=0
             if consecutive>=10:counts['stopped']='consecutive_issues';return False

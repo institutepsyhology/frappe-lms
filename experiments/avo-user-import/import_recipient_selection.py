@@ -45,6 +45,7 @@ def main():
     def payload(ident,record):
         return merge_complaint(original(ident,record),ident,complaints,overrides)
     source.payload=payload
+    source.AUTO_RECONCILE_RECIPIENTS=True
     lock_path=private/'nov11-recipients-import.lock'
     with lock_path.open('a+b') as lock:
         lock.seek(0,2)

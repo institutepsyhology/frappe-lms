@@ -281,7 +281,21 @@ def main():
             if 300 <= exc.code < 400 or exc.code >= 500:
                 log_event(ident, "write_outcome_unknown")
                 break
-            if exception_type in ("UniqueValidationError", "DuplicateEntryError"):
+            if exc.code == 409 or exception_type in ("UniqueValidationError", "DuplicateEntryError"):
+                if globals().get('AUTO_RECONCILE_RECIPIENTS'):
+                    try:
+                        from recipient_recovery import inspect
+                        outcome=inspect(ident)
+                    except Exception:
+                        counts['transport_error']+=1
+                        log_event(ident,'write_outcome_unknown')
+                        break
+                    if outcome=='present':
+                        counts['create_error']-=1
+                        counts['reconciled_existing']+=1
+                        log_event(ident,'created_verified')
+                        consecutive_issues=0
+                        continue
                 counts["unique_conflict_skipped"] += 1
                 log_event(ident, "unique_conflict")
                 consecutive_issues += 1
