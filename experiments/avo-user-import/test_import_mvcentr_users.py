@@ -64,6 +64,14 @@ class ImportTest(unittest.TestCase):
         saved['custom_avo_telegram_username'] = ''
         self.assertFalse(module.saved_matches(saved, data))
 
+    def test_html_escaped_names_match_without_weakening_identity(self):
+        expected={'email':'test@example.test','first_name':'А & Б','last_name':'','middle_name':'',
+                  'custom_avo_contact_id':'123','custom_avo_account':'mv-centr'}
+        saved={**expected,'first_name':'А &amp; Б'}
+        self.assertTrue(module.saved_matches(saved,expected))
+        self.assertFalse(module.saved_matches({**saved,'custom_avo_contact_id':'124'},expected))
+        self.assertFalse(module.saved_matches({**saved,'email':'other@example.test'},expected))
+
     def test_readback_email_is_query_filter_not_path(self):
         from urllib.parse import urlsplit, parse_qs
         url=module.user_readback_url('test/name@example.test')

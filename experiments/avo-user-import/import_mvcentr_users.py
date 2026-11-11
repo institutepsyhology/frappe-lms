@@ -6,6 +6,7 @@ never changed. Reruns skip existing emails; ambiguous source emails are skipped.
 import argparse
 import collections
 import importlib.util
+import html
 import json
 import re
 import sqlite3
@@ -143,7 +144,14 @@ def saved_matches(saved, data):
     fields = ("email", "first_name", "middle_name", "last_name", "mobile_no", "custom_avo_contact_id",
               "custom_avo_account", "custom_avo_telegram_id", "custom_avo_telegram_username",
               "custom_avo_vk_id", "custom_avo_vk_username", "custom_no_marketing_email")
-    return all(str(saved.get(key) or "") == str(data.get(key) or "") for key in fields)
+    def matches(key):
+        actual, expected = str(saved.get(key) or ""), str(data.get(key) or "")
+        if actual == expected:
+            return True
+        # Frappe may HTML-escape names on write. Decode only the saved value,
+        # and only profile names: identity, email and contacts remain exact.
+        return key in ("first_name", "middle_name", "last_name") and html.unescape(actual) == expected
+    return all(matches(key) for key in fields)
 
 
 def user_readback_url(email):
