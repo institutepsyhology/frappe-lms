@@ -52,8 +52,11 @@ def main():
         staging=root/'private'/'backups'/('contact-card-'+stamp)
         container_staging=f'{BENCH}/sites/{site}/private/backups/contact-card-{stamp}'
         if staging.exists():raise ValueError('backup_path_exists')
-        run(['docker','exec','-u','frappe','-w',BENCH,CONTAINER,'bench','--site',site,'backup',
-             '--ignore-backup-conf','--backup-path',container_staging])
+        # bench backup calls delete_temp_backups even with a custom path.
+        # Call the generator directly so no existing backup is removed.
+        backup_code='''import frappe,sys\nfrom frappe.utils.backups import BackupGenerator\nfrappe.init(site=sys.argv[1]);frappe.connect();c=frappe.conf\ntry:\n b=BackupGenerator(c.db_name,c.db_user,c.db_password,db_socket=c.db_socket,db_host=c.db_host,db_port=c.db_port,db_type=c.db_type,backup_path=sys.argv[2],ignore_conf=True)\n b.get_backup(ignore_files=True,force=True)\nfinally: frappe.destroy()\n'''
+        run(['docker','exec','-u','frappe','-w',f'{BENCH}/sites',CONTAINER,
+             f'{BENCH}/env/bin/python','-c',backup_code,site,container_staging])
         dumps=list(staging.glob('*.sql.gz'))
         if len(dumps)!=1:raise RuntimeError('database_backup_missing')
         with gzip.open(dumps[0],'rb') as stream:
