@@ -26,6 +26,16 @@ describe('individual access settings', () => {
 		expect(callMock).not.toHaveBeenCalled()
 	})
 
+	it('shows and loads access settings for a moderator without system manager', async () => {
+		callMock.mockResolvedValue({release_enabled:true,policy_enabled:true,policy_exists:true,
+			grants:[{name:'grant-1',member:'student@example.invalid',status:'Revoked'}],lessons:[],schedule:[]})
+		const wrapper = mount(IndividualAccessSettings, { props:{course:'course-1'}, global:{provide:{$user:{data:{is_moderator:true,is_system_manager:false}}}} })
+		await flushPromises()
+		expect(wrapper.text()).toContain('Индивидуальный доступ')
+		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.get_course_access_overview',{course:'course-1'})
+		expect(wrapper.text()).not.toContain('Подготовить выбор данных')
+	})
+
 	it('warns that rules are off and requires a choice before resuming', async () => {
 		const wrapper = render(true)
 		await flushPromises()

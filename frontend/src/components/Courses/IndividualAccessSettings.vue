@@ -1,5 +1,5 @@
 <template>
-	<section v-if="user?.data?.is_system_manager" class="border-t px-5 py-4 space-y-3">
+	<section v-if="canManageAccess" class="border-t px-5 py-4 space-y-3">
 		<h3 class="font-semibold">Индивидуальный доступ</h3>
 		<p v-if="loading">Загрузка настроек доступа…</p>
 		<p v-else-if="error" class="text-red-700">Не удалось загрузить настройки доступа.</p>
@@ -141,7 +141,7 @@
 						<p>Записей посещения: {{ restartPreview[grant.name].visits }}</p>
 						<p>Других незакрытых карточек: {{ restartPreview[grant.name].other_grants }}</p>
 						<p>Это предварительный подсчёт. Старые записи без связи с уроком или курсом могут требовать отдельной проверки. Данные не удаляются.</p>
-						<div v-if="grant.status === 'Revoked' && overview.release_enabled && overview.policy_enabled" class="border rounded p-2 space-y-2">
+						<div v-if="(user?.data?.is_system_manager || user?.data?.name === 'Administrator') && grant.status === 'Revoked' && overview.release_enabled && overview.policy_enabled" class="border rounded p-2 space-y-2">
 							<p>Частичная очистка: результаты тестов и программных упражнений сохранятся, поэтому это не полный перезапуск курса.</p>
 							<button class="underline" :disabled="busy" @click="loadResetPreview(grant)">Подготовить выбор данных</button>
 							<div v-if="resetPreview[grant.name] && resetChoices[grant.name]" class="space-y-1">
@@ -262,7 +262,7 @@
 
 <script setup lang="ts">
 import { call, toast } from 'frappe-ui'
-import { inject, reactive, ref, watch } from 'vue'
+import { computed, inject, reactive, ref, watch } from 'vue'
 import type { SessionUser } from '@/types'
 
 type Grant = { name: string; member: string; status: string; starts_at?: string; ends_at?: string; personal_end_type?: string; personal_end_days?: number; ignore_course_end?: boolean | number; visited_retention_type?: string; visited_retention_days?: number }
@@ -277,6 +277,7 @@ type LessonRule = { lesson?: string; opening_type: string; opens_at: string | nu
 type Overview = { release_enabled: boolean; policy_enabled: boolean; policy_exists: boolean; policy?: Defaults | null; timezone: string; grants: Grant[]; truncated: boolean; lessons: {name: string; title: string}[]; lessons_truncated: boolean; schedule: LessonRule[] }
 const props = defineProps<{ course: string }>()
 const user = inject<SessionUser>('$user')
+const canManageAccess = computed(() => Boolean(user?.data?.is_system_manager || user?.data?.is_moderator || user?.data?.name === 'Administrator'))
 const overview = ref<Overview | null>(null)
 const loading = ref(false)
 const error = ref(false)
@@ -317,7 +318,7 @@ const lessonRule = reactive<LessonRule>({ opening_type: 'Unknown', opens_at: nul
 const labels: Record<string, string> = { Draft: 'Черновик', Active: 'Активная карточка', Frozen: 'Замороженная карточка', Limited: 'Ограниченная карточка', Revoked: 'Закрытая карточка' }
 
 async function load() {
-	if (!props.course || !user?.data?.is_system_manager) return
+	if (!props.course || !canManageAccess.value) return
 	loading.value = true
 	error.value = false
 	try {
@@ -561,5 +562,5 @@ async function saveLessonRule() {
 		busy.value = false
 	}
 }
-watch(() => [props.course, user?.data?.is_system_manager], load, { immediate: true })
+watch(() => [props.course, canManageAccess.value], load, { immediate: true })
 </script>

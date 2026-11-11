@@ -1,5 +1,5 @@
 <template>
-	<details open v-if="user?.data?.is_system_manager && lesson" class="rounded-lg border border-outline-gray-2 p-4">
+	<details open v-if="canManageAccess && lesson" class="rounded-lg border border-outline-gray-2 p-4">
 		<summary class="cursor-pointer font-medium">Настройки доступа к этому уроку</summary>
 		<div v-if="loading" class="mt-3">Загрузка настроек…</div>
 		<div v-else-if="!overview" class="mt-3 text-red-700">Не удалось загрузить настройки доступа.</div>
@@ -42,12 +42,13 @@
 </template>
 <script setup lang="ts">
 import { call, toast } from 'frappe-ui'
-import { inject, reactive, ref, watch } from 'vue'
+import { computed, inject, reactive, ref, watch } from 'vue'
 import type { SessionUser } from '@/types'
 type Rule = { opening_type: string; opens_at: string | null; delay_days: number; not_before_at: string | null; lesson_ends_at: string | null; always_open: boolean; prerequisite_type: string; prerequisite_lesson: string | null; prerequisite_assignment: string | null }
 type Overview = { release_enabled: boolean; policy_enabled: boolean; policy_exists: boolean; timezone: string; lessons: {name: string; title: string}[]; lessons_truncated: boolean; schedule: (Rule & {lesson: string})[] }
 const props = defineProps<{ course: string; lesson?: string }>()
 const user = inject<SessionUser>('$user')
+const canManageAccess = computed(() => Boolean(user?.data?.is_system_manager || user?.data?.is_moderator || user?.data?.name === 'Administrator'))
 const overview = ref<Overview | null>(null)
 const loading = ref(false), busy = ref(false), assignmentsLoading = ref(false)
 const assignments = ref<{name: string; title: string}[]>([])
@@ -55,7 +56,7 @@ const rule = reactive<Rule>({ opening_type: 'Unknown', opens_at: null, delay_day
 let generation = 0
 async function load() {
 	const request = ++generation
-	if (!props.course || !props.lesson || !user?.data?.is_system_manager) return
+	if (!props.course || !props.lesson || !canManageAccess.value) return
 	loading.value = true
 	try {
 		const result: Overview = await call('lms.lms.access_actions.get_course_access_overview', { course: props.course })
@@ -96,5 +97,5 @@ async function save() {
 	} catch { toast.error('Не удалось сохранить настройки. Проверьте дату, урок и задание.') }
 	finally { busy.value = false }
 }
-watch(() => [props.course, props.lesson, user?.data?.is_system_manager], load, { immediate: true })
+watch(() => [props.course, props.lesson, canManageAccess.value], load, { immediate: true })
 </script>

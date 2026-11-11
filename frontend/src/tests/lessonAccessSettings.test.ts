@@ -29,4 +29,10 @@ describe('access settings in a lesson', () => {
 		expect(wrapper.text()).toBe('')
 		expect(callMock).not.toHaveBeenCalled()
 	})
+	it('loads settings for a moderator', async () => {
+		const wrapper=mount(LessonAccessSettings,{props:{course:'course',lesson:'one'},global:{provide:{$user:{data:{is_moderator:true,is_system_manager:false}}}}})
+		await flushPromises()
+		expect(wrapper.text()).toContain('Настройки доступа к этому уроку')
+		expect(callMock).toHaveBeenCalledWith('lms.lms.access_actions.get_course_access_overview',{course:'course'})
+	})
 })

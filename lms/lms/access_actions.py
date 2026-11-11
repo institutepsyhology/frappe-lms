@@ -8,12 +8,30 @@ from frappe import _
 from frappe.utils import get_datetime, get_system_timezone, now_datetime
 
 
+def _access_manager():
+	frappe.only_for(["System Manager", "Moderator"])
+
+
+def _doctype_permission(doctype, permission):
+	if frappe.session.user == "Administrator" or "System Manager" in frappe.get_roles():
+		frappe.has_permission(doctype, permission, throw=True)
+
+
+def _document_permission(doc, permission):
+	if frappe.session.user == "Administrator" or "System Manager" in frappe.get_roles():
+		doc.check_permission(permission)
+	else:
+		# The caller is already checked by _access_manager; keep direct REST
+		# access to these sensitive doctypes unavailable to moderators.
+		doc.flags.ignore_permissions = True
+
+
 def _admin_grant(name):
-	frappe.only_for("System Manager")
+	_access_manager()
 	if not isinstance(name, str) or not name:
 		frappe.throw(_("A grant name is required."), frappe.ValidationError)
 	grant = frappe.get_doc("LMS Access Grant", name, for_update=True)
-	grant.check_permission("write")
+	_document_permission(grant, "write")
 	return grant
 
 
@@ -28,8 +46,8 @@ def _explicit_choice(value, message=None):
 @frappe.whitelist()
 def get_course_access_overview(course):
 	"""Return access status and grants for the administrator's course screen."""
-	frappe.only_for("System Manager")
-	frappe.has_permission("LMS Access Grant", "read", throw=True)
+	_access_manager()
+	_doctype_permission("LMS Access Grant", "read")
 	if not isinstance(course, str) or not frappe.db.exists("LMS Course", course):
 		frappe.throw(_("Course not found."), frappe.ValidationError)
 	policy = frappe.db.get_value("LMS Access Policy", {"course": course}, ["name", "enabled",
@@ -62,8 +80,8 @@ def get_course_access_overview(course):
 @frappe.whitelist(methods=["POST"])
 def create_course_access_policy(course):
 	"""Create a disabled, unconfigured policy without changing student access."""
-	frappe.only_for("System Manager")
-	frappe.has_permission("LMS Access Policy", "create", throw=True)
+	_access_manager()
+	_doctype_permission("LMS Access Policy", "create")
 	if not isinstance(course, str) or not frappe.db.get_value("LMS Course", course, "name", for_update=True):
 		frappe.throw(_("Course not found."), frappe.ValidationError)
 	if frappe.db.exists("LMS Access Policy", {"course": course}):
@@ -71,7 +89,7 @@ def create_course_access_policy(course):
 	lessons = frappe.get_all("Course Lesson", filters={"course": course}, pluck="name")
 	policy = frappe.get_doc({"doctype": "LMS Access Policy", "course": course, "enabled": 0,
 		"lessons": [{"lesson": lesson, "opening_type": "Unknown", "prerequisite_type": "Unknown"}
-			for lesson in lessons]}).insert()
+			for lesson in lessons]}).insert(ignore_permissions=True)
 	return {"name": policy.name, "enabled": False, "lesson_count": len(policy.lessons)}
 
 
@@ -82,7 +100,7 @@ def enable_empty_course_policy(course):
 	Existing students require an explicit migration and are never converted here.
 	The site release switch is controlled separately by the deployment operator.
 	"""
-	frappe.only_for("System Manager")
+	_access_manager()
 	if frappe.conf.get("individual_access_release_enabled") is not True:
 		frappe.throw(_("Individual access is disabled on this site."), frappe.ValidationError)
 	if not isinstance(course, str):
@@ -97,7 +115,7 @@ def enable_empty_course_policy(course):
 	if not name:
 		frappe.throw(_("Set up the course access policy first."), frappe.ValidationError)
 	policy = frappe.get_doc("LMS Access Policy", name, for_update=True)
-	policy.check_permission("write")
+	_document_permission(policy, "write")
 	if policy.enabled:
 		frappe.throw(_("The course access policy is already enabled."), frappe.ValidationError)
 	if frappe.db.exists("LMS Enrollment", {"course": course}):
@@ -115,7 +133,7 @@ def enable_empty_course_policy(course):
 @frappe.whitelist(methods=["POST"])
 def update_course_access_defaults(course, defaults):
 	"""Save explicit course-wide defaults, keeping active rules complete."""
-	frappe.only_for("System Manager")
+	_access_manager()
 	if isinstance(defaults, str):
 		defaults = frappe.parse_json(defaults)
 	fields = {"default_personal_end_type", "default_personal_end_at", "default_personal_end_days",
@@ -129,7 +147,7 @@ def update_course_access_defaults(course, defaults):
 	if not name:
 		frappe.throw(_("Set up the course access policy first."), frappe.ValidationError)
 	policy = frappe.get_doc("LMS Access Policy", name, for_update=True)
-	policy.check_permission("write")
+	_document_permission(policy, "write")
 	if policy.enabled and (defaults["default_personal_end_type"] == "Unknown" or defaults["global_end_type"] == "Unknown"):
 		frappe.throw(_("Active course access rules must have known end dates."), frappe.ValidationError)
 	policy.update(defaults)
@@ -152,7 +170,7 @@ def update_grant_visited_retention(name, retention_type, retention_days):
 @frappe.whitelist(methods=["POST"])
 def update_course_lesson_rule(course, lesson, rule):
 	"""Save a lesson's opening and prerequisite rule."""
-	frappe.only_for("System Manager")
+	_access_manager()
 	if isinstance(rule, str):
 		rule = frappe.parse_json(rule)
 	fields = {"opening_type", "opens_at", "delay_days", "prerequisite_type", "prerequisite_lesson", "prerequisite_assignment"}
@@ -171,7 +189,7 @@ def update_course_lesson_rule(course, lesson, rule):
 	if not name:
 		frappe.throw(_("Set up the course access policy first."), frappe.ValidationError)
 	policy = frappe.get_doc("LMS Access Policy", name, for_update=True)
-	policy.check_permission("write")
+	_document_permission(policy, "write")
 	if policy.enabled and (rule["opening_type"] == "Unknown" or rule["prerequisite_type"] == "Unknown"):
 		frappe.throw(_("Active lesson rules must be fully specified."), frappe.ValidationError)
 	if frappe.db.get_value("Course Lesson", lesson, "course") != course:
@@ -187,8 +205,8 @@ def update_course_lesson_rule(course, lesson, rule):
 @frappe.whitelist()
 def get_lesson_assignments(course, lesson):
 	"""List assignments actually placed in a course lesson for administrators."""
-	frappe.only_for("System Manager")
-	frappe.has_permission("LMS Access Policy", "read", throw=True)
+	_access_manager()
+	_doctype_permission("LMS Access Policy", "read")
 	if frappe.db.get_value("Course Lesson", lesson, "course") != course:
 		frappe.throw(_("The lesson does not belong to this course."), frappe.ValidationError)
 	from lms.lms.utils import get_editorjs_blocks
@@ -207,11 +225,11 @@ def get_lesson_assignments(course, lesson):
 @frappe.whitelist()
 def get_grant_lessons(name):
 	"""List the lessons assigned to one personal access grant."""
-	frappe.only_for("System Manager")
+	_access_manager()
 	if not isinstance(name, str) or not name:
 		frappe.throw(_("A grant name is required."), frappe.ValidationError)
 	grant = frappe.get_doc("LMS Access Grant", name)
-	grant.check_permission("read")
+	_document_permission(grant, "read")
 	return [{"lesson": row.lesson, "title": frappe.db.get_value("Course Lesson", row.lesson, "title"),
 		"manual_open": bool(row.manual_open), "retain_when_limited": bool(row.retain_when_limited),
 		"opening_type": row.opening_type, "opens_at": row.opens_at, "delay_days": row.delay_days,
@@ -324,6 +342,7 @@ def _restart_token(grant, records):
 @frappe.whitelist()
 def preview_learning_record_reset(name):
 	"""Preview a partial reset; shared quiz and exercise results are not included."""
+	frappe.only_for("System Manager")
 	grant = _admin_grant(name)
 	records = _restart_records(grant)
 	return {"counts": {key: len(value["records"]) for key, value in records.items()},
@@ -340,6 +359,7 @@ def reset_learning_records(name, choices, token):
 	The closed grant and enabled policy prevent continuing work during reset. Quiz
 	and programming submissions are intentionally excluded: they can be shared.
 	"""
+	frappe.only_for("System Manager")
 	from lms.lms.individual_access import policy_applies
 
 	if isinstance(choices, str):
@@ -378,8 +398,8 @@ def create_grant_for_enrolled_student(course, member, starts_at=None, lessons=No
 	Enrollment and email delivery are deliberately outside this action. Existing
 	grants are never changed: an administrator must inspect them first.
 	"""
-	frappe.only_for("System Manager")
-	frappe.has_permission("LMS Access Grant", "create", throw=True)
+	_access_manager()
+	_doctype_permission("LMS Access Grant", "create")
 	if not all(isinstance(value, str) and value.strip() for value in (course, member)):
 		frappe.throw(_("Course and student are required."), frappe.ValidationError)
 	if starts_at is not None and not isinstance(starts_at, str):
@@ -406,7 +426,7 @@ def create_grant_for_enrolled_student(course, member, starts_at=None, lessons=No
 		"course_end_type": "Inherit", "completed_retention_type": "Inherit",
 		"lessons": [{"lesson": lesson, "opening_type": "Inherit", "prerequisite_state": "Inherit"}
 			for lesson in lessons],
-	}).insert()
+	}).insert(ignore_permissions=True)
 	return {"name": grant.name, "status": grant.status, "lesson_count": len(grant.lessons)}
 
 
@@ -524,7 +544,7 @@ def limit_grant(name, retained_lessons, retention_end_type, retention_ends_at=No
 @frappe.whitelist(methods=["POST"])
 def set_lesson_title_visibility(course, lesson, hide_title):
 	"""Set whether the title is shown to learners who cannot open the lesson."""
-	frappe.only_for("System Manager")
+	_access_manager()
 	if not isinstance(course, str) or not isinstance(lesson, str):
 		frappe.throw(_("Invalid lesson."), frappe.ValidationError)
 	if frappe.db.get_value("Course Lesson", lesson, "course") != course:
