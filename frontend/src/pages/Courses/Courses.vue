@@ -114,7 +114,9 @@ const setCertification = (value) => {
 	updateCourses()
 }
 const filters = ref({})
-const currentTab = ref('live')
+// Learners see their assignments, including private unpublished courses.
+// Staff and guests retain the catalog default and explicit query tabs.
+const currentTab = ref(user.data?.is_student ? 'enrolled' : 'live')
 const { brand } = sessionStore()
 const router = useRouter()
 
@@ -130,7 +132,7 @@ const setFiltersFromQuery = () => {
 	// `|| false` would keep the raw string, so ?certification=false read as on.
 	certification.value = queries.get('certification') === 'true'
 	const tab = queries.get('tab')
-	if (tab) currentTab.value = tab
+	if (tab && !user.data?.is_student) currentTab.value = tab
 	// Compatibility shim: ?newCourse=1 was this page's ad-hoc deep link before
 	// /courses/new existed. BatchCourseModal.vue:27 still emits it, as may
 	// bookmarks and anything outside the SPA, so forward it rather than drop it.
@@ -321,6 +323,9 @@ watch(currentTab, () => {
 })
 
 const courseTabs = computed(() => {
+	if (user.data?.is_student) {
+		return [{ label: __('Enrolled'), value: 'enrolled' }]
+	}
 	let tabs = [
 		{
 			label: __('Published'),

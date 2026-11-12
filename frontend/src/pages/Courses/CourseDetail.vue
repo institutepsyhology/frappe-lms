@@ -415,7 +415,10 @@ watch(
 )
 
 watch(course, () => {
-	if (!isAdmin.value && !course.data?.published && !course.data?.upcoming) {
+	// Unpublished courses are private, but enrolled learners retain their access.
+	// Wait for the response: a denied course returns {}, loading has no data yet.
+	if (!course.data) return
+	if (!isAdmin.value && !course.data.membership && !course.data.published && !course.data.upcoming) {
 		router.push({
 			name: 'Courses',
 		})
@@ -424,7 +427,7 @@ watch(course, () => {
 
 const isInstructor = (): boolean => {
 	let user_is_instructor = false
-	course.data?.instructors.forEach((instructor: CourseInstructorInfo) => {
+	course.data?.instructors?.forEach((instructor: CourseInstructorInfo) => {
 		if (!user_is_instructor && instructor.name == user.data?.name) {
 			user_is_instructor = true
 		}
