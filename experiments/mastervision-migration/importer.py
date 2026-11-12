@@ -307,8 +307,11 @@ class Importer:
                         raise Stop("write_result_uncertain")
                     if progress_callback is not None:
                         progress_callback({"course_id": course, "lesson_id": ident, "status": "created"})
-                except BaseException:
-                    raise Stop("write_result_uncertain") from None
+                except BaseException as exc:
+                    stopped = Stop('write_result_uncertain')
+                    if isinstance(exc, (Stop, Review)) and DIAGNOSTIC.fullmatch(str(exc)):
+                        stopped.reason = str(exc)
+                    raise stopped from None
                 created.append(ident)
             try:
                 final = self.outline(course)

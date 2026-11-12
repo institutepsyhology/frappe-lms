@@ -73,6 +73,20 @@ class Client:
 
 
 class ImportTests(unittest.TestCase):
+    def test_unknown_write_retains_only_a_fixed_safe_cause_and_never_retries(self):
+        client = Client()
+        call = client.call
+        def fail(tool, args):
+            if tool == 'call_method' and args['args']['dry_run'] is False:
+                client.writes.append(str(args['args']['payload']['lesson_id']))
+                raise mod.Stop('mcp_connection_failed')
+            return call(tool, args)
+        client.call = fail
+        with self.assertRaisesRegex(mod.Stop, '^write_result_uncertain$') as raised:
+            mod.Importer(client).import_course([payload(1), payload(2)], apply=True)
+        self.assertEqual(raised.exception.reason, 'mcp_connection_failed')
+        self.assertEqual(client.writes, ['1'])
+
     def test_wrong_client_site_rejected(self):
         client = Client()
         client.site = "my-lk.mv-centr.ru"

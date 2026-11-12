@@ -114,6 +114,17 @@ def course_snapshot(ids=(10,), title='Synthetic course'):
 
 
 class ControllerTests(unittest.TestCase):
+    def test_unknown_write_cause_is_fixed_metadata_in_status_and_journal(self):
+        error = importer.Stop('write_result_uncertain')
+        error.reason = 'mcp_connection_failed'
+        result = self.invoke(2, importing=lambda cid: error, args=['--apply'])
+        self.assertEqual(result[0], 1)
+        self.assertEqual(result[5][-1], {'status': 'stopped', 'code': 'write_result_uncertain', 'reason': 'mcp_connection_failed'})
+        self.assertIn(('import', None, None, 'stopped', ['write_result_uncertain', 'mcp_connection_failed']), result[1].events)
+        error.reason = 'PRIVATE cookie or source'
+        result = self.invoke(2, importing=lambda cid: error, args=['--apply'])
+        self.assertNotIn('PRIVATE', repr(result[5]) + repr(result[1].events))
+
     def invoke(self, count, *, collect=None, importing=None, args=(), errors=None):
         store, transport, client = FakeStore(errors), FakeTransport(), FakeClient()
         target = FakeImporter(importing or (lambda cid: None))

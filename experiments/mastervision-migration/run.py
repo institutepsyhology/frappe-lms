@@ -353,7 +353,11 @@ def main():
         except Exception as exc:
             import importer
             code = str(exc) if isinstance(exc, importer.Stop) and re.fullmatch('[a-z0-9_]{1,100}', str(exc)) else 'unexpected_failure'
-            store.event('import', None, None, 'stopped', [code]); emit({'status': 'stopped', 'code': code}); return 1
+            reason = getattr(exc, 'reason', None) if isinstance(exc, importer.Stop) else None
+            result, codes = {'status': 'stopped', 'code': code}, [code]
+            if isinstance(reason, str) and importer.DIAGNOSTIC.fullmatch(reason) and reason != code:
+                codes.append(reason); result['reason'] = reason
+            store.event('import', None, None, 'stopped', codes); emit(result); return 1
         finally:
             store.report()
             if assets: assets.close()
