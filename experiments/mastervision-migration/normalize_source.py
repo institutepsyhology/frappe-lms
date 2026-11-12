@@ -5,6 +5,7 @@ unknown markup and unrecognized players remain explicit review cases.
 """
 import copy
 from functools import lru_cache
+from html import escape
 from html.parser import HTMLParser
 import importlib.util
 import json
@@ -13,9 +14,11 @@ import re
 from urllib.parse import parse_qsl, urlsplit
 
 from importer import ACCOUNT, ORIGIN, Review
+from normalize_editor_nodes import normalize_nodes
 
 
 CODE = "embedded_video_iframe_normalized"
+TABLE_CODE = "static_table_presentation_normalized"
 FEATURES = {"accelerometer", "autoplay", "clipboard-write", "encrypted-media", "gyroscope",
             "picture-in-picture", "web-share", "fullscreen"}
 
@@ -117,6 +120,173 @@ class SingleFrame(HTMLParser):
     unknown_decl = handle_comment
 
 
+def presentation_css(value):
+    if not isinstance(value, str) or re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\\@]", value):
+        raise Review("static_table_requires_review")
+    plain = re.sub(r"/\*.*?\*/", "", value, flags=re.S)
+    if re.search(r"(?:^|[;{])\s*(?:content|quotes|counter-reset|counter-increment|behavior|-moz-binding)\s*:", plain, re.I):
+        raise Review("static_table_requires_review")
+    if any(name.lower() not in {"rgb", "rgba", "hsl", "hsla", "calc", "min", "max", "clamp"}
+           for name in re.findall(r"([A-Za-z_-][A-Za-z0-9_-]*)\s*\(", plain)):
+        raise Review("static_table_requires_review")
+
+
+class TablePresentation(HTMLParser):
+    """Regenerate static markup, removing only approved presentation metadata."""
+    def __init__(self, markup):
+        super().__init__(convert_charrefs=True)
+        self.markup, self.parts, self.stack = markup, [], []
+        self.starts = [0] + [i + 1 for i, char in enumerate(markup) if char == '\n']
+        self.stylesheet, self.iframe = None, None
+        self.stats = {"style_blocks": 0, "style_attributes": 0, "presentation_attributes": 0, "header_cells": 0, "header_groups": 0}
+        self.allowed = static_validator().__globals__["TAGS"] | {"thead", "th"}
+        self.void = {"br", "hr", "col"}
+
+    def position(self):
+        line, column = self.getpos()
+        return self.starts[line - 1] + column
+
+    def handle_starttag(self, tag, attrs):
+        if tag not in self.allowed or len({k for k, _ in attrs}) != len(attrs) or any(k.startswith('on') for k, _ in attrs) or len(self.stack) > 100:
+            raise Review("static_table_requires_review")
+        if self.iframe is not None:
+            if tag == 'iframe':
+                raise Review("static_table_requires_review")
+            if tag not in self.void:
+                self.stack.append(tag)
+            return
+        if tag == 'iframe':
+            self.iframe = self.position()
+            self.stack.append(tag)
+            return
+        if tag == 'style':
+            if dict(attrs) not in ({}, {"type": "text/css"}):
+                raise Review("static_table_requires_review")
+            self.stylesheet = []
+            self.stats['style_blocks'] += 1
+            self.stack.append(tag)
+            return
+        kept = []
+        for key, value in attrs:
+            remove = False
+            if key == 'style':
+                presentation_css(value)
+                self.stats['style_attributes'] += 1
+                remove = True
+            elif tag == 'table' and key in {'cellspacing', 'cellpadding', 'border'}:
+                if not isinstance(value, str) or not re.fullmatch(r'[0-9]{1,4}', value):
+                    raise Review("static_table_requires_review")
+                remove = True
+            elif tag == 'table' and key == 'xmlns':
+                if value not in {'http://www.w3.org/1999/xhtml', 'https://www.w3.org/1999/xhtml'}:
+                    raise Review("static_table_requires_review")
+                remove = True
+            elif tag == 'td' and key in {'data-sheets-value', 'data-sheets-numberformat'}:
+                if not isinstance(value, str):
+                    raise Review("static_table_requires_review")
+                remove = True
+            elif tag in {'table', 'tr', 'td', 'th', 'col', 'colgroup'} and key in {'width', 'height'}:
+                if not isinstance(value, str) or not re.fullmatch(r'(?:[0-9]{1,5}(?:px|pt|em|rem|%)?|auto)', value):
+                    raise Review("static_table_requires_review")
+                remove = True
+            if remove:
+                if key != 'style':
+                    self.stats['presentation_attributes'] += 1
+            else:
+                kept.append(' ' + key + ('' if value is None else '="' + escape(value, quote=True) + '"'))
+        mapped = {'thead': 'tbody', 'th': 'td'}.get(tag, tag)
+        self.parts.append('<' + mapped + ''.join(kept) + '>')
+        if tag == 'thead':
+            self.stats['header_groups'] += 1
+        if tag == 'th':
+            self.stats['header_cells'] += 1
+            self.parts.append('<strong>')
+        if tag not in self.void:
+            self.stack.append(tag)
+
+    def handle_startendtag(self, tag, attrs):
+        self.handle_starttag(tag, attrs)
+        if tag not in self.void:
+            self.handle_endtag(tag)
+
+    def handle_endtag(self, tag):
+        if tag in self.void:
+            return
+        if not self.stack or self.stack.pop() != tag:
+            raise Review("static_table_requires_review")
+        if self.iframe is not None:
+            if tag == 'iframe':
+                closing = re.match(r'</\s*iframe\s*>', self.markup[self.position():], re.I)
+                if not closing:
+                    raise Review("static_table_requires_review")
+                fragment = self.markup[self.iframe:self.position() + len(closing.group())]
+                try:
+                    static_validator()(fragment)
+                except (ValueError, UnicodeError, RecursionError):
+                    raise Review("static_table_requires_review") from None
+                self.parts.append(fragment)
+                self.iframe = None
+            return
+        if tag == 'style':
+            presentation_css(''.join(self.stylesheet))
+            self.stylesheet = None
+            return
+        self.parts.append('</strong></td>' if tag == 'th' else '</' + {'thead': 'tbody'}.get(tag, tag) + '>')
+
+    def handle_data(self, data):
+        if self.iframe is not None:
+            return
+        if self.stylesheet is not None:
+            self.stylesheet.append(data)
+        else:
+            self.parts.append(escape(data, quote=False))
+
+    def handle_comment(self, data):
+        raise Review("static_table_requires_review")
+
+    handle_decl = handle_comment
+    handle_pi = handle_comment
+    unknown_decl = handle_comment
+
+
+def table_content(markup):
+    class Content(HTMLParser):
+        def __init__(self):
+            super().__init__(convert_charrefs=True)
+            self.style, self.text, self.hrefs, self.cells, self.active, self.order = False, [], [], [], [], []
+        def handle_starttag(self, tag, attrs):
+            if tag == 'style': self.style = True
+            if tag == 'tr': self.order.append('row')
+            if tag in {'td', 'th'}:
+                self.order.append('cell'); self.cells.append([]); self.active.append(len(self.cells) - 1)
+            self.hrefs.extend(value for key, value in attrs if key == 'href')
+        def handle_endtag(self, tag):
+            if tag == 'style': self.style = False
+            if tag in {'td', 'th'} and self.active: self.active.pop()
+        def handle_data(self, data):
+            if not self.style:
+                self.text.append(data)
+                for index in self.active: self.cells[index].append(data)
+    parser = Content(); parser.feed(markup); parser.close()
+    return ''.join(parser.text), parser.hrefs, [''.join(v) for v in parser.cells], parser.order
+
+
+def clean_table(markup):
+    if len(markup.encode('utf-8')) > 200000:
+        raise Review("static_table_requires_review")
+    parser = TablePresentation(markup); parser.feed(markup); parser.close()
+    if parser.stack or parser.iframe is not None or parser.stylesheet is not None or not any(parser.stats.values()):
+        raise Review("static_table_requires_review")
+    cleaned = ''.join(parser.parts)
+    try:
+        static_validator()(cleaned)
+    except (ValueError, UnicodeError, RecursionError):
+        raise Review("static_table_requires_review") from None
+    if table_content(markup) != table_content(cleaned):
+        raise Review("static_table_content_changed")
+    return cleaned, parser.stats
+
+
 def normalize_payload(payload):
     """Return (private payload copy, diagnostic codes), without changing input.
 
@@ -144,13 +314,24 @@ def normalize_payload(payload):
     ape = result.get("ape")
     if result.get("format") != "ape" or not isinstance(ape, dict) or ape.get("name") != "page":
         raise Review("normalization_source_invalid")
-    original_ape, changed = copy.deepcopy(ape), []
+    original_ape, changed, table_changes = copy.deepcopy(ape), [], []
+    ape, editor_changes = normalize_nodes(ape, static_validator())
+    result['ape'] = ape
 
     def visit(node, path):
         if len(path) > 100 or not isinstance(node, dict) or not isinstance(node.get("name"), str) or not isinstance(node.get("fields", {}), dict) or not isinstance(node.get("children", []), list):
             raise Review("normalization_source_invalid")
         fields = node.get("fields", {})
         markup = fields.get("html")
+        if isinstance(markup, str) and re.search(r'<\s*table\b', markup, re.I):
+            try:
+                static_validator()(markup)
+            except (ValueError, UnicodeError, RecursionError):
+                if node['name'] not in {'text', 'code'} or node.get('children'):
+                    raise Review("static_table_requires_review")
+                cleaned, statistics = clean_table(markup)
+                fields['html'], markup = cleaned, cleaned
+                table_changes.append({'path': path, **statistics})
         candidate = isinstance(markup, str) and re.search(r"<\s*iframe\b", markup, re.I)
         if candidate:
             try:
@@ -176,7 +357,13 @@ def normalize_payload(payload):
             visit(child, path + [index])
 
     visit(ape, [])
-    if changed:
+    codes = ([CODE] if changed else []) + ([TABLE_CODE] if table_changes else [])
+    codes.extend(dict.fromkeys(change['code'] for change in editor_changes))
+    if codes:
         result["source_original_ape"] = original_ape
-        result["source_normalization"] = {"version": 1, "kind": "mastervision_single_iframe", "codes": [CODE], "blocks": changed}
-    return result, [CODE] if changed else []
+        if table_changes or editor_changes:
+            result["source_normalization"] = {"version": 2, "kind": "mastervision_editor_normalization", "codes": codes,
+                                               "blocks": changed, "table_blocks": table_changes, "editor_blocks": editor_changes}
+        else:
+            result["source_normalization"] = {"version": 1, "kind": "mastervision_single_iframe", "codes": [CODE], "blocks": changed}
+    return result, codes
