@@ -20,8 +20,9 @@ def require(value, code):
 
 def schema():
     columns = frappe.db.sql('SHOW COLUMNS FROM `tabSeries` LIKE %s', ('current',), as_dict=True)
-    require(columns and 'bigint' in columns[0]['Type'].lower()
-            and 'unsigned' not in columns[0]['Type'].lower(), 'series_not_signed_bigint')
+    require(columns and columns[0]['Type'].lower().startswith('int(')
+            and 'unsigned' not in columns[0]['Type'].lower()
+            and numbering.MAX_ID == (1 << 31) - 1, 'series_capacity_mismatch')
     for doctype in numbering.DOCTYPES:
         field = frappe.get_meta(doctype).get_field('custom_lms_id')
         require(field and field.read_only and field.no_copy and field.unique, 'number_field_not_protected')

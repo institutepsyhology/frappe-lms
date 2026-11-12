@@ -5,7 +5,8 @@ import re
 
 import frappe
 
-MAX_ID = (1 << 63) - 1
+# Frappe 16.53's standard tabSeries.current is a signed INT(11).
+MAX_ID = (1 << 31) - 1
 DOCTYPES = ('LMS Course', 'Course Lesson')
 SOURCE_FLOORS = {
     # Complete saved AVO catalogue and accepted manifests, including exclusions.

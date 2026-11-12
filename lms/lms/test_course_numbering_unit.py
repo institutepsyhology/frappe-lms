@@ -162,7 +162,7 @@ class NumberingTest(unittest.TestCase):
             with self.module.importing_source('Course Lesson', 'mv-centr', '42'): pass
 
     def test_bad_ids_partial_sources_and_future_import_collisions_fail_before_write(self):
-        for value in ('0', '01', '１', '-1', '1.5', str(1 << 63), True, None):
+        for value in ('0', '01', '１', '-1', '1.5', str(1 << 31), str(1 << 63), True, None):
             with self.subTest(value=value), self.assertRaises(ValueError): self.module._number(value)
         for values in ({'custom_avo_account':'iomp', 'custom_avo_id':'26'},
                        {'custom_avo_account':'mv-centr'}, {'custom_avo_id':'26'},
