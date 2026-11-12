@@ -8,7 +8,9 @@ import importlib.util
 import json
 import msvcrt
 import sys
+import sqlite3
 import time
+from contextlib import closing
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -18,6 +20,33 @@ sys.path.insert(0,str(Path(__file__).resolve().parent))
 import import_mvcentr_users as source
 
 JOURNAL=source.JOURNAL.with_name('mvcentr-support-password-events.jsonl')
+
+
+def load_selection(path):
+    if path is None:
+        return None
+    values=json.loads(Path(path).read_text(encoding='utf-8-sig'))
+    if (not isinstance(values,list) or len(values)>250000 or
+        any(type(i) is not int or i<1 or i in source.EXCLUDED_CONTACTS for i in values) or
+        len(values)!=len(set(values))):
+        raise ValueError('invalid_password_selection')
+    return set(values)
+
+
+def records_for_selection(selected):
+    if selected is None:
+        yield from source.load()
+        return
+    if not selected:
+        return
+    path=source.ROOT/'exports/contacts-api-all-fields/contacts.sqlite'
+    with closing(sqlite3.connect(path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
+        ids=sorted(selected)
+        for start in range(0,len(ids),500):
+            batch=ids[start:start+500]
+            placeholders=','.join('?' for _ in batch)
+            for ident,raw in db.execute('SELECT id,record_json FROM contacts WHERE id IN ('+placeholders+') ORDER BY id',batch):
+                yield ident,json.loads(raw)
 
 
 def event(ident,status):
@@ -45,21 +74,29 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--apply',action='store_true')
     parser.add_argument('--limit',type=int,default=1)
-    parser.add_argument('--interval',type=float,default=1.5)
+    parser.add_argument('--interval',type=float,default=0.1)
+    parser.add_argument('--ids-file',type=Path)
     args=parser.parse_args()
-    if args.limit<1 or not 0.5<=args.interval<=60:parser.error('invalid limit or interval')
+    if args.limit<1 or not 0.1<=args.interval<=60:parser.error('invalid limit or interval')
     report=json.loads((source.ROOT/'exports/contacts-api-all-fields/report.json').read_text(encoding='utf-8'))
     if report.get('origin')!='https://mvcentr.autoweboffice.ru':raise ValueError('source_account_mismatch')
+    selected=load_selection(args.ids_file)
+    counts={'checked':0,'stored':0,'mismatch':0,'not_yet_imported':0}
+    if selected is not None:
+        counts['selected']=len(selected)
+        if not selected:
+            print(json.dumps(counts));return
     done=set()
     if JOURNAL.exists():
         for line in JOURNAL.read_text(encoding='utf-8').splitlines():
             item=json.loads(line)
             if item.get('account')!='mv-centr' or type(item.get('contact_id')) is not int:raise ValueError('invalid_journal')
             if item.get('status')=='stored':done.add(item['contact_id'])
+    # A fresh missing-copy selection takes priority over a historical journal.
+    if selected is not None:done.difference_update(selected)
     spec=importlib.util.spec_from_file_location('h',source.ROOT/'frappe-mcp/headers.py')
     helper=importlib.util.module_from_spec(spec);spec.loader.exec_module(helper)
     headers=helper.authenticated_headers('my-lk.mv-centr.ru')
-    counts={'checked':0,'stored':0,'mismatch':0,'not_yet_imported':0}
     consecutive=0
     def process(batch):
         nonlocal consecutive
@@ -102,8 +139,10 @@ def main():
             if consecutive>=10:counts['stopped']='consecutive_issues';return False
             if counts['checked']>=args.limit:return False
         return True
-    batch=[]
-    for ident,record in source.load():
+    batch=[];seen=set()
+    for ident,record in records_for_selection(selected):
+        if selected is not None and ident not in selected:raise ValueError('selection_read_mismatch')
+        seen.add(ident)
         if ident in source.EXCLUDED_CONTACTS or ident in done:continue
         batch.append((ident,record))
         if len(batch)>=100:
@@ -111,6 +150,9 @@ def main():
             batch=[]
     else:
         if batch:process(batch)
+        if selected is not None and selected-seen:
+            counts['selected_missing_source']=len(selected-seen)
+            counts['stopped']='selected_ids_missing_source'
     print(json.dumps(counts))
 
 

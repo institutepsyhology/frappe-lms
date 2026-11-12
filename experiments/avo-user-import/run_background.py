@@ -19,6 +19,7 @@ LOG = migration.JOURNAL.with_name('mvcentr-user-import-run.log')
 SCRIPT = 'import_mvcentr_users.py'
 LABEL = 'пользователей'
 RECIPIENT_RECOVERY = False
+SCRIPT_ARGS = []
 
 
 def write_status(data):
@@ -45,7 +46,7 @@ def main():
       failures=0
       total_created=0
       while True:
-        process = subprocess.Popen([sys.executable, '-u', str(HERE/SCRIPT), '--apply', '--limit', '250000'],
+        process = subprocess.Popen([sys.executable, '-u', str(HERE/SCRIPT), '--apply', '--limit', '250000', *SCRIPT_ARGS],
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace',
                                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
         for line in process.stdout:
@@ -110,7 +111,10 @@ if __name__ == '__main__':
     mode.add_argument('--passwords',action='store_true')
     mode.add_argument('--recipients-nov11',action='store_true')
     mode.add_argument('--recipients-batch',action='store_true')
+    parser.add_argument('--password-ids-file',type=Path)
     args=parser.parse_args()
+    if args.password_ids_file and not args.passwords:
+        parser.error('--password-ids-file requires --passwords')
     if args.no_email:
         STATUS=STATUS.with_name('mvcentr-noemail-contact-status.json')
         LOG=LOG.with_name('mvcentr-noemail-contact-run.log')
@@ -126,6 +130,10 @@ if __name__ == '__main__':
         LOG=LOG.with_name('mvcentr-support-password-run.log')
         SCRIPT='archive_verified_passwords.py'
         LABEL='паролей контактов'
+        if args.password_ids_file is not None:
+            from archive_verified_passwords import load_selection
+            load_selection(args.password_ids_file)
+            SCRIPT_ARGS=['--ids-file',str(args.password_ids_file.resolve())]
     elif args.recipients_nov11 or args.recipients_batch:
         STATUS=STATUS.with_name('mvcentr-recipients-nov11-status.json')
         LOG=LOG.with_name('mvcentr-recipients-nov11-run.log')
