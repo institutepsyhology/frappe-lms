@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+	GUEST_TABS,
 	overflowLinks,
 	pickPrimaryTabs,
 	sectionFor,
@@ -8,6 +9,11 @@ import {
 } from '@/utils/mobileNav'
 
 const link = (label: string, icon = 'Circle'): NavLink => ({ label, icon })
+
+it('keeps Courses active on AVO ID routes', () => {
+	const courses = GUEST_TABS.find((tab) => tab.to === 'Courses')
+	expect(courses?.activeFor).toEqual(expect.arrayContaining(['AvoCourse', 'AvoLesson']))
+})
 
 // Mirrors what MobileLayout assembles at runtime: getSidebarLinks() output with
 // Programs spliced in, plus the moderator extras and session actions that

@@ -28,7 +28,7 @@ export const GUEST_TABS: readonly NavLink[] = [
 		label: 'Courses',
 		icon: 'BookOpen',
 		to: 'Courses',
-		activeFor: ['Courses', 'CourseDetail', 'Lesson'],
+		activeFor: ['Courses', 'CourseDetail', 'Lesson', 'AvoCourse', 'AvoLesson'],
 	},
 	{
 		label: 'Batches',

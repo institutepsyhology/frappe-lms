@@ -34,6 +34,18 @@ export const routes = [
 		],
 	},
 	{
+		path: '/courses/avo/:avoCourseId',
+		name: 'AvoCourse',
+		component: () => import('@/pages/Courses/AvoCourseRoute.vue'),
+		props: true,
+	},
+	{
+		path: '/courses/avo/:avoCourseId/lessons/:avoLessonId',
+		name: 'AvoLesson',
+		component: () => import('@/pages/Courses/AvoCourseRoute.vue'),
+		props: true,
+	},
+	{
 		path: '/courses/:courseName',
 		name: 'CourseDetail',
 		component: () => import('@/pages/Courses/CourseDetail.vue'),

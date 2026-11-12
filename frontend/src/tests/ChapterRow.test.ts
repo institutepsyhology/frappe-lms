@@ -78,6 +78,14 @@ beforeEach(() => {
 	pushMock.mockReset()
 })
 
+it('highlights the selected lesson when the URL uses AVO IDs', () => {
+	const wrapper = mount(ChapterRow, {
+		props: { chapter, index:1, courseName:'course-1', allowEdit:false, selectedLessonNumber:'2-1' },
+		global: { provide: { $user:{data:{name:'student@example.test'}} }, stubs:{'router-link':{template:'<a><slot /></a>'}} },
+	})
+	expect(wrapper.get('.outline-lesson').classes()).toContain('bg-surface-gray-3')
+})
+
 describe('ChapterRow inline rename', () => {
 	it('commits on Enter without toggling the chapter disclosure', async () => {
 		const wrapper = mountRow()

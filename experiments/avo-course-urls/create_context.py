@@ -1,0 +1,31 @@
+"""Package only committed source and tests for the AVO route release."""
+import hashlib
+import io
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tarfile
+
+ROOT=Path(__file__).resolve().parents[2]
+FILES=['lms/lms/avo_course_routes.py','lms/lms/test_avo_course_routes_unit.py',
+       'frontend/src/routes.js','frontend/src/router.js','frontend/src/components/AssessmentPlugin.vue',
+       'frontend/src/components/ChapterRow.vue','frontend/src/pages/Lesson.vue',
+       'frontend/src/utils/index.js','frontend/src/utils/mobileNav.ts',
+       'frontend/src/pages/Courses/AvoCourseRoute.vue','frontend/src/utils/avoCourseRoutes.ts',
+       'frontend/src/tests/avoCourseRoutes.test.ts','frontend/src/tests/ChapterRow.test.ts',
+       'frontend/src/tests/mobileNav.test.ts']
+def main():
+    out=Path(sys.argv[1]).resolve();out.mkdir(parents=True,exist_ok=False)
+    commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
+    hashes={}
+    with tarfile.open(out/'overlay.tar','w') as tar:
+        for name in FILES:
+            data=subprocess.check_output(['git','show',f'{commit}:{name}'],cwd=ROOT).replace(b'\r\n',b'\n')
+            hashes[name]=hashlib.sha256(data).hexdigest()
+            info=tarfile.TarInfo(name);info.size=len(data);info.mode=0o644;info.mtime=0
+            tar.addfile(info,io.BytesIO(data))
+    (out/'Dockerfile').write_bytes((ROOT/'experiments/avo-course-urls/Dockerfile').read_bytes().replace(b'\r\n',b'\n'))
+    (out/'manifest.json').write_text(json.dumps({'commit':commit,'sha256':hashes},indent=2),encoding='utf-8')
+    print(json.dumps({'commit':commit,'files':len(FILES)}))
+if __name__=='__main__':main()

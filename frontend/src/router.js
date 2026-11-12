@@ -5,6 +5,7 @@ import { sessionStore } from './stores/session'
 import { useSettings } from './stores/settings'
 import { getLmsBasePath } from './utils/basePath'
 import { routes } from './routes'
+import { canonicalAvoCourseRoute } from './utils/avoCourseRoutes'
 
 // Run the fresh-site-admin persona check at most once per app load.
 let personaChecked = false
@@ -69,7 +70,8 @@ router.beforeEach(async (to, from, next) => {
 		}
 	}
 
-	return next()
+	const canonical = await canonicalAvoCourseRoute(to, call)
+	return canonical ? next(canonical) : next()
 })
 
 export default router

@@ -289,7 +289,7 @@ const isScormChapterLocked = computed<boolean>(() =>
 )
 
 function isActiveLesson(lessonNumber: string): boolean {
-	if (props.inlineSelect) return props.selectedLessonNumber === lessonNumber
+	if (props.selectedLessonNumber || props.inlineSelect) return props.selectedLessonNumber === lessonNumber
 	return (
 		route.params.chapterNumber == lessonNumber.split('-')[0] &&
 		route.params.lessonNumber == lessonNumber.split('-')[1]

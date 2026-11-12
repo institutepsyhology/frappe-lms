@@ -491,6 +491,8 @@ const props = defineProps({
 		type: String,
 		required: true,
 	},
+	avoCourseId: { type: String, default: '' },
+	avoLessonId: { type: String, default: '' },
 })
 
 let collapsedByLesson = false
@@ -542,8 +544,9 @@ onBeforeUnmount(() => {
 })
 
 const lesson = createResource({
-	url: 'lms.lms.utils.get_lesson',
+	url: props.avoCourseId && props.avoLessonId ? 'lms.lms.avo_course_routes.get_lesson_by_source' : 'lms.lms.utils.get_lesson',
 	makeParams(values) {
+		if (props.avoCourseId && props.avoLessonId) return { course_id:props.avoCourseId, lesson_id:props.avoLessonId }
 		return {
 			course: props.courseName,
 			chapter: values ? values.chapter : props.chapterNumber,

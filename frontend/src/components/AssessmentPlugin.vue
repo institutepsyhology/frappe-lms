@@ -30,24 +30,25 @@
 					/>
 					<div v-else class="space-y-4">
 						<Link
-							v-if="filterAssignmentsByCourse"
+							v-if="filterAssignmentsByCourse && courseName"
 							v-model="assignment"
 							doctype="LMS Assignment"
 							:filters="{
-								course: route.params.courseName,
+								course: courseName,
 							}"
 							placeholder=" "
 							:label="__('Select an Assignment')"
 							:onCreate="(value, close) => redirectToForm()"
 						/>
 						<Link
-							v-else
+							v-else-if="!filterAssignmentsByCourse"
 							v-model="assignment"
 							doctype="LMS Assignment"
 							placeholder=" "
 							:label="__('Select an Assignment')"
 							:onCreate="(value, close) => redirectToForm()"
 						/>
+						<p v-else class="text-sm text-ink-gray-6">Не удалось определить курс для фильтра.</p>
 						<BooleanSwitch
 							size="sm"
 							:description="__('Only show assignments from the current course')"
@@ -61,9 +62,9 @@
 	</Dialog>
 </template>
 <script setup>
-import { Dialog } from 'frappe-ui'
+import { Dialog, call } from 'frappe-ui'
 import BooleanSwitch from '@/components/Controls/BooleanSwitch.vue'
-import { nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getLmsRoute } from '@/utils/basePath'
 import Link from '@/components/Controls/Link.vue'
@@ -74,6 +75,16 @@ const quiz = ref(null)
 const assignment = ref(null)
 const filterAssignmentsByCourse = ref(false)
 const route = useRoute()
+const resolvedCourse = ref('')
+const courseName = computed(() => route.params.courseName || resolvedCourse.value)
+watch(() => route.params.avoCourseId, async (id) => {
+	resolvedCourse.value = ''
+	if (typeof id !== 'string') return
+	try {
+		const result = await call('lms.lms.avo_course_routes.resolve', { course_id:id })
+		if (route.params.avoCourseId === id && typeof result?.course_name === 'string') resolvedCourse.value = result.course_name
+	} catch { /* keep the filter closed when the course cannot be resolved */ }
+}, { immediate:true })
 
 const props = defineProps({
 	type: {
