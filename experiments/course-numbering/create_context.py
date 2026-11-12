@@ -8,7 +8,8 @@ FILES=['lms/hooks.py',
  'lms/lms/avo_course_routes.py',
  'lms/lms/test_avo_course_routes_unit.py',
  'lms/lms/avo_import.py',
- 'lms/lms/test_avo_import_unit.py']
+ 'lms/lms/test_avo_import_unit.py',
+ 'lms/lms/testdata/avo_spacer.json']
 def main():
  out=Path(sys.argv[1]).resolve();out.mkdir(parents=True,exist_ok=False)
  commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip();hashes={}
