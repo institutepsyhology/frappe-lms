@@ -54,6 +54,7 @@ class FakeStore:
             raise mod.StorageError('completed_course_checkpoint_missing')
         return copy.deepcopy(self.checkpoints[course])
     def latest(self, *_): raise AssertionError('stored import must use a completed checkpoint, never latest')
+    def stable_lesson(self, course_id, lesson_id, parsed): return parsed
     def summary(self): return {'review': len([mark for mark in self.marks if mark[1] == 'review'])}
     def report(self): self.reports += 1
 
@@ -91,7 +92,7 @@ class FakeAssets:
 class FakeImporter:
     def __init__(self, behavior):
         self.behavior, self.calls = behavior, []
-    def import_course(self, payloads, apply=False, images_for_lesson=None):
+    def import_course(self, payloads, apply=False, images_for_lesson=None, progress_callback=None):
         cid = payloads[0]['course_id']
         self.calls.append((cid, apply))
         error = self.behavior(cid)
@@ -133,6 +134,7 @@ class ControllerTests(unittest.TestCase):
              patch.object(importer, 'Importer', return_value=target), patch.object(mod, 'emit', side_effect=output.append), \
              patch.object(assets, 'AssetCache', return_value=FakeAssets()), \
              patch.object(settings, 'ensure_private_course', return_value={'status': 'updated'}), \
+             patch.object(mod, 'transfer_covers'), \
              patch('sys.argv', ['run.py', *args]):
             status = mod.main()
         return status, store, transport, client, target, output, collected, make_client.call_count
@@ -228,7 +230,14 @@ class ControllerTests(unittest.TestCase):
     def test_explicit_resume_resets_both_streaks_before_processing(self):
         result = self.invoke(1, args=['--collect-only', '--resume'], errors={'collect': 10, 'import': 10})
         self.assertEqual(result[0], 0)
-        self.assertEqual(result[1].errors, {'collect': 0, 'import': 0})
+        self.assertTrue(all(value == 0 for value in result[1].errors.values()))
+
+    def test_resume_resets_cover_and_other_stage_streaks_before_processing(self):
+        result = self.invoke(1, args=['--collect-only', '--resume'],
+                             errors={stage: 10 for stage in ('collect', 'import', 'cover', 'catalog', 'settings')})
+        self.assertEqual(result[0], 0)
+        self.assertEqual(result[6], [1])
+        self.assertTrue(all(value == 0 for value in result[1].errors.values()))
 
 
 class CourseRecheckTests(unittest.TestCase):

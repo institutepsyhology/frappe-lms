@@ -10,10 +10,12 @@ import threading
 from urllib.parse import urljoin
 
 import source
-from storage import Store, StorageError, ACCOUNT, ORIGIN, SITE
+from storage import Store, StorageError, ACCOUNT, ORIGIN, SITE, STAGES
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parents[2]
+ROOT = Path(os.environ.get('MASTER_VISION_WORKSPACE', str(HERE.parents[2]))).resolve()
+if not (ROOT / 'frappe-mcp/headers.py').is_file():
+    raise RuntimeError('migration_workspace_unavailable')
 DATA = ROOT / 'exports/lesson-content/mastervision-migration'
 MAX_ERRORS = 10
 IDENTITY_ERRORS = {'wrong_account_origin', 'source_identity_mismatch', 'course_identity_unconfirmed',
@@ -119,9 +121,12 @@ def course(store, transport, cid):
         except source.Review as exc:
             archive(store, 'lesson', cid, lid, html, error=str(exc))
             store.event('collect', cid, lid, 'review', [str(exc)]); raise
+        item = store.stable_lesson(cid, lid, item)
         lesson_digests.append((lid, archive(store, 'lesson', cid, lid, html, parsed=item)))
         payloads.append(item['payload'])
         store.event('collect', cid, lid, 'captured')
+        if item.get('canonicalization'):
+            store.event('collect', cid, lid, 'equivalent_source_reused', item['canonicalization'])
     html = transport.get(ORIGIN + source.COURSE + '?id=' + str(cid) + '&lg=ru')
     try:
         after = source.parse_course(html, cid)
@@ -203,13 +208,13 @@ def transfer_covers(store, rows, client, assets, apply):
         try:
             raw, extension = assets.fetch(metadata['cover_url'])
             result = sync_cover(client, cid, raw, extension, apply=apply)
-            store.error('import', False)
-            store.event('import', cid, None, 'cover_' + result['status'])
+            store.error('cover', False)
+            store.event('cover', cid, None, 'cover_' + result['status'])
             emit({'course': cid, 'status': 'cover_' + result['status']})
         except ImportReview as exc:
-            store.event('import', cid, None, 'review', [str(exc)])
+            store.event('cover', cid, None, 'review', [str(exc)])
             emit({'course': cid, 'status': 'cover_review', 'code': str(exc)})
-            if store.error('import', True) >= MAX_ERRORS:
+            if store.error('cover', True) >= MAX_ERRORS:
                 raise Stop('paused_after_ten_cover_problems')
 
 
@@ -221,7 +226,7 @@ def transfer_settings(store, rows, client, apply):
         if str(cid) not in target_ids:
             continue
         result = ensure_private_course(client, cid, apply=apply)
-        store.event('import', cid, None, 'private_' + result['status'])
+        store.event('settings', cid, None, 'private_' + result['status'])
         emit({'course': cid, 'status': 'private_' + result['status']})
 
 
@@ -249,7 +254,7 @@ def main():
         client, assets = None, None
         try:
             if selected.resume:
-                for stage in ('collect', 'import'): store.error(stage, False)
+                for stage in sorted(STAGES): store.error(stage, False)
             paused = store.db.execute('SELECT stage FROM errors WHERE consecutive>=?', (MAX_ERRORS,)).fetchall()
             if paused: raise Stop('paused_after_ten_problems')
             from contextlib import nullcontext
@@ -270,6 +275,14 @@ def main():
                     target = importer.Importer(client)
                     from assets import AssetCache
                     assets = AssetCache(DATA / 'assets')
+                def record_target_event(event):
+                    if (not isinstance(event, dict) or set(event) != {'course_id', 'lesson_id', 'status'} or
+                            event['status'] not in ('write_started', 'created')):
+                        raise Stop('unsafe_target_journal_event')
+                    cid, lid = int(event['course_id']), int(event['lesson_id'])
+                    store.event('import', cid, lid, 'lesson_' + event['status'])
+                    if event['status'] == 'created':
+                        emit({'course': cid, 'lesson': lid, 'status': 'lesson_created'})
                 if selected.covers_only:
                     if selected.collect_only or not client:
                         raise Stop('conflicting_mode')
@@ -308,12 +321,13 @@ def main():
                         emit({'course': cid, 'status': 'collected', 'lessons': len(payloads)}); continue
                     try:
                         payloads, normalization_warnings = prepare_payloads(payloads)
-                        result = target.import_course(payloads, apply=selected.apply, images_for_lesson=assets.lesson_images)
+                        result = target.import_course(payloads, apply=selected.apply, images_for_lesson=assets.lesson_images,
+                                                      progress_callback=record_target_event)
                         if selected.apply:
                             from settings import ensure_private_course
                             ensure_private_course(client, cid, apply=True)
                         store.error('import', False)
-                        if selected.apply: store.mark(cid, 'imported')
+                        store.mark(cid, 'imported' if selected.apply or result['status'] == 'already_present' else 'collected')
                         store.event('import', cid, None, result['status'])
                         for warning in result['warnings'] + normalization_warnings:
                             store.event('import', cid, int(warning['lesson_id']), 'warning', warning['codes'])
@@ -327,6 +341,8 @@ def main():
                         emit({'course': cid, 'status': 'review', 'stage': 'import'})
                         if store.error('import', True) >= MAX_ERRORS: raise Stop('paused_after_ten_import_problems')
                     store.report()
+            if selected.apply and not selected.collect_only:
+                transfer_covers(store, rows, client, assets, True)
             emit({'status': 'finished', 'courses': store.summary()})
             return 0
         except (source.Review, Stop, StorageError) as exc:
@@ -345,4 +361,9 @@ def main():
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except (Stop, StorageError) as exc:
+        code = str(exc) if re.fullmatch('[a-z0-9_]{1,100}', str(exc)) else 'migration_stopped'
+        emit({'status': 'stopped', 'code': code})
+        raise SystemExit(1) from None

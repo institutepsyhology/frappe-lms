@@ -1,5 +1,6 @@
 """Synthetic local SQLite archives; never open the real migration directory."""
 from contextlib import closing
+import copy
 import hashlib
 import json
 from pathlib import Path
@@ -12,6 +13,7 @@ import uuid
 import zlib
 
 import storage
+from importer import Stop as ImportStop
 
 
 def value(text='synthetic private lesson text'):
@@ -29,6 +31,14 @@ def verified_lesson(ident, version='original'):
         'account':storage.ACCOUNT,'source_origin':storage.ORIGIN,'course_id':7,'lesson_id':ident,
         'course_title':'Course','lesson_title':'Lesson '+str(ident),'format':'ape',
         'ape':{'name':'page','children':[{'name':'text','fields':{'html':version}}]}}}}
+
+
+def uuid_lesson(root_id, block_id, body='original'):
+    record=verified_lesson(11,body)
+    record['html']='fresh raw HTML '+root_id+' '+block_id
+    ape=record['parsed']['payload']['ape']
+    ape['id']=root_id;ape['children'][0]['id']=block_id
+    return record
 
 
 class StorageTests(unittest.TestCase):
@@ -258,6 +268,72 @@ class StorageTests(unittest.TestCase):
         with self.assertRaisesRegex(storage.StorageError,'source_mismatch'):store.completed_course(7)
         empty=store.capture('course',7,0,verified_course(ids=()))
         store.bind_course(7,empty,[]);self.assertEqual(store.completed_course(7),[])
+
+    def test_stable_lesson_keeps_fresh_observation_raw_html_and_checkpoint_identity(self):
+        store=self.store();store.catalog([{'id':7,'title':'Course'}])
+        course=store.capture('course',7,0,verified_course(ids=(11,)))
+        historical=uuid_lesson('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002')
+        historical_digest=store.capture('lesson',7,11,historical)
+        original_blob=bytes(store.db.execute('SELECT payload FROM captures WHERE digest=?',(historical_digest,)).fetchone()[0])
+        current=uuid_lesson('00000000-0000-0000-0000-000000000101','00000000-0000-0000-0000-000000000102')
+        current['parsed']['settings']=[{'name':'synthetic','value':'fresh settings'}]
+        untouched=copy.deepcopy(current)
+        stable=store.stable_lesson(7,11,current['parsed'])
+        self.assertEqual(stable['payload'],historical['parsed']['payload'])
+        self.assertEqual(stable['observed_payload'],current['parsed']['payload'])
+        self.assertEqual(stable['settings'],current['parsed']['settings'])
+        self.assertEqual(stable['canonicalization'],['ape_unused_ids_reused'])
+        self.assertEqual(current,untouched)
+        captured={**current,'parsed':stable}
+        fresh_digest=store.capture('lesson',7,11,captured)
+        self.assertNotEqual(fresh_digest,historical_digest)
+        self.assertEqual(store.latest('lesson',7,11),captured)
+        raw=store.db.execute('SELECT payload FROM captures WHERE digest=?',(fresh_digest,)).fetchone()[0]
+        self.assertEqual(json.loads(zlib.decompress(raw))['html'],current['html'])
+        self.assertEqual(json.loads(zlib.decompress(raw))['parsed']['observed_payload'],current['parsed']['payload'])
+        self.assertEqual(bytes(store.db.execute('SELECT payload FROM captures WHERE digest=?',(historical_digest,)).fetchone()[0]),original_blob)
+        store.bind_course(7,course,[(11,fresh_digest)])
+        self.assertEqual(store.completed_course(7),[historical['parsed']['payload']])
+
+    def test_stable_lesson_does_not_canonicalize_real_text_or_media_changes(self):
+        store=self.store()
+        historical=uuid_lesson('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002',
+                               '<a href="https://example.test/first">Original material</a>')
+        digest=store.capture('lesson',7,11,historical)
+        for markup in ('<a href="https://example.test/first">Updated instructions</a>',
+                       '<a href="https://example.test/second">Original material</a>'):
+            current=uuid_lesson('00000000-0000-0000-0000-000000000101','00000000-0000-0000-0000-000000000102',markup)
+            stable=store.stable_lesson(7,11,current['parsed'])
+            self.assertEqual(stable,current['parsed'])
+            self.assertNotIn('observed_payload',stable)
+            self.assertNotIn('canonicalization',stable)
+        self.assertEqual(store.db.execute('SELECT COUNT(*) FROM captures').fetchone()[0],1)
+        self.assertEqual(json.loads(zlib.decompress(store.db.execute('SELECT payload FROM captures WHERE digest=?',(digest,)).fetchone()[0])),historical)
+
+    def test_stable_lesson_rejects_foreign_current_source_without_writes(self):
+        store=self.store()
+        historical=uuid_lesson('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002')
+        store.capture('lesson',7,11,historical)
+        before=[tuple(row) for row in store.db.execute('SELECT digest,payload FROM captures')]
+        for key,value in (('account','mv-centr'),('source_origin','https://shop.mv-centr.ru')):
+            current=uuid_lesson('00000000-0000-0000-0000-000000000101','00000000-0000-0000-0000-000000000102')['parsed']
+            current['payload'][key]=value
+            untouched=copy.deepcopy(current)
+            with self.subTest(key=key),self.assertRaisesRegex(storage.StorageError,'source_capture_account_mismatch'):
+                store.stable_lesson(7,11,current)
+            self.assertEqual(current,untouched)
+        self.assertEqual([tuple(row) for row in store.db.execute('SELECT digest,payload FROM captures')],before)
+
+    def test_stable_lesson_rejects_foreign_historical_payload_in_owned_archive(self):
+        store=self.store()
+        historical=uuid_lesson('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002')
+        historical['parsed']['payload']['account']='mv-centr'
+        store.capture('lesson',7,11,historical)
+        before=[tuple(row) for row in store.db.execute('SELECT digest,payload FROM captures')]
+        current=uuid_lesson('00000000-0000-0000-0000-000000000101','00000000-0000-0000-0000-000000000102')['parsed']
+        with self.assertRaisesRegex(ImportStop,'canonical_source_account_mismatch'):
+            store.stable_lesson(7,11,current)
+        self.assertEqual([tuple(row) for row in store.db.execute('SELECT digest,payload FROM captures')],before)
 
 
 if __name__=='__main__':unittest.main()

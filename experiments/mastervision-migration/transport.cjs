@@ -11,7 +11,8 @@ const { once } = require('node:events');
 
 const ORIGIN = 'https://shop.mastervision.su';
 const HOST = 'shop.mastervision.su';
-const PROFILE = path.resolve(__dirname, '../../../exports/lesson-content/private-browser-profiles/mastervision');
+const WORKSPACE = path.resolve(process.env.MASTER_VISION_WORKSPACE || path.resolve(__dirname, '../../..'));
+const PROFILE = path.join(WORKSPACE, 'exports/lesson-content/private-browser-profiles/mastervision');
 const MAX_BYTES = 32 * 1024 * 1024;
 const TIMEOUT_MS = 45000;
 const WINDOWS_EPOCH_MICROSECONDS = 11644473600000000n;

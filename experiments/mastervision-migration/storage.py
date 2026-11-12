@@ -15,7 +15,7 @@ ORIGIN = 'https://shop.mastervision.su'
 SITE = 'my-lk.mastervision.su'
 MAX_CAPTURE_BYTES = 128 * 1024 * 1024
 TABLES = {'meta', 'captures', 'courses', 'events', 'errors', 'course_checkpoints'}
-STAGES = {'collect', 'import', 'catalog'}
+STAGES = {'collect', 'import', 'catalog', 'cover', 'settings'}
 STATES = {'pending', 'review', 'imported', 'collected', 'empty'}
 
 
@@ -173,6 +173,37 @@ class Store:
             return None
         return _unpack(row)
 
+    def stable_lesson(self, course_id, lesson_id, parsed):
+        """Keep an equivalent import identity while retaining the fresh observation."""
+        from canonical_source import canonical_payload
+        _key('lesson', course_id, lesson_id)
+        current = parsed.get('payload') if isinstance(parsed, dict) else None
+        if (not isinstance(current, dict) or current.get('course_id') != course_id or
+                current.get('lesson_id') != lesson_id):
+            raise StorageError('source_capture_identity_mismatch')
+        if current.get('account') != ACCOUNT or current.get('source_origin') != ORIGIN:
+            raise StorageError('source_capture_account_mismatch')
+        cursor = self.db.execute("SELECT payload,digest FROM captures WHERE kind='lesson' AND course=? AND lesson=? ORDER BY at,rowid",
+                                 (course_id, lesson_id))
+        try:
+            for row in cursor:
+                value = _unpack(row)
+                if value.get('verified') is not True or not isinstance(value.get('parsed'), dict):
+                    continue
+                candidate = value['parsed'].get('payload')
+                stable, codes = canonical_payload(current, [candidate])
+                if codes:
+                    result = json.loads(canonical(parsed))
+                    result['observed_payload'] = json.loads(canonical(current))
+                    result['payload'] = stable
+                    result['canonicalization'] = codes
+                    return result
+                if canonical(stable) == canonical(candidate):
+                    break
+        finally:
+            cursor.close()
+        return parsed
+
     def _exact_verified(self, kind, course, lesson, digest):
         _key(kind, course, lesson)
         if not _digest(digest): raise StorageError('course_checkpoint_invalid')
@@ -326,7 +357,7 @@ class Store:
           WHERE e.status='review' AND e.id=(SELECT MAX(x.id) FROM events x WHERE
           x.course=e.course AND x.stage=e.stage AND x.lesson IS e.lesson)
           AND EXISTS(SELECT 1 FROM courses c WHERE c.id=e.course AND
-            (c.state='review' OR (c.state='imported' AND e.lesson IS NULL)))
+            (c.state='review' OR (e.stage='cover' AND e.lesson IS NULL)))
           ORDER BY e.course,e.lesson''').fetchall()
         for row in rows:
             lesson = row['lesson']

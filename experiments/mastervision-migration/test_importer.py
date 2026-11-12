@@ -272,6 +272,62 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(raised.exception.problems, [{"lesson_id": "1", "codes": ["image_requires_preparation"]}])
         self.assertEqual(client.writes, [])
 
+    def test_progress_callback_has_no_write_events_for_dry_run_or_existing_lessons(self):
+        for client, apply in [(Client(), False), (Client([1, 2]), True)]:
+            events = []
+            with self.subTest(apply=apply):
+                mod.Importer(client).import_course([payload(1), payload(2)], apply=apply, progress_callback=events.append)
+            self.assertEqual(events, [])
+            self.assertEqual(client.writes, [])
+
+    def test_progress_callback_brackets_each_write_after_verified_readback(self):
+        client = Client()
+        events = []
+        def record(event):
+            events.append((copy.deepcopy(event), list(client.writes), list(client.previews)))
+        mod.Importer(client).import_course([payload(1), payload(2)], apply=True, progress_callback=record)
+        self.assertEqual([event for event, _, _ in events], [
+            {"course_id": "618", "lesson_id": "1", "status": "write_started"},
+            {"course_id": "618", "lesson_id": "1", "status": "created"},
+            {"course_id": "618", "lesson_id": "2", "status": "write_started"},
+            {"course_id": "618", "lesson_id": "2", "status": "created"},
+        ])
+        self.assertEqual([writes for _, writes, _ in events], [[], ["1"], ["1"], ["1", "2"]])
+        self.assertEqual(events[1][2], ["1", "2", "1"])
+        self.assertEqual(events[3][2], ["1", "2", "1", "2"])
+        self.assertNotIn("PRIVATE", json.dumps(events))
+
+    def test_uncallable_or_unavailable_before_write_journal_never_mutates(self):
+        client = Client()
+        with self.assertRaisesRegex(mod.Stop, "^journal_unavailable$"):
+            mod.Importer(client).import_course([payload(1)], apply=True, progress_callback=123)
+        self.assertEqual(client.calls, [])
+        def fail(event):
+            raise OSError("PRIVATE journal path or source")
+        with self.assertRaisesRegex(mod.Stop, "^journal_unavailable$") as raised:
+            mod.Importer(client).import_course([payload(1), payload(2)], apply=True, progress_callback=fail)
+        self.assertEqual(client.writes, [])
+        self.assertNotIn("PRIVATE", str(raised.exception))
+
+    def test_journal_failure_after_verified_write_stops_before_next_lesson(self):
+        client, events = Client(), []
+        def fail_after(event):
+            events.append(event)
+            if event["status"] == "created": raise OSError("PRIVATE post-write journal failure")
+        with self.assertRaisesRegex(mod.Stop, "^write_result_uncertain$") as raised:
+            mod.Importer(client).import_course([payload(1), payload(2)], apply=True, progress_callback=fail_after)
+        self.assertEqual(client.writes, ["1"])
+        self.assertEqual([event["lesson_id"] for event in events], ["1", "1"])
+        self.assertNotIn("PRIVATE", str(raised.exception))
+
+    def test_failed_readback_never_reports_created(self):
+        client, events = Client(), []
+        client.readback_fails = True
+        with self.assertRaisesRegex(mod.Stop, "^write_result_uncertain$"):
+            mod.Importer(client).import_course([payload(1), payload(2)], apply=True, progress_callback=events.append)
+        self.assertEqual(events, [{"course_id": "618", "lesson_id": "1", "status": "write_started"}])
+        self.assertEqual(client.writes, ["1"])
+
 
 class Response:
     def __init__(self, body):

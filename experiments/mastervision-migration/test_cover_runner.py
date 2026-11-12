@@ -28,7 +28,7 @@ class Store:
         self.completed_metadata = Mock(side_effect=lambda cid: {'cover_url': f'https://f1.autoweboffice.com/private/{cid}.png'})
         self.report = Mock()
     def error(self, stage, failed):
-        assert stage == 'import'
+        assert stage == 'cover'
         self.count = self.count + 1 if failed else 0
         return self.count
     def event(self, *args): self.events.append(args)
@@ -86,7 +86,7 @@ class CoverRunnerTests(unittest.TestCase):
             mod.transfer_covers(store, rows, client, cache, False)
         self.assertEqual(sync.call_count, 19)
         self.assertEqual(store.count, 9)
-        self.assertIn(('import', 10, None, 'cover_created'), store.events)
+        self.assertIn(('cover', 10, None, 'cover_created'), store.events)
 
     def test_uncertain_write_propagates_without_retry_or_next_course(self):
         store, rows, client, cache = self.fixture(6)

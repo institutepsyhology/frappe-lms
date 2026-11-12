@@ -206,14 +206,17 @@ class Importer:
             raise Stop("preview_result_invalid")
         return value, warnings
 
-    def import_course(self, payloads, apply=False, images_for_lesson=None):
+    def import_course(self, payloads, apply=False, images_for_lesson=None, progress_callback=None):
         """Check all snapshots, then append missing drafts in exact source order.
 
         images_for_lesson(payload_copy) optionally returns block-key/base64 images.
+        progress_callback receives IDs/status only around each verified mutation.
         A Review.problems list identifies all known preflight failures without text.
         Any failed/uncertain write is a Stop and must halt the caller's entire run.
         """
         self.check_site()
+        if progress_callback is not None and not callable(progress_callback):
+            raise Stop("journal_unavailable")
         if type(apply) is not bool or not isinstance(payloads, list) or not payloads:
             raise Review("invalid_payloads")
         try:
@@ -271,6 +274,11 @@ class Importer:
                     raise Stop("course_changed_during_import") from None
                 if current["ids"] != ids[:len(existing) + len(created)]:
                     raise Stop("course_changed_during_import")
+                if progress_callback is not None:
+                    try:
+                        progress_callback({"course_id": course, "lesson_id": ident, "status": "write_started"})
+                    except BaseException:
+                        raise Stop("journal_unavailable") from None
                 try:
                     result = self.client.call("call_method", {"method": METHOD, "args": {"payload": payload, "images": image_sets[ident], "dry_run": False}}).get("result")
                     if not isinstance(result, dict) or result.get("action") != "created" or result.get("account") != ACCOUNT or result.get("course_id") != course or result.get("lesson_id") != ident or result.get("dry_run") is not False:
@@ -278,6 +286,8 @@ class Importer:
                     verified, _ = self.preview(payload, image_sets[ident])
                     if verified["action"] != "already_imported" or self.outline(course)["ids"] != ids[:len(existing) + len(created) + 1]:
                         raise Stop("write_result_uncertain")
+                    if progress_callback is not None:
+                        progress_callback({"course_id": course, "lesson_id": ident, "status": "created"})
                 except BaseException:
                     raise Stop("write_result_uncertain") from None
                 created.append(ident)

@@ -2,9 +2,10 @@
 import json
 from pathlib import Path
 import sqlite3
+import os
 from contextlib import closing
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(os.environ.get('MASTER_VISION_WORKSPACE', str(Path(__file__).resolve().parents[3]))).resolve()
 PATH = ROOT / 'exports/lesson-content/mastervision-migration/mastervision-migration.sqlite'
 
 
