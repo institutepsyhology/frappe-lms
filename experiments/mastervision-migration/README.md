@@ -23,6 +23,9 @@
 расписание или форма домашней работы уже реализованы во Frappe. Первый этап
 создаёт черновики, сохраняет исходные номера, содержание и приватный JSON.
 Доступы учеников этим оператором не создаются и не изменяются.
+Подтверждённый пустой курс создаётся отдельным черновиком без выдуманного
+урока. Если позднее в АВО добавят в него уроки, перед их импортом потребуется
+создать соответствующую главу: текущий основной импортёр ожидает одну главу.
 
 ## Запуск из репозитория
 
@@ -33,6 +36,7 @@ py -3 experiments/mastervision-migration/run.py --collect-only --limit 1
 py -3 experiments/mastervision-migration/run.py --stored --course 1
 py -3 experiments/mastervision-migration/run.py --stored --course 1 --apply
 py -3 experiments/mastervision-migration/run.py --apply
+py -3 experiments/mastervision-migration/run.py --stored --covers-only --apply
 ```
 
 Без `--apply` проверка не создаёт документы во Frappe. `--collect-only` только

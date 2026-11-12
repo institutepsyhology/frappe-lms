@@ -170,6 +170,43 @@ def emit(value):
     print(json.dumps(value, ensure_ascii=False), flush=True)
 
 
+def transfer_covers(store, rows, client, assets, apply):
+    from covers import sync_cover
+    from importer import Review as ImportReview, source_id
+    targets = client.call('list_documents', {'doctype': 'LMS Course',
+        'fields': ['name', 'custom_avo_account', 'custom_avo_id', 'custom_lms_id', 'published'],
+        'filters': [['custom_avo_account', '=', ACCOUNT]], 'limit': 1000})
+    documents = targets.get('documents')
+    if not isinstance(documents, list) or targets.get('has_next_page') is not False:
+        raise Stop('cover_target_catalog_invalid')
+    target_ids = set()
+    for row in documents:
+        cid = source_id(row.get('custom_avo_id'))
+        if (row.get('custom_avo_account') != ACCOUNT or row.get('custom_lms_id') != cid or cid in target_ids
+                or not isinstance(row.get('name'), str) or not row['name']
+                or type(row.get('published')) is not int or row['published'] != 0):
+            raise Stop('cover_target_identity_invalid')
+        target_ids.add(cid)
+    for row in rows:
+        cid = row['id']
+        if str(cid) not in target_ids:
+            continue
+        metadata = store.completed_metadata(cid)
+        if not metadata.get('cover_url'):
+            emit({'course': cid, 'status': 'no_source_cover'}); continue
+        try:
+            raw, extension = assets.fetch(metadata['cover_url'])
+            result = sync_cover(client, cid, raw, extension, apply=apply)
+            store.error('import', False)
+            store.event('import', cid, None, 'cover_' + result['status'])
+            emit({'course': cid, 'status': 'cover_' + result['status']})
+        except ImportReview as exc:
+            store.event('import', cid, None, 'review', [str(exc)])
+            emit({'course': cid, 'status': 'cover_review', 'code': str(exc)})
+            if store.error('import', True) >= MAX_ERRORS:
+                raise Stop('paused_after_ten_cover_problems')
+
+
 def main():
     args = argparse.ArgumentParser(description=__doc__)
     args.add_argument('--catalog-only', action='store_true')
@@ -180,10 +217,12 @@ def main():
     args.add_argument('--resume', action='store_true')
     args.add_argument('--stored', action='store_true', help='Use verified private snapshots without refreshing AVO')
     args.add_argument('--from-course', type=int, default=1)
+    args.add_argument('--covers-only', action='store_true')
     selected = args.parse_args()
-    if selected.limit is not None and selected.limit < 1 or selected.course is not None and selected.course < 1:
+    if selected.limit is not None and selected.limit < 1 or selected.course is not None and selected.course < 1 or selected.from_course < 1:
         raise Stop('invalid_selection')
-    if selected.apply and (selected.collect_only or selected.catalog_only):
+    if (selected.apply and (selected.collect_only or selected.catalog_only) or
+            selected.covers_only and (not selected.stored or selected.collect_only or selected.catalog_only)):
         raise Stop('conflicting_mode')
     with Store(DATA) as store:
         client, assets = None, None
@@ -210,6 +249,11 @@ def main():
                     target = importer.Importer(client)
                     from assets import AssetCache
                     assets = AssetCache(DATA / 'assets')
+                if selected.covers_only:
+                    if selected.collect_only or not client:
+                        raise Stop('conflicting_mode')
+                    transfer_covers(store, rows, client, assets, selected.apply)
+                    emit({'status': 'covers_finished'}); return 0
                 for row in rows:
                     cid = row['id']
                     try:
@@ -222,7 +266,20 @@ def main():
                         if store.error('collect', True) >= MAX_ERRORS: raise Stop('paused_after_ten_collection_problems')
                         store.report(); continue
                     if not payloads:
-                        store.mark(cid, 'empty'); emit({'course': cid, 'status': 'empty'}); continue
+                        if selected.collect_only:
+                            store.mark(cid, 'empty'); emit({'course': cid, 'status': 'empty'}); continue
+                        try:
+                            from course_metadata import ensure_empty_course
+                            result = ensure_empty_course(client, store.completed_snapshot(cid), apply=selected.apply)
+                            store.error('import', False)
+                            store.mark(cid, 'imported' if selected.apply else 'empty')
+                            store.event('import', cid, None, 'empty_' + result['status'])
+                            emit({'course': cid, 'status': 'empty_' + result['status'], 'lessons': 0})
+                        except importer.Review as exc:
+                            store.mark(cid, 'review'); store.event('import', cid, None, 'review', [str(exc)])
+                            emit({'course': cid, 'status': 'review', 'stage': 'empty_import'})
+                            if store.error('import', True) >= MAX_ERRORS: raise Stop('paused_after_ten_import_problems')
+                        continue
                     if selected.collect_only:
                         emit({'course': cid, 'status': 'collected', 'lessons': len(payloads)}); continue
                     try:

@@ -250,6 +250,21 @@ class Store:
             raise StorageError('course_checkpoint_source_mismatch')
         return payloads
 
+    def completed_metadata(self, course_id):
+        """Return the course metadata from the same verified completed version."""
+        self.completed_course(course_id)
+        row = self.db.execute('SELECT course_digest FROM course_checkpoints WHERE course=?', (course_id,)).fetchone()
+        return self._exact_verified('course', course_id, 0, row['course_digest'])
+
+    def completed_snapshot(self, course_id):
+        """Return the original private course page bound to its checkpoint."""
+        self.completed_course(course_id)
+        row = self.db.execute('''SELECT c.payload,c.digest FROM captures c
+          JOIN course_checkpoints p ON p.course=c.course AND p.course_digest=c.digest
+          WHERE c.kind='course' AND c.course=? AND c.lesson=0''', (course_id,)).fetchone()
+        if row is None: raise StorageError('course_checkpoint_capture_missing')
+        return _unpack(row)
+
     def catalog(self, courses):
         if not isinstance(courses, list) or any(not isinstance(course, dict) or not _id(course.get('id'))
                 or not isinstance(course.get('title'), str) or not course['title'].strip() for course in courses):
@@ -310,7 +325,8 @@ class Store:
         rows = self.db.execute('''SELECT e.course,e.lesson,e.stage,e.codes FROM events e
           WHERE e.status='review' AND e.id=(SELECT MAX(x.id) FROM events x WHERE
           x.course=e.course AND x.stage=e.stage AND x.lesson IS e.lesson)
-          AND EXISTS(SELECT 1 FROM courses c WHERE c.id=e.course AND c.state='review')
+          AND EXISTS(SELECT 1 FROM courses c WHERE c.id=e.course AND
+            (c.state='review' OR (c.state='imported' AND e.lesson IS NULL)))
           ORDER BY e.course,e.lesson''').fetchall()
         for row in rows:
             lesson = row['lesson']
