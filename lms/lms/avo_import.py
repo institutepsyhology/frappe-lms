@@ -295,7 +295,9 @@ def import_lesson(payload: dict, images: dict | None = None, dry_run: bool = Tru
         chapter_name = chapter.name if hasattr(chapter, 'name') else chapter['name']
     else:
         chapter_name = course.chapters[0].chapter
-    lesson_name = create_lesson(chapter=chapter_name)
+    from lms.lms.course_numbering import importing_source
+    with importing_source('Course Lesson', plan['account'], plan['lesson_id']):
+        lesson_name = create_lesson(chapter=chapter_name)
     lesson = frappe.get_doc('Course Lesson', lesson_name)
     image_urls = {k: _save_private(v['name'], v['bytes'], lesson.name) for k, v in prepared.items()}
     final_plan = plan_import(payload, image_urls)

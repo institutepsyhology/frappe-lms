@@ -1,4 +1,4 @@
-"""Resolve stable AVO course and lesson URLs without changing document names."""
+"""Resolve stable public course and lesson IDs without changing document names."""
 import re
 
 import frappe
@@ -15,22 +15,38 @@ def _account():
     return row[0] if row else None
 
 
+IDENTITY_FIELDS = ['custom_lms_id', 'custom_avo_account', 'custom_avo_id']
+
+
+def _row_id(row):
+    """Accept a native identity or unchanged provenance belonging to this site."""
+    if not row or not _account() or not _id(row.get('custom_lms_id')):
+        return None
+    ident = row.get('custom_lms_id')
+    account, source_id = row.get('custom_avo_account'), row.get('custom_avo_id')
+    if account in (None, '') and source_id in (None, ''):
+        return ident
+    if account == _account() and source_id == ident:
+        return ident
+    return None
+
+
 def annotate_course_ids(courses):
     """Add stable IDs to already-authorised course cards in two bounded reads."""
     account = _account()
     names = [c.get('name') for c in courses if c and c.get('name')]
     if not account or not names:
         return courses
-    rows = frappe.get_all('LMS Course', filters={'name':['in',names], 'custom_avo_account':account},
-                          fields=['name','custom_avo_id'], limit_page_length=0)
-    by_name = {row['name']:row.get('custom_avo_id') for row in rows if _id(row.get('custom_avo_id'))}
+    rows = frappe.get_all('LMS Course', filters={'name':['in',names]},
+                          fields=['name',*IDENTITY_FIELDS], limit_page_length=0)
+    by_name = {row['name']:_row_id(row) for row in rows if _row_id(row)}
     if not by_name:
         return courses
-    matches = frappe.get_all('LMS Course', filters={'custom_avo_account':account, 'custom_avo_id':['in',list(set(by_name.values()))]},
-                             fields=['name','custom_avo_id'], limit_page_length=0)
+    matches = frappe.get_all('LMS Course', filters={'custom_lms_id':['in',list(set(by_name.values()))]},
+                             fields=['name','custom_lms_id'], limit_page_length=0)
     counts = {}
     for row in matches:
-        ident = row.get('custom_avo_id')
+        ident = row.get('custom_lms_id')
         counts[ident] = counts.get(ident,0) + 1
     for course in courses:
         ident = by_name.get(course.get('name')) if course else None
@@ -81,18 +97,19 @@ def resolve(course_id, lesson_id=None):
     account = _account()
     if not account or not _id(course_id) or (lesson_id is not None and not _id(lesson_id)):
         return None
-    courses = frappe.get_all('LMS Course', filters={'custom_avo_account':account,'custom_avo_id':course_id},
-                             fields=['name'], limit_page_length=2)
-    if len(courses) != 1:
+    courses = frappe.get_all('LMS Course', filters={'custom_lms_id':course_id},
+                             fields=['name',*IDENTITY_FIELDS], limit_page_length=2)
+    if len(courses) != 1 or _row_id(courses[0]) != course_id:
         return None
     course = courses[0]['name']
     if not _permitted(course):
         return None
     if lesson_id is None:
         return {'course_name':course}
-    lessons = frappe.get_all('Course Lesson', filters={'custom_avo_account':account,'custom_avo_id':lesson_id,'course':course},
-                             fields=['name','chapter'], limit_page_length=2)
-    if len(lessons) != 1 or not _permitted(course, lessons[0]['name']):
+    lessons = frappe.get_all('Course Lesson', filters={'custom_lms_id':lesson_id},
+                             fields=['name','chapter','course',*IDENTITY_FIELDS], limit_page_length=2)
+    if (len(lessons) != 1 or _row_id(lessons[0]) != lesson_id or
+        lessons[0].get('course') != course or not _permitted(course, lessons[0]['name'])):
         return None
     position = _position(course, lessons[0]['name'], lessons[0].get('chapter'))
     if not position:
@@ -117,9 +134,9 @@ def resolve_course_start(course_id):
     membership = get_membership(course)
     preferred = resume or (membership.get('current_lesson') if membership else None)
     candidates = ([preferred] if preferred in names else []) + [name for name in names if name != preferred]
-    sources = frappe.get_all('Course Lesson', filters={'name':['in',names],'course':course,'custom_avo_account':_account()},
-                             fields=['name','custom_avo_id'], limit_page_length=0)
-    ids = {row['name']:row.get('custom_avo_id') for row in sources if _id(row.get('custom_avo_id'))}
+    sources = frappe.get_all('Course Lesson', filters={'name':['in',names],'course':course},
+                             fields=['name',*IDENTITY_FIELDS], limit_page_length=0)
+    ids = {row['name']:_row_id(row) for row in sources if _row_id(row)}
     for name in candidates:
         lesson_id = ids.get(name)
         if not lesson_id or name in locked or not can_access_lesson(name):
@@ -154,26 +171,27 @@ def resolve_editor(course_id, lesson_id=None):
         return None
     if lesson_id is not None:
         doc = frappe.get_doc('Course Lesson', target['lesson_name'])
-        if not frappe.has_permission('Course Lesson', 'write', doc=doc):
+        if (_row_id(doc) != lesson_id or doc.get('course') != target['course_name'] or
+            not frappe.has_permission('Course Lesson', 'write', doc=doc)):
             return None
     return target
 
 
 @frappe.whitelist()
 def resolve_editor_by_lesson(lesson_id):
-    """Resolve an AVO editor link containing only its account-scoped lesson ID."""
+    """Resolve an editor link containing only its unique site-local lesson ID."""
     account = _account()
     if not account or not _id(lesson_id):
         return None
-    lessons = frappe.get_all('Course Lesson', filters={'custom_avo_account':account,'custom_avo_id':lesson_id},
-                             fields=['name','course'], limit_page_length=2)
-    if len(lessons) != 1 or not lessons[0].get('course'):
+    lessons = frappe.get_all('Course Lesson', filters={'custom_lms_id':lesson_id},
+                             fields=['name','course',*IDENTITY_FIELDS], limit_page_length=2)
+    if len(lessons) != 1 or _row_id(lessons[0]) != lesson_id or not lessons[0].get('course'):
         return None
     lesson = lessons[0]
-    course = frappe.db.get_value('LMS Course', lesson['course'], ['custom_avo_account','custom_avo_id'], as_dict=True)
-    if not course or course.get('custom_avo_account') != account or not _id(course.get('custom_avo_id')):
+    course = frappe.db.get_value('LMS Course', lesson['course'], IDENTITY_FIELDS, as_dict=True)
+    course_id = _row_id(course)
+    if not course_id:
         return None
-    course_id = course['custom_avo_id']
     target = resolve_editor(course_id, lesson_id)
     if not target or target['course_name'] != lesson['course'] or target['lesson_name'] != lesson['name']:
         return None
@@ -188,12 +206,11 @@ def get_editor_by_source(course_id, lesson_id):
         frappe.throw('Lesson is unavailable for editing.', frappe.PermissionError)
     fields = ['name','title','include_in_preview','is_draft','publication_audience','lesson_published_at',
               'hide_title_when_locked','body','content','instructor_notes','instructor_content','youtube','quiz_id','chapter',
-              'custom_avo_account','custom_avo_id','course']
+              *IDENTITY_FIELDS,'course']
     lesson = frappe.db.get_value('Course Lesson', target['lesson_name'], fields, as_dict=True)
-    if (not lesson or lesson.get('custom_avo_account') != _account() or
-        lesson.get('custom_avo_id') != lesson_id or lesson.get('course') != target['course_name']):
+    if not lesson or _row_id(lesson) != lesson_id or lesson.get('course') != target['course_name']:
         frappe.throw('Lesson is unavailable for editing.', frappe.PermissionError)
-    for field in ('custom_avo_account','custom_avo_id','course'):
+    for field in (*IDENTITY_FIELDS,'course'):
         lesson.pop(field, None)
     chapter = frappe.db.get_value('Course Chapter', lesson.get('chapter'), ['title','name'], as_dict=True)
     return {'course_title':frappe.db.get_value('LMS Course', target['course_name'], 'title'),
@@ -218,7 +235,7 @@ def save_editor_by_source(course_id, lesson_id, expected_name, values):
             frappe.throw('Invalid lesson field.', frappe.ValidationError)
     frappe.db.sql('SELECT name FROM `tabCourse Lesson` WHERE name=%s FOR UPDATE', (expected_name,))
     doc = frappe.get_doc('Course Lesson', expected_name)
-    if (doc.get('custom_avo_account') != _account() or doc.get('custom_avo_id') != lesson_id or
+    if (_row_id(doc) != lesson_id or
         doc.get('course') != target['course_name'] or not frappe.has_permission('Course Lesson','write',doc=doc)):
         frappe.throw('Lesson identity changed. Please reload.', frappe.PermissionError)
     doc.update(values)
@@ -232,10 +249,10 @@ def canonical(course_name, chapter_number=None, lesson_number=None):
     account = _account()
     if not account or not isinstance(course_name, str) or not course_name or len(course_name) > 255:
         return None
-    course = frappe.db.get_value('LMS Course', course_name, ['custom_avo_account','custom_avo_id'], as_dict=True)
-    if not course or course.get('custom_avo_account') != account or not _id(course.get('custom_avo_id')):
+    course = frappe.db.get_value('LMS Course', course_name, IDENTITY_FIELDS, as_dict=True)
+    course_id = _row_id(course)
+    if not course_id:
         return None
-    course_id = course['custom_avo_id']
     if chapter_number is None and lesson_number is None:
         target = resolve(course_id)
         return {'course_id':course_id} if target and target['course_name'] == course_name else None
@@ -249,10 +266,10 @@ def canonical(course_name, chapter_number=None, lesson_number=None):
                           fields=['lesson'], limit_page_length=2)
     if len(refs) != 1:
         return None
-    lesson = frappe.db.get_value('Course Lesson', refs[0]['lesson'], ['custom_avo_account','custom_avo_id','course'], as_dict=True)
-    if not lesson or lesson.get('course') != course_name or lesson.get('custom_avo_account') != account or not _id(lesson.get('custom_avo_id')):
+    lesson = frappe.db.get_value('Course Lesson', refs[0]['lesson'], [*IDENTITY_FIELDS,'course'], as_dict=True)
+    lesson_id = _row_id(lesson)
+    if not lesson_id or lesson.get('course') != course_name:
         return None
-    lesson_id = lesson['custom_avo_id']
     target = resolve(course_id,lesson_id)
     if not target or target['course_name'] != course_name or target['chapter_number'] != int(chapter_number) or target['lesson_number'] != int(lesson_number):
         return None

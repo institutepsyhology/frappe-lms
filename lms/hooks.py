@@ -80,6 +80,7 @@ after_migrate = [
 	"lms.lms.credential_profiles.ensure_fields",
 	"lms.lms.avo_contact_fields.execute",
 	"lms.lms.avo_contact_identity.execute",
+	"lms.lms.course_numbering.execute",
 	"lms.lms.doctype.lms_payment.lms_payment.add_unique_payment_id_constraint",
 	"lms.lms.docperm_shadow.warn_about_shadowed_permlevels",
 ]
@@ -144,6 +145,14 @@ override_doctype_class = {
 CHILD_ROW_MOVE_GATE = "lms.lms.permissions.refuse_moving_child_rows_out_of_content_the_user_cannot_write"
 
 doc_events = {
+	"LMS Course": {
+		"before_insert": "lms.lms.course_numbering.assign",
+		"validate": "lms.lms.course_numbering.validate_identity",
+	},
+	"Course Lesson": {
+		"before_insert": "lms.lms.course_numbering.assign",
+		"validate": "lms.lms.course_numbering.validate_identity",
+	},
 	"Email Group Member": {"validate": "lms.lms.avo_marketing.protect_group_member"},
 	"Contact": {"on_update": "lms.lms.avo_marketing.protect_document"},
 	"*": {

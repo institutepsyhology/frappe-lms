@@ -9,8 +9,8 @@ from unittest.mock import patch
 class AvoRoutesTest(unittest.TestCase):
     def setUp(self):
         self.rows={
-            'LMS Course':[{'name':'course-a','custom_avo_account':'mv-centr','custom_avo_id':'11'}],
-            'Course Lesson':[{'name':'lesson-a','custom_avo_account':'mv-centr','custom_avo_id':'26','course':'course-a','chapter':'chapter-a'}],
+            'LMS Course':[{'name':'course-a','custom_lms_id':'11','custom_avo_account':'mv-centr','custom_avo_id':'11'}],
+            'Course Lesson':[{'name':'lesson-a','custom_lms_id':'26','custom_avo_account':'mv-centr','custom_avo_id':'26','course':'course-a','chapter':'chapter-a'}],
             'Chapter Reference':[{'parent':'course-a','parenttype':'LMS Course','chapter':'chapter-a','idx':2}],
             'Lesson Reference':[{'parent':'chapter-a','parenttype':'Course Chapter','lesson':'lesson-a','idx':3}],
             'Course Chapter':[{'name':'chapter-a','title':'Chapter'}],
@@ -159,7 +159,7 @@ class AvoRoutesTest(unittest.TestCase):
         self.assertIsNone(self.mod.resolve_editor_by_lesson('26'))
 
     def add_second_lesson(self):
-        self.rows['Course Lesson'].append(dict(self.rows['Course Lesson'][0],name='lesson-b',custom_avo_id='27'))
+        self.rows['Course Lesson'].append(dict(self.rows['Course Lesson'][0],name='lesson-b',custom_lms_id='27',custom_avo_id='27'))
         self.rows['Lesson Reference'].append(dict(self.rows['Lesson Reference'][0],lesson='lesson-b',idx=4))
         self.ordered.append({'name':'lesson-b'})
 
@@ -229,6 +229,92 @@ class AvoRoutesTest(unittest.TestCase):
         def change_mapping(*args):self.rows['Course Lesson'][0]['custom_avo_id']='27'
         self.frappe.db.sql=change_mapping
         with self.assertRaises(PermissionError):self.mod.save_editor_by_source('11','26','lesson-a',{'title':'Wrong'})
+        self.assertEqual(self.saved,[])
+
+    def make_native(self):
+        for doctype,ident in (('LMS Course','1001'),('Course Lesson','2001')):
+            self.rows[doctype][0].update(custom_lms_id=ident,custom_avo_id=None,custom_avo_account='')
+
+    def test_native_course_and_lesson_use_the_same_public_routes(self):
+        self.make_native()
+        target={'course_name':'course-a','lesson_name':'lesson-a','chapter_number':2,'lesson_number':3}
+        self.assertEqual(self.mod.resolve('1001','2001'),target)
+        self.assertEqual(self.mod.canonical('course-a','2','3'),{'course_id':'1001','lesson_id':'2001'})
+        self.assertEqual(self.mod.resolve_editor_by_lesson('2001'),dict(target,course_id='1001'))
+        self.assertEqual(self.mod.resolve_course_start('1001'),dict(target,course_id='1001',lesson_id='2001'))
+        cards=self.mod.annotate_course_ids([{'name':'course-a'}])
+        self.assertEqual(cards[0]['avo_course_id'],'1001')
+        data=self.mod.get_editor_by_source('1001','2001')
+        self.assertEqual(data['lesson']['name'],'lesson-a')
+        self.assertFalse(set(self.mod.IDENTITY_FIELDS) & set(data['lesson']))
+        self.assertEqual(self.mod.save_editor_by_source('1001','2001','lesson-a',{'title':'Native'}),{'saved':True})
+        self.assertEqual(self.saved,['lesson-a'])
+        self.assertEqual(self.rows['Course Lesson'][0]['custom_avo_account'],'')
+        self.assertIsNone(self.rows['Course Lesson'][0]['custom_avo_id'])
+        self.allow_write=False
+        self.assertIsNone(self.mod.resolve_editor_by_lesson('2001'))
+        with self.assertRaises(PermissionError):self.mod.save_editor_by_source('1001','2001','lesson-a',{'title':'Denied'})
+
+    def test_native_empty_provenance_is_supported_but_partial_or_foreign_is_not(self):
+        self.make_native()
+        lesson=self.rows['Course Lesson'][0]
+        for account,ident in ((None,None),('',''),('',None),(None,'')):
+            lesson.update(custom_avo_account=account,custom_avo_id=ident)
+            self.assertIsNotNone(self.mod.resolve('1001','2001'))
+        for account,ident in (('mv-centr',None),(None,'2001'),('iomp','2001'),('mv-centr','2002')):
+            lesson.update(custom_avo_account=account,custom_avo_id=ident)
+            self.assertIsNone(self.mod.resolve('1001','2001'))
+            self.assertIsNone(self.mod.resolve_editor_by_lesson('2001'))
+            self.assertIsNone(self.mod.resolve_course_start('1001'))
+        lesson.update(custom_avo_account=None,custom_avo_id=None)
+        self.rows['LMS Course'][0].update(custom_avo_account='iomp',custom_avo_id='1001')
+        self.assertIsNone(self.mod.resolve('1001','2001'))
+        self.assertIsNone(self.mod.canonical('course-a','2','3'))
+        self.assertNotIn('avo_course_id',self.mod.annotate_course_ids([{'name':'course-a'}])[0])
+
+    def test_new_native_lesson_in_an_imported_course_keeps_its_public_number(self):
+        self.rows['Course Lesson'][0].update(custom_lms_id='2001',custom_avo_id=None,custom_avo_account=None)
+        self.assertEqual(self.mod.resolve('11','2001')['lesson_name'],'lesson-a')
+        self.assertEqual(self.mod.resolve_editor_by_lesson('2001')['course_id'],'11')
+        self.assertEqual(self.mod.resolve_course_start('11')['lesson_id'],'2001')
+        self.assertEqual(self.mod.canonical('course-a','2','3'),{'course_id':'11','lesson_id':'2001'})
+        self.assertEqual(self.mod.save_editor_by_source('11','2001','lesson-a',{'title':'New lesson'}),{'saved':True})
+        self.assertEqual(self.rows['LMS Course'][0]['custom_avo_id'],'11')
+
+    def test_public_id_must_be_valid_and_never_falls_back_to_provenance(self):
+        for ident in (None,'','011','0',11):
+            self.rows['LMS Course'][0]['custom_lms_id']=ident
+            self.assertIsNone(self.mod.resolve('11'))
+            self.assertIsNone(self.mod.canonical('course-a'))
+        self.rows['LMS Course'][0]['custom_lms_id']='11'
+        self.rows['Course Lesson'][0]['custom_lms_id']=None
+        self.assertIsNone(self.mod.resolve('11','26'))
+        self.assertIsNone(self.mod.resolve_editor_by_lesson('26'))
+
+    def test_public_ids_are_unique_across_native_and_imported_rows_in_the_site(self):
+        self.rows['LMS Course'].append({'name':'native','custom_lms_id':'11','custom_avo_id':None,'custom_avo_account':None})
+        self.assertIsNone(self.mod.resolve('11'))
+        self.assertNotIn('avo_course_id',self.mod.annotate_course_ids([{'name':'course-a'}])[0])
+        self.rows['LMS Course'].pop()
+        self.rows['Course Lesson'].append({'name':'native-lesson','custom_lms_id':'26','custom_avo_id':None,
+                                          'custom_avo_account':None,'course':'another-course'})
+        self.assertIsNone(self.mod.resolve('11','26'))
+        self.assertIsNone(self.mod.resolve_editor_by_lesson('26'))
+
+    def test_native_editor_rechecks_the_public_id_after_lookup_and_lock(self):
+        self.make_native()
+        original=self.frappe.db.get_value
+        def swapped(doctype,name,fields,as_dict=False):
+            result=original(doctype,name,fields,as_dict)
+            if doctype == 'Course Lesson' and isinstance(fields,list) and 'body' in fields:
+                result['custom_lms_id']='2002'
+            return result
+        self.frappe.db.get_value=swapped
+        with self.assertRaises(PermissionError):self.mod.get_editor_by_source('1001','2001')
+        self.frappe.db.get_value=original
+        def change_id(*args):self.rows['Course Lesson'][0]['custom_lms_id']='2002'
+        self.frappe.db.sql=change_id
+        with self.assertRaises(PermissionError):self.mod.save_editor_by_source('1001','2001','lesson-a',{'title':'Wrong'})
         self.assertEqual(self.saved,[])
 
 
