@@ -256,7 +256,7 @@ def apply_one(fr, ledger_name, *, allow_general_unlimited=False, duplicate_polic
         updates.update(grant=grant_name, enrollment=enrollment_name, sync_status="Applied",
                        review_reason="recorded_unavailable_lessons_preserved" if decision["unavailable_count"] or decision["excluded_count"]
                        else "recorded_availability_boundary")
-        fr.db.set_value(target.DOCTYPE, ledger_name, updates)
+        fr.db.set_value(target.DOCTYPE, ledger_name, dict(updates))
         if not _same(fr.get_doc(target.DOCTYPE, ledger_name), updates):
             raise target.Rejected("activation_ledger_readback_mismatch")
         fr.db.commit()

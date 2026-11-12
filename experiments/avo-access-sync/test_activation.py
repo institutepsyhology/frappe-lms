@@ -1,6 +1,6 @@
 import copy
 import unittest
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import activation
@@ -259,6 +259,19 @@ class ActivationTest(unittest.TestCase):
         self.assertEqual(self.app.tables, before)
         self.assertNotIn("user-private-key", str(result))
         self.assertNotIn("course-internal", str(result))
+
+    def test_frappe_set_value_mutation_does_not_expand_expected_readback_fields(self):
+        self.prepare()
+        original = self.app.set_value
+        def framework_set_value(doctype, name, values):
+            values["modified"] = "2026-11-12 15:00:00"
+            original(doctype, name, values)
+            self.app.tables[doctype][name]["modified"] = datetime.fromisoformat(values["modified"])
+        with patch.object(self.app, "set_value", side_effect=framework_set_value):
+            result = self.apply()
+        self.assertEqual(result["status"], "Applied")
+        self.assertEqual(self.ledger()["sync_status"], "Applied")
+        self.assertIsInstance(self.ledger()["modified"], datetime)
 
 
 if __name__ == "__main__": unittest.main()
