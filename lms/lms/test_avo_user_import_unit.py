@@ -17,6 +17,7 @@ class ImportTest(unittest.TestCase):
         f.flags = types.SimpleNamespace(in_import=False)
         f.PermissionError = PermissionError
         f.ValidationError = ValueError
+        f.QueueOverloaded = type('QueueOverloaded', (ValueError,), {})
         f.DuplicateEntryError = RuntimeError
         f.throw = lambda message, typ: (_ for _ in ()).throw(typ(message))
         f.parse_json = lambda data: data
@@ -80,6 +81,11 @@ class ImportTest(unittest.TestCase):
             with self.assertRaises(ValueError): self.module.import_users_batch(value)
         self.frappe.session.user = 'student@example.invalid'
         with self.assertRaises(PermissionError): self.module.import_users_batch([self.data])
+
+    def test_queue_overload_is_retryable_not_bad_contact(self):
+        with patch.object(self.module,'import_user',side_effect=self.frappe.QueueOverloaded()):
+            self.assertEqual(self.module.import_users_batch([self.data]),{'processed':0,'failed':True,'reason':'transient'})
+        self.assertEqual(self.commits,['rollback'])
 
 
 if __name__ == "__main__":

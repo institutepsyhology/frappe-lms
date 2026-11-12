@@ -15,7 +15,11 @@ class RecipientBatchSelectionTest(unittest.TestCase):
     def test_only_selected_uncreated_contacts_are_batched_with_optouts(self):
         with tempfile.TemporaryDirectory(dir=importer.source.ROOT/'exports/contacts-api-all-fields') as folder:
             journal=Path(folder)/'events.jsonl'
-            journal.write_text(json.dumps({'account':'mv-centr','contact_id':100,'status':'created_verified'})+'\n',encoding='utf-8')
+            journal.write_text(''.join(json.dumps(e)+'\n' for e in [
+                {'account':'mv-centr','contact_id':100,'status':'created_verified'},
+                {'account':'mv-centr','contact_id':102,'status':'validation_conflict'},
+                {'account':'mv-centr','contact_id':102,'status':'retry_validation_conflict'},
+            ]),encoding='utf-8')
             records=[(i,{'email':f'test{i}@example.test'}) for i in range(100,114)]
             taken=[]
             def transfer(items,headers,counters):

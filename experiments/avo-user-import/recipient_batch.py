@@ -84,7 +84,7 @@ def post(records, headers):
         raise ValueError('invalid_response')
     if not 0 <= result['processed'] <= len(records) or (not result['failed'] and result['processed'] != len(records)):
         raise ValueError('invalid_response')
-    if result['failed'] and (result['processed'] >= len(records) or result.get('reason') not in ('rejected','unexpected')):
+    if result['failed'] and (result['processed'] >= len(records) or result.get('reason') not in ('rejected','transient','unexpected')):
         raise ValueError('invalid_response')
     return result
 
@@ -116,7 +116,9 @@ def transfer(records, headers, counters, wait=time.sleep):
         counters['created']+=len(present)
         if counters['created']//25 > before//25:
             print(json.dumps({'progress_created':counters['created']}),flush=True)
-        if present: counters['consecutive_issues']=0
+        if present:
+            counters['consecutive_issues']=0
+            failures=0
         rejected=None
         if response and response['failed'] and response['reason']=='rejected':
             ident=remaining[response['processed']][0]

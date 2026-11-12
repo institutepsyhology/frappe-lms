@@ -75,6 +75,9 @@ def import_users_batch(records):
             import_user(data)
             frappe.db.commit()
             processed += 1
+        except frappe.QueueOverloaded:
+            frappe.db.rollback()
+            return {"processed": processed, "failed": True, "reason": "transient"}
         except (frappe.DuplicateEntryError, frappe.ValidationError):
             frappe.db.rollback()
             return {"processed": processed, "failed": True, "reason": "rejected"}

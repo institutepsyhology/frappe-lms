@@ -52,6 +52,7 @@ def run(args, selected, complaints, overrides):
                 if event.get('account')!='mv-centr' or type(ident) is not int:raise ValueError('invalid_journal')
                 if status in ('unique_conflict','validation_conflict'):conflicts.add(ident)
                 elif status in ('created_verified','present_verified'):done.add(ident);conflicts.discard(ident)
+                elif status == 'retry_validation_conflict':conflicts.discard(ident)
                 if status in ('write_outcome_unknown','readback_mismatch'):unresolved.add(ident)
                 elif status in ('created_verified','resolved_not_created'):unresolved.discard(ident)
     if unresolved:

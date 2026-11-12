@@ -200,6 +200,7 @@ def main():
                 elif event.get("status") in ("created_verified", "present_verified"):
                     known_conflicts.discard(event["contact_id"])
                     known_created.add(event["contact_id"])
+                elif event.get("status") == "retry_validation_conflict": known_conflicts.discard(event["contact_id"])
                 if event.get("status") in ("write_outcome_unknown", "readback_mismatch"):
                     unresolved_writes.add(event["contact_id"])
                 elif event.get("status") in ("created_verified", "resolved_not_created"):

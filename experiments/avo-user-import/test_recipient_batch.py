@@ -65,5 +65,15 @@ class BatchTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):batch.recover_pending(inspect=lambda i:'conflict',wait=lambda _:None)
         self.assertTrue(self.path.exists())
 
+    def test_queue_overload_retries_without_rejecting_contacts(self):
+        responses=[{'processed':0,'failed':True,'reason':'transient'}, {'processed':3,'failed':False}]
+        states=[{1:'absent',2:'absent',3:'absent'},{1:'present',2:'present',3:'present'}]
+        pauses=[]
+        with patch.object(batch,'post',side_effect=responses),patch.object(batch,'reconcile',side_effect=states):
+            self.assertTrue(batch.transfer(self.items,{},self.counts,wait=pauses.append))
+        self.assertEqual(self.counts['validation_conflict_skipped'],0)
+        self.assertEqual(self.counts['created'],3)
+        self.assertEqual(pauses,[5])
+
 
 if __name__=='__main__':unittest.main()
