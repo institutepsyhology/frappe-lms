@@ -32,11 +32,12 @@ def record(ident="101", contact="201", course="301"):
 class FakeDoc(Row):
     def __init__(self, app, values):
         super().__init__(copy.deepcopy(values))
-        self.app = app
+        object.__setattr__(self, "app", app)
 
     def insert(self, set_name=None, **kwargs):
         doctype = self["doctype"]
         self["name"] = set_name or self.get("name") or "new-document"
+        self.setdefault("owner", "Administrator")
         if self["name"] in self.app.tables[doctype]:
             raise RuntimeError("duplicate")
         self.app.tables[doctype][self["name"]] = Row(copy.deepcopy(dict(self)))
@@ -55,11 +56,11 @@ class FakeFrappe:
         self.tables = {key: {} for key in ("DocType", "User", "Contact", "LMS Course", "Course Lesson",
                       target.DOCTYPE, "LMS Access Grant", "LMS Enrollment", "LMS Access Policy")}
         self.tables["DocType"][target.DOCTYPE] = Row(doctype="DocType", name=target.DOCTYPE,
-            custom=1, title_field="source_access_id", fields=copy.deepcopy(target.FIELDS),
+            custom=1, owner="Administrator", module="LMS", title_field="source_access_id", fields=copy.deepcopy(target.FIELDS),
             permissions=[Row(role="System Manager", read=1)])
         self.db = self
         self.snapshot = None
-        self.commits = self.rollbacks = self.bulk_calls = self.set_value_calls = 0
+        self.commits = self.rollbacks = self.bulk_calls = self.set_value_calls = self.cache_clears = 0
         self.corrupt_bulk = False
         self.queries = []
 
@@ -82,7 +83,14 @@ class FakeFrappe:
             return rows[0]["name"] if rows else None
         return value if value in self.tables[doctype] else None
 
-    def get_meta(self, doctype):
+    def count(self, doctype): return len(self.tables[doctype])
+
+    def clear_cache(self, **kwargs): self.cache_clears += 1
+
+    def get_meta(self, doctype, **kwargs):
+        if doctype == "DocPerm":
+            return SimpleNamespace(fields=[Row(fieldname=key, fieldtype="Check")
+                                           for key in {*target.PERMISSION_FLAGS, "read"}])
         data = self.tables["DocType"][doctype]
         fields = {row["fieldname"]: Row(row) for row in data["fields"]}
         return SimpleNamespace(custom=data["custom"], title_field=data["title_field"],
@@ -132,6 +140,49 @@ class LedgerTest(unittest.TestCase):
         data["permissions"][0]["write"] = 1
         with self.assertRaisesRegex(target.Rejected, "registry_permissions_mismatch"):
             target.ensure_schema(self.app)
+
+    def test_unique_field_supplies_index_when_frappe_clears_redundant_search_index(self):
+        data = self.app.tables["DocType"][target.DOCTYPE]
+        field = next(row for row in data["fields"] if row["fieldname"] == "source_access_id")
+        field["search_index"] = 0
+        self.assertTrue(target.ensure_schema(self.app)["ready"])
+        field["unique"] = 0
+        with self.assertRaisesRegex(target.Rejected, "registry_schema_mismatch"):
+            target.ensure_schema(self.app)
+
+    def test_schema_creation_explicitly_zeros_all_docperm_flags(self):
+        del self.app.tables["DocType"][target.DOCTYPE]
+        target.ensure_schema(self.app)
+        permission = self.app.tables["DocType"][target.DOCTYPE]["permissions"][0]
+        self.assertEqual(permission["read"], 1)
+        self.assertEqual(permission["permlevel"], 0)
+        self.assertTrue(all(permission[flag] == 0 for flag in target.PERMISSION_FLAGS))
+
+    def test_only_empty_owned_initial_default_permissions_can_be_repaired(self):
+        data = self.app.tables["DocType"][target.DOCTYPE]
+        data["permissions"][0].update({flag: 1 for flag in target.INITIAL_DEFAULT_GRANTS})
+        self.assertTrue(target.ensure_schema(self.app)["ready"])
+        permission = self.app.tables["DocType"][target.DOCTYPE]["permissions"][0]
+        self.assertTrue(all(permission.get(flag) == 0 for flag in target.PERMISSION_FLAGS))
+        self.assertEqual(self.app.cache_clears, 1)
+        self.assertEqual(self.app.commits, 1)
+
+    def test_populated_or_foreign_or_changed_permission_settings_are_never_repaired(self):
+        variants = ("populated", "other_owner", "other_module", "other_role", "unexpected_permission")
+        for variant in variants:
+            app = FakeFrappe().mapped()
+            data = app.tables["DocType"][target.DOCTYPE]
+            data["permissions"][0].update({flag: 1 for flag in target.INITIAL_DEFAULT_GRANTS})
+            if variant == "populated": target.store_batch(app, [record()])
+            if variant == "other_owner": data["owner"] = "other-user"
+            if variant == "other_module": data["module"] = "Other"
+            if variant == "other_role": data["permissions"][0]["role"] = "Other Role"
+            if variant == "unexpected_permission": data["permissions"][0]["submit"] = 1
+            before = copy.deepcopy(app.tables)
+            with self.subTest(variant=variant), self.assertRaisesRegex(target.Rejected, "registry_permissions_mismatch"):
+                target.ensure_schema(app)
+            self.assertEqual(app.tables, before)
+            self.assertEqual(app.cache_clears, 0)
 
     def test_schema_creation_is_explicit(self):
         del self.app.tables["DocType"][target.DOCTYPE]

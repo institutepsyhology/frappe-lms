@@ -59,6 +59,9 @@ for _field in FIELDS:
         _field["in_list_view"] = 1
 DERIVED_FIELDS = ("mapped_user", "mapped_contact", "mapped_course", "sync_status", "review_reason")
 REFRESHABLE_STATUSES = {"Stored", "Pending Contact", "Pending Course", "Needs Review"}
+PERMISSION_FLAGS = frozenset({"select", "write", "create", "delete", "submit", "cancel", "amend",
+    "report", "export", "import", "share", "print", "email", "if_owner", "mask", "unmask", "impersonate"})
+INITIAL_DEFAULT_GRANTS = frozenset({"write", "create", "delete", "share", "export", "report", "print", "email"})
 
 
 class Rejected(ValueError):
@@ -151,11 +154,15 @@ def _validate_records(records):
 def ensure_schema(fr):
     """Explicit DDL phase; call before store_batch, never inside its transaction."""
     _require(fr)
+    permission_flags = PERMISSION_FLAGS.union(field.fieldname for field in fr.get_meta("DocPerm").fields
+        if field.fieldtype == "Check" and field.fieldname != "read")
+    permission_row = {"role": "System Manager", "read": 1, "permlevel": 0,
+                      **{flag: 0 for flag in permission_flags}}
     if not fr.db.exists("DocType", DOCTYPE):
         fr.get_doc({"doctype": "DocType", "name": DOCTYPE, "module": "LMS", "custom": 1,
                     "autoname": "hash", "title_field": "source_access_id", "track_changes": 0,
                     "engine": "InnoDB", "fields": FIELDS,
-                    "permissions": [{"role": "System Manager", "read": 1}]}).insert()
+                    "permissions": [permission_row]}).insert()
         fr.db.commit()
     meta = fr.get_meta(DOCTYPE)
     if not meta.custom or meta.title_field != "source_access_id":
@@ -164,12 +171,29 @@ def ensure_schema(fr):
         actual = meta.get_field(expected["fieldname"])
         if (not actual or actual.fieldtype != expected["fieldtype"] or not actual.read_only
                 or (expected.get("options") and actual.options != expected["options"])
-                or any(expected.get(key) and not actual.get(key) for key in ("reqd", "unique", "search_index", "in_list_view"))):
+                or any(expected.get(key) and not actual.get(key) for key in ("reqd", "unique", "in_list_view"))
+                or expected.get("search_index") and not (actual.get("search_index") or actual.get("unique"))):
             raise Rejected("registry_schema_mismatch")
     if (len(meta.permissions) != 1 or meta.permissions[0].role != "System Manager"
-            or not meta.permissions[0].read
-            or any(meta.permissions[0].get(key) for key in ("create", "write", "delete", "share", "export"))):
+            or meta.permissions[0].read != 1 or meta.permissions[0].get("permlevel")):
         raise Rejected("registry_permissions_mismatch")
+    enabled = {flag for flag in permission_flags if meta.permissions[0].get(flag)}
+    if enabled:
+        document = fr.get_doc("DocType", DOCTYPE)
+        # Repair only the observed platform defaults on our empty initial table.
+        # Once records exist or an operator changes another setting, fail closed.
+        if (enabled != INITIAL_DEFAULT_GRANTS or document.get("owner") != "Administrator"
+                or document.get("module") != "LMS" or document.get("custom") != 1 or fr.db.count(DOCTYPE) != 0):
+            raise Rejected("registry_permissions_mismatch")
+        document.get("permissions")[0].update(permission_row)
+        document.save()
+        fr.clear_cache(doctype=DOCTYPE)
+        meta = fr.get_meta(DOCTYPE, cached=False)
+        if (len(meta.permissions) != 1 or meta.permissions[0].role != "System Manager"
+                or meta.permissions[0].read != 1 or meta.permissions[0].get("permlevel")
+                or any(meta.permissions[0].get(flag) for flag in permission_flags)):
+            raise Rejected("registry_permissions_mismatch")
+        fr.db.commit()
     return {"doctype": DOCTYPE, "ready": True}
 
 
