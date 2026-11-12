@@ -12,6 +12,8 @@ import time
 import urllib.error
 import urllib.request
 
+from persistent_https import PersistentHTTPS
+
 
 ACCOUNT = "mastervision"
 ORIGIN = "https://shop.mastervision.su"
@@ -48,20 +50,23 @@ class MCPClient:
     site, account = SITE, ACCOUNT
 
     def __init__(self, workspace=None):
-        self.auth, self.n = {}, 0
+        self.auth, self.n, self.persistent = {}, 0, None
         try:
             self.auth, no_redirect = authentication(workspace)
             if not isinstance(self.auth, dict) or set(self.auth) != {"Cookie"}:
                 raise Stop("authentication_invalid")
-            self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), no_redirect())
+            self.persistent = PersistentHTTPS()
+            self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), no_redirect(), self.persistent)
             init = self.rpc("initialize", {"protocolVersion": "2025-11-25", "capabilities": {},
                                           "clientInfo": {"name": "mastervision-draft-import", "version": "1.0"}})
             if init.get("serverInfo", {}).get("name") != SERVER_NAME:
                 raise Stop("wrong_frappe_site")
         except Stop:
+            if self.persistent: self.persistent.close()
             self.auth.clear()
             raise
         except Exception:
+            if self.persistent: self.persistent.close()
             self.auth.clear()
             raise Stop("mcp_authentication_failed") from None
 
@@ -118,11 +123,12 @@ class MCPClient:
             if self.auth:
                 req = urllib.request.Request("https://" + SITE + "/api/method/logout", data=b"{}",
                                              headers={"Content-Type": "application/json", **self.auth})
-                with self.opener.open(req, timeout=15):
-                    pass
+                with self.opener.open(req, timeout=15) as response:
+                    response.read(1024 * 1024)
         except Exception:
             pass
         finally:
+            if getattr(self, 'persistent', None): self.persistent.close()
             self.auth.clear()
 
 
