@@ -86,7 +86,7 @@ def concurrency(before):
     key = 'LMS URL ID:smoke:' + uuid4().hex
     original = numbering._series_name
     require(not frappe.db.sql('SELECT `current` FROM `tabSeries` WHERE `name`=%s', (key,)), 'temporary_key_exists')
-    barrier = Barrier(4)
+    barrier, expected = Barrier(4), None
     def worker():
         frappe.init(site=SITE, sites_path=str(BENCH_SITES))
         frappe.connect(); frappe.set_user('Administrator')
@@ -99,20 +99,31 @@ def concurrency(before):
             return values
         finally:
             frappe.db.rollback(); frappe.destroy()
+    def finish():
+        frappe.init(site=SITE, sites_path=str(BENCH_SITES)); frappe.connect(); frappe.set_user('Administrator')
+        try:
+            rows = frappe.db.sql('SELECT `current` FROM `tabSeries` WHERE `name`=%s FOR UPDATE', (key,))
+            if expected is not None:
+                require(len(rows) == 1 and int(rows[0][0]) == expected, 'concurrent_high_water_wrong')
+        finally:
+            try:
+                frappe.db.sql('DELETE FROM `tabSeries` WHERE `name`=%s', (key,)); frappe.db.commit()
+            finally:
+                frappe.db.rollback(); frappe.destroy()
     try:
         numbering._series_name = lambda doctype, account: key
         with ThreadPoolExecutor(max_workers=4) as pool:
             values = sorted(value for batch in pool.map(lambda _: worker(), range(4)) for value in batch)
         floor = numbering.SOURCE_FLOORS['mv-centr']['Course Lesson']
         require(values == list(range(floor + 1, floor + 9)), 'concurrent_ids_not_unique_and_consecutive')
-        rows = frappe.db.sql('SELECT `current` FROM `tabSeries` WHERE `name`=%s FOR UPDATE', (key,))
-        require(len(rows) == 1 and int(rows[0][0]) == floor + 8, 'concurrent_high_water_wrong')
+        expected = floor + 8
     finally:
         numbering._series_name = original
         try:
             require(counters() == before, 'concurrency_changed_production_series')
         finally:
-            frappe.db.sql('DELETE FROM `tabSeries` WHERE `name`=%s', (key,)); frappe.db.commit()
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                pool.submit(finish).result()
 
 
 def main():
