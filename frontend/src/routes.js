@@ -465,21 +465,24 @@ export const routes = [
 export function getSiteRoutes(basePath = 'lms') {
 	const prefix = '/' + basePath.replace(/^\/+|\/+$/g, '')
 	const siteRoutes = routes.map(route => {
-		if (route.name === 'AvoLesson') return { ...route, path:'/personal/training/:avoCourseId/view/:avoLessonId' }
+		if (route.name === 'AvoLesson') return { ...route, path:'/personal/training/:avoCourseId/view/:avoLessonId', meta:{requiresAuth:true} }
 		if (route.name === 'AvoLessonEdit') return { ...route,
 			path:'/shop/training/traininglessons/admin/update',
+			meta:{requiresAuth:true},
 			props:to => ({ avoLessonId: typeof to.query.id === 'string' ? to.query.id : '' }),
 		}
 		return { ...route, path:prefix + route.path }
 	})
 	return [...siteRoutes, {
 		path:'/personal/training/:avoCourseId', name:'AvoCourseStart',
+		meta:{requiresAuth:true},
 		component: () => import('@/pages/Courses/AvoCourseStart.vue'), props:true,
 	}, {
 		path:prefix + '/courses/avo/:avoCourseId/lessons/:avoLessonId',
 		redirect:to => ({ name:'AvoLesson', params:to.params, query:to.query, hash:to.hash }),
 	}, {
 		path:prefix + '/courses/avo/:avoCourseId/lessons/:avoLessonId/edit',
+		meta:{requiresAuth:true},
 		component: () => import('@/pages/Courses/AvoLessonEditor.vue'),
 		props:true,
 	}]

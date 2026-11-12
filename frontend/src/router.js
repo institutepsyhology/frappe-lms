@@ -47,7 +47,7 @@ router.beforeEach(async (to, from, next) => {
 		if (to.name == 'Home') router.push({ name: 'Courses' })
 
 		await settings.promise
-		if (!settings.data.allow_guest_access) {
+		if (to.meta.requiresAuth || !settings.data.allow_guest_access) {
 			window.location.href = '/login?redirect-to=' + encodeURIComponent(to.fullPath)
 			return
 		}
