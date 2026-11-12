@@ -37,6 +37,7 @@ py -3 experiments/mastervision-migration/run.py --stored --course 1
 py -3 experiments/mastervision-migration/run.py --stored --course 1 --apply
 py -3 experiments/mastervision-migration/run.py --apply
 py -3 experiments/mastervision-migration/run.py --stored --covers-only --apply
+py -3 experiments/mastervision-migration/run.py --stored --settings-only --apply
 ```
 
 Без `--apply` проверка не создаёт документы во Frappe. `--collect-only` только

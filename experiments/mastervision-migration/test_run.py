@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import importer
 import assets
+import settings
 import run as mod
 import source
 
@@ -131,6 +132,7 @@ class ControllerTests(unittest.TestCase):
              patch.object(importer, 'MCPClient', return_value=client) as make_client, \
              patch.object(importer, 'Importer', return_value=target), patch.object(mod, 'emit', side_effect=output.append), \
              patch.object(assets, 'AssetCache', return_value=FakeAssets()), \
+             patch.object(settings, 'ensure_private_course', return_value={'status': 'updated'}), \
              patch('sys.argv', ['run.py', *args]):
             status = mod.main()
         return status, store, transport, client, target, output, collected, make_client.call_count

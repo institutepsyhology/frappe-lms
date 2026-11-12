@@ -170,9 +170,8 @@ def emit(value):
     print(json.dumps(value, ensure_ascii=False), flush=True)
 
 
-def transfer_covers(store, rows, client, assets, apply):
-    from covers import sync_cover
-    from importer import Review as ImportReview, source_id
+def target_course_ids(client):
+    from importer import source_id
     targets = client.call('list_documents', {'doctype': 'LMS Course',
         'fields': ['name', 'custom_avo_account', 'custom_avo_id', 'custom_lms_id', 'published'],
         'filters': [['custom_avo_account', '=', ACCOUNT]], 'limit': 1000})
@@ -187,6 +186,13 @@ def transfer_covers(store, rows, client, assets, apply):
                 or type(row.get('published')) is not int or row['published'] != 0):
             raise Stop('cover_target_identity_invalid')
         target_ids.add(cid)
+    return target_ids
+
+
+def transfer_covers(store, rows, client, assets, apply):
+    from covers import sync_cover
+    from importer import Review as ImportReview
+    target_ids = target_course_ids(client)
     for row in rows:
         cid = row['id']
         if str(cid) not in target_ids:
@@ -207,6 +213,18 @@ def transfer_covers(store, rows, client, assets, apply):
                 raise Stop('paused_after_ten_cover_problems')
 
 
+def transfer_settings(store, rows, client, apply):
+    from settings import ensure_private_course
+    target_ids = target_course_ids(client)
+    for row in rows:
+        cid = row['id']
+        if str(cid) not in target_ids:
+            continue
+        result = ensure_private_course(client, cid, apply=apply)
+        store.event('import', cid, None, 'private_' + result['status'])
+        emit({'course': cid, 'status': 'private_' + result['status']})
+
+
 def main():
     args = argparse.ArgumentParser(description=__doc__)
     args.add_argument('--catalog-only', action='store_true')
@@ -218,11 +236,14 @@ def main():
     args.add_argument('--stored', action='store_true', help='Use verified private snapshots without refreshing AVO')
     args.add_argument('--from-course', type=int, default=1)
     args.add_argument('--covers-only', action='store_true')
+    args.add_argument('--settings-only', action='store_true')
     selected = args.parse_args()
     if selected.limit is not None and selected.limit < 1 or selected.course is not None and selected.course < 1 or selected.from_course < 1:
         raise Stop('invalid_selection')
     if (selected.apply and (selected.collect_only or selected.catalog_only) or
-            selected.covers_only and (not selected.stored or selected.collect_only or selected.catalog_only)):
+            (selected.covers_only or selected.settings_only) and
+            (not selected.stored or selected.collect_only or selected.catalog_only) or
+            selected.covers_only and selected.settings_only):
         raise Stop('conflicting_mode')
     with Store(DATA) as store:
         client, assets = None, None
@@ -254,6 +275,9 @@ def main():
                         raise Stop('conflicting_mode')
                     transfer_covers(store, rows, client, assets, selected.apply)
                     emit({'status': 'covers_finished'}); return 0
+                if selected.settings_only:
+                    transfer_settings(store, rows, client, selected.apply)
+                    emit({'status': 'settings_finished'}); return 0
                 for row in rows:
                     cid = row['id']
                     try:
@@ -285,6 +309,9 @@ def main():
                     try:
                         payloads, normalization_warnings = prepare_payloads(payloads)
                         result = target.import_course(payloads, apply=selected.apply, images_for_lesson=assets.lesson_images)
+                        if selected.apply:
+                            from settings import ensure_private_course
+                            ensure_private_course(client, cid, apply=True)
                         store.error('import', False)
                         if selected.apply: store.mark(cid, 'imported')
                         store.event('import', cid, None, result['status'])
