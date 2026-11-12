@@ -4,7 +4,7 @@ import { usersStore } from './stores/user'
 import { sessionStore } from './stores/session'
 import { useSettings } from './stores/settings'
 import { getLmsBasePath } from './utils/basePath'
-import { routes } from './routes'
+import { getSiteRoutes } from './routes'
 import { canonicalAvoCourseRoute } from './utils/avoCourseRoutes'
 
 // Run the fresh-site-admin persona check at most once per app load.
@@ -26,8 +26,8 @@ async function shouldCapturePersona() {
 }
 
 let router = createRouter({
-	history: createWebHistory(`/${getLmsBasePath()}`),
-	routes,
+	history: createWebHistory('/'),
+	routes: getSiteRoutes(getLmsBasePath()),
 })
 
 router.beforeEach(async (to, from, next) => {
@@ -48,7 +48,7 @@ router.beforeEach(async (to, from, next) => {
 
 		await settings.promise
 		if (!settings.data.allow_guest_access) {
-			window.location.href = '/login'
+			window.location.href = '/login?redirect-to=' + encodeURIComponent(to.fullPath)
 			return
 		}
 	}

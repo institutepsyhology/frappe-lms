@@ -102,6 +102,35 @@ def resolve(course_id, lesson_id=None):
 
 
 @frappe.whitelist(allow_guest=True)
+def resolve_course_start(course_id):
+    """Resume a permitted course at its saved lesson or first available source ID."""
+    target = resolve(course_id)
+    if not target:
+        return None
+    from lms.lms.permissions import can_access_lesson, get_lesson_gate
+    from lms.lms.utils import get_membership, get_ordered_lesson_rows
+    course = target['course_name']
+    names = list(dict.fromkeys(row['name'] for row in get_ordered_lesson_rows(course) if row.get('name')))
+    if not names:
+        return None
+    locked, resume = get_lesson_gate(course)
+    membership = get_membership(course)
+    preferred = resume or (membership.get('current_lesson') if membership else None)
+    candidates = ([preferred] if preferred in names else []) + [name for name in names if name != preferred]
+    sources = frappe.get_all('Course Lesson', filters={'name':['in',names],'course':course,'custom_avo_account':_account()},
+                             fields=['name','custom_avo_id'], limit_page_length=0)
+    ids = {row['name']:row.get('custom_avo_id') for row in sources if _id(row.get('custom_avo_id'))}
+    for name in candidates:
+        lesson_id = ids.get(name)
+        if not lesson_id or name in locked or not can_access_lesson(name):
+            continue
+        lesson = resolve(course_id, lesson_id)
+        if lesson and lesson['course_name'] == course and lesson['lesson_name'] == name:
+            return {**lesson, 'course_id':course_id, 'lesson_id':lesson_id}
+    return None
+
+
+@frappe.whitelist(allow_guest=True)
 def get_lesson_by_source(course_id, lesson_id):
     """Never return another lesson if its position changed after resolution."""
     target = resolve(course_id, lesson_id)
@@ -128,6 +157,27 @@ def resolve_editor(course_id, lesson_id=None):
         if not frappe.has_permission('Course Lesson', 'write', doc=doc):
             return None
     return target
+
+
+@frappe.whitelist()
+def resolve_editor_by_lesson(lesson_id):
+    """Resolve an AVO editor link containing only its account-scoped lesson ID."""
+    account = _account()
+    if not account or not _id(lesson_id):
+        return None
+    lessons = frappe.get_all('Course Lesson', filters={'custom_avo_account':account,'custom_avo_id':lesson_id},
+                             fields=['name','course'], limit_page_length=2)
+    if len(lessons) != 1 or not lessons[0].get('course'):
+        return None
+    lesson = lessons[0]
+    course = frappe.db.get_value('LMS Course', lesson['course'], ['custom_avo_account','custom_avo_id'], as_dict=True)
+    if not course or course.get('custom_avo_account') != account or not _id(course.get('custom_avo_id')):
+        return None
+    course_id = course['custom_avo_id']
+    target = resolve_editor(course_id, lesson_id)
+    if not target or target['course_name'] != lesson['course'] or target['lesson_name'] != lesson['name']:
+        return None
+    return {**target, 'course_id':course_id}
 
 
 @frappe.whitelist()

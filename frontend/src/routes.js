@@ -104,7 +104,7 @@ export const routes = [
 	},
 	{
 		path: '/batches/details/:batchName',
-		redirect: (to) => `/batches/${to.params.batchName}`,
+		redirect: (to) => ({ name:'BatchDetail', params:{batchName:to.params.batchName} }),
 	},
 	{
 		path: '/batches/:batchName',
@@ -287,12 +287,12 @@ export const routes = [
 		// Links made before the rebuild. A bare `:quizID` never swallows the static
 		// siblings above: vue-router scores a fixed segment higher whatever the order.
 		path: '/quizzes/:quizID',
-		redirect: (to) => `/quizzes/edit/${to.params.quizID}`,
+		redirect: (to) => ({ name:'QuizForm', params:{quizID:to.params.quizID} }),
 	},
 	{
 		// The per-question page is gone; a question is edited inside its quiz now.
 		path: '/quizzes/:quizID/question/:questionName',
-		redirect: (to) => `/quizzes/edit/${to.params.quizID}`,
+		redirect: (to) => ({ name:'QuizForm', params:{quizID:to.params.quizID} }),
 	},
 	{
 		// The per-quiz submissions page is now the cross-quiz list, scoped by filter.
@@ -460,3 +460,27 @@ export const routes = [
 		component: () => import('@/pages/NotFound.vue'),
 	},
 ]
+
+// AVO links start at the domain root; native LMS pages keep their configured prefix.
+export function getSiteRoutes(basePath = 'lms') {
+	const prefix = '/' + basePath.replace(/^\/+|\/+$/g, '')
+	const siteRoutes = routes.map(route => {
+		if (route.name === 'AvoLesson') return { ...route, path:'/personal/training/:avoCourseId/view/:avoLessonId' }
+		if (route.name === 'AvoLessonEdit') return { ...route,
+			path:'/shop/training/traininglessons/admin/update',
+			props:to => ({ avoLessonId: typeof to.query.id === 'string' ? to.query.id : '' }),
+		}
+		return { ...route, path:prefix + route.path }
+	})
+	return [...siteRoutes, {
+		path:'/personal/training/:avoCourseId', name:'AvoCourseStart',
+		component: () => import('@/pages/Courses/AvoCourseStart.vue'), props:true,
+	}, {
+		path:prefix + '/courses/avo/:avoCourseId/lessons/:avoLessonId',
+		redirect:to => ({ name:'AvoLesson', params:to.params, query:to.query, hash:to.hash }),
+	}, {
+		path:prefix + '/courses/avo/:avoCourseId/lessons/:avoLessonId/edit',
+		component: () => import('@/pages/Courses/AvoLessonEditor.vue'),
+		props:true,
+	}]
+}

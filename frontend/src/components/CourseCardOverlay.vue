@@ -178,7 +178,7 @@ function enrollStudent() {
 	if (!user.data) {
 		toast.warning(__('You need to login first to enroll for this course'))
 		setTimeout(() => {
-			window.location.href = `/login?redirect-to=${window.location.pathname}`
+			window.location.href = `/login?redirect-to=${encodeURIComponent(window.location.pathname + window.location.search + window.location.hash)}`
 		}, 500)
 		return
 	}

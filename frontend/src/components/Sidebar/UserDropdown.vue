@@ -167,7 +167,7 @@ const userDropdownOptions = computed(() => {
 					icon: 'lucide-user',
 					label: __('My Profile'),
 					onClick: () => {
-						router.push(`/user/${userResource.data?.username}`)
+						router.push({ name: 'ProfileAbout', params: { username: userResource.data?.username } })
 					},
 					condition: () => {
 						return isLoggedIn

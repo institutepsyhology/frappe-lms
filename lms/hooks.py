@@ -238,6 +238,9 @@ override_whitelisted_methods = {
 
 # Add all simple route rules here
 website_route_rules = [
+	{"from_route": "/shop/training/traininglessons/admin/update", "to_route": "_lms"},
+	{"from_route": "/personal/training/<course_id>/view/<lesson_id>", "to_route": "_lms"},
+	{"from_route": "/personal/training/<course_id>", "to_route": "_lms"},
 	{"from_route": f"/{get_lms_path()}/<path:app_path>", "to_route": "_lms"},
 	{"from_route": f"/{get_lms_path()}", "to_route": "_lms"},
 	{

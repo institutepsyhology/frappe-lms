@@ -2,7 +2,7 @@ import type { RouteLocationNormalized } from 'vue-router'
 
 export function courseCardRoute(course: { name:string; avo_course_id?:string }) {
 	return typeof course.avo_course_id === 'string' && /^[1-9]\d{0,19}$/.test(course.avo_course_id)
-		? { name:'AvoCourse', params:{ avoCourseId:course.avo_course_id } }
+		? { name:'AvoCourseStart', params:{ avoCourseId:course.avo_course_id } }
 		: { name:'CourseDetail', params:{ courseName:course.name } }
 }
 

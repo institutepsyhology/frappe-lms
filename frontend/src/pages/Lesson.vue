@@ -5,7 +5,7 @@
 				<CertificationLinks :courseName="courseName" />
 				<router-link
 					v-if="canEditLesson"
-					:to="avoCourseId && avoLessonId ? { name:'AvoLessonEdit', params:{ avoCourseId, avoLessonId } } : {
+					:to="avoCourseId && avoLessonId ? { name:'AvoLessonEdit', query:{ id:avoLessonId, lg:'ru' } } : {
 						name: 'CourseDetail',
 						params: { courseName: courseName },
 						hash: '#editor',
@@ -440,7 +440,6 @@ import UserAvatar from '@/components/UserAvatar.vue'
 import Notes from '@/components/Notes/Notes.vue'
 import InlineLessonMenu from '@/components/Notes/InlineLessonMenu.vue'
 import { parseStoredEditorJs } from '@/utils/lessonForm'
-import { getLmsRoute } from '@/utils/basePath'
 import { provideStudentView } from '@/composables/useStudentView'
 
 const router = useRouter()
@@ -1268,9 +1267,7 @@ watch(allowDiscussions, () => {
 })
 
 const redirectToLogin = () => {
-	window.location.href = `/login?redirect-to=${getLmsRoute(
-		`courses/${props.courseName}`
-	)}`
+	window.location.href = `/login?redirect-to=${encodeURIComponent(window.location.pathname + window.location.search + window.location.hash)}`
 }
 
 usePageMeta(() => {
