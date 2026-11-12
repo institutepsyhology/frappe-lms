@@ -153,10 +153,100 @@ class LedgerTest(unittest.TestCase):
     def test_schema_creation_explicitly_zeros_all_docperm_flags(self):
         del self.app.tables["DocType"][target.DOCTYPE]
         target.ensure_schema(self.app)
-        permission = self.app.tables["DocType"][target.DOCTYPE]["permissions"][0]
+        data = self.app.tables["DocType"][target.DOCTYPE]
+        permission = data["permissions"][0]
         self.assertEqual(permission["read"], 1)
         self.assertEqual(permission["permlevel"], 0)
         self.assertTrue(all(permission[flag] == 0 for flag in target.PERMISSION_FLAGS))
+        status = next(field for field in data["fields"] if field["fieldname"] == "sync_status")
+        self.assertEqual(status["options"], target.STATUSES)
+        self.assertEqual(status["options"].splitlines()[-1], "Superseded")
+
+    def previous_status_schema(self, app=None):
+        app = self.app if app is None else app
+        data = app.tables["DocType"][target.DOCTYPE]
+        status = next(field for field in data["fields"] if field["fieldname"] == "sync_status")
+        status["options"] = target.PREVIOUS_STATUSES
+        return data, status
+
+    def test_populated_previous_enum_upgrade_preserves_source_rows_rights_and_other_fields(self):
+        target.store_batch(self.app, [record()])
+        saved = self.app.tables[target.DOCTYPE]["avo-mv-centr-access-101"]
+        saved.update(sync_status="Applied", grant="owned-grant", enrollment="owned-enrollment")
+        data, status = self.previous_status_schema()
+        rows_before = copy.deepcopy(self.app.tables[target.DOCTYPE])
+        fields_before = copy.deepcopy(data["fields"])
+        permissions_before = copy.deepcopy(data["permissions"])
+        commits_before = self.app.commits
+        result = target.ensure_schema(self.app)
+        current = self.app.tables["DocType"][target.DOCTYPE]
+        next(field for field in fields_before if field["fieldname"] == "sync_status")["options"] = target.STATUSES
+        self.assertTrue(result["ready"])
+        self.assertEqual(current["fields"], fields_before)
+        self.assertEqual(current["permissions"], permissions_before)
+        self.assertEqual(self.app.tables[target.DOCTYPE], rows_before)
+        self.assertEqual(self.app.commits, commits_before + 1)
+        self.assertEqual(self.app.cache_clears, 1)
+        target.ensure_schema(self.app)
+        self.assertEqual(self.app.commits, commits_before + 1)
+        self.assertEqual(self.app.cache_clears, 1)
+        self.assertEqual(self.app.tables[target.DOCTYPE], rows_before)
+
+    def test_unknown_status_options_are_rejected_before_metadata_or_source_changes(self):
+        variants = (target.PREVIOUS_STATUSES + "\n", target.PREVIOUS_STATUSES + "\nOther",
+                    "\n".join(reversed(target.PREVIOUS_STATUSES.splitlines())),
+                    target.STATUSES.replace("Frozen\n", ""))
+        for options in variants:
+            app = FakeFrappe().mapped()
+            target.store_batch(app, [record()])
+            data, status = self.previous_status_schema(app)
+            status["options"] = options
+            before = copy.deepcopy(app.tables)
+            commits_before = app.commits
+            with self.subTest(options=options), self.assertRaisesRegex(target.Rejected, "registry_schema_mismatch"):
+                target.ensure_schema(app)
+            self.assertEqual(app.tables, before)
+            self.assertEqual(app.commits, commits_before)
+            self.assertEqual(app.cache_clears, 0)
+
+    def test_previous_status_upgrade_requires_owned_custom_lms_metadata(self):
+        for key, value in (("owner", "another-user"), ("module", "Other"), ("custom", 0),
+                           ("title_field", "source_contact_id")):
+            app = FakeFrappe().mapped()
+            target.store_batch(app, [record()])
+            data, status = self.previous_status_schema(app)
+            data[key] = value
+            before = copy.deepcopy(app.tables)
+            with self.subTest(field=key), self.assertRaisesRegex(target.Rejected, "unexpected_registry_doctype"):
+                target.ensure_schema(app)
+            self.assertEqual(app.tables, before)
+            self.assertEqual(app.cache_clears, 0)
+
+    def test_populated_previous_status_schema_never_repairs_permission_drift(self):
+        app = FakeFrappe().mapped()
+        target.store_batch(app, [record()])
+        data, status = self.previous_status_schema(app)
+        data["permissions"][0].update({flag: 1 for flag in target.INITIAL_DEFAULT_GRANTS})
+        before = copy.deepcopy(app.tables)
+        with self.assertRaisesRegex(target.Rejected, "registry_permissions_mismatch"):
+            target.ensure_schema(app)
+        self.assertEqual(app.tables, before)
+        self.assertEqual(app.cache_clears, 0)
+
+    def test_previous_status_upgrade_rejects_other_field_drift_before_save(self):
+        variants = (("source_payload", "read_only", 0), ("source_contact_id", "reqd", 0),
+                    ("source_access_id", "unique", 0), ("account", "search_index", 0),
+                    ("mapped_course", "options", "Other Course"))
+        for name, key, value in variants:
+            app = FakeFrappe().mapped()
+            target.store_batch(app, [record()])
+            data, status = self.previous_status_schema(app)
+            next(field for field in data["fields"] if field["fieldname"] == name)[key] = value
+            before = copy.deepcopy(app.tables)
+            with self.subTest(field=name, attribute=key), self.assertRaisesRegex(target.Rejected, "registry_schema_mismatch"):
+                target.ensure_schema(app)
+            self.assertEqual(app.tables, before)
+            self.assertEqual(app.cache_clears, 0)
 
     def test_only_empty_owned_initial_default_permissions_can_be_repaired(self):
         data = self.app.tables["DocType"][target.DOCTYPE]
@@ -267,7 +357,8 @@ class LedgerTest(unittest.TestCase):
         self.assertEqual(app.set_value_calls, 1)
 
     def test_applied_mapping_and_owned_native_references_never_refresh(self):
-        for metadata in ({"sync_status": "Applied"}, {"grant": "owned-grant"}, {"enrollment": "owned-enrollment"}):
+        for metadata in ({"sync_status": "Applied"}, {"sync_status": "Superseded"},
+                         {"grant": "owned-grant"}, {"enrollment": "owned-enrollment"}):
             app = FakeFrappe()
             target.store_batch(app, [record()])
             row = app.tables[target.DOCTYPE]["avo-mv-centr-access-101"]

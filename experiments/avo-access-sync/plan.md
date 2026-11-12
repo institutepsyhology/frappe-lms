@@ -16,7 +16,9 @@
    the registry's immutable source identity, rather than an unverified cursor.
 5. Compare final count and aggregate hash, read representative records through
    MCP and publish source, tests and verified results to the established branch.
-6. Establish AVO opening/duplicate-access semantics before creating enrollments.
+6. Restore recorded lesson allowance with a conservative snapshot boundary.
+   The owner confirmed numeric maximum access ID as the current relationship;
+   keep earlier entries as history, including when the newest is restrictive.
    Preserve unsupported rules in the registry and expose specific pending reasons.
 
 Alternatives considered: plain Enrollment is insufficient for lesson selection,

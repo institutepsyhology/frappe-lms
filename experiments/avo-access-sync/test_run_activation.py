@@ -43,6 +43,8 @@ class FakeFrappe:
             return [{"sync_status": key, "count": count} for key, count in Counter(x["sync_status"] for x in rows).items()]
         after = kwargs.get("filters", {}).get("source_access_id")
         if after: rows = [row for row in rows if row["source_access_id"] > after[1]]
+        if kwargs.get("filters", {}).get("sync_status") == ("!=", "Applied"):
+            rows = [row for row in rows if row['sync_status'] != 'Applied']
         if kwargs.get("limit_page_length"): rows = rows[:kwargs["limit_page_length"]]
         return [{field: row[field] for field in kwargs["fields"]} for row in rows]
     def apply(self, fr, name, **kwargs):
@@ -61,6 +63,28 @@ def manifest(fr):
 
 
 class RunActivationTest(unittest.TestCase):
+    def test_restart_can_skip_applied_and_preserve_complete_source_accounting(self):
+        fr = FakeFrappe(4)
+        fr.rows[0]['sync_status'] = 'Applied'
+        fr.rows[2]['sync_status'] = 'Applied'
+        result = self.run_worker(fr, skip_applied=True)
+        self.assertEqual((result['status'], result['processed'], result['skipped_applied']),
+                         ('completed', 2, 2))
+        self.assertEqual(result['live_counts']['ledger_statuses'], {'Applied': 4})
+        self.assertEqual(len(fr.calls), 2)
+        self.assertTrue(all(options['duplicate_policy'] == 'latest' for _, options in fr.calls))
+
+    def test_superseded_is_an_expected_result_and_does_not_stop_worker(self):
+        fr = FakeFrappe()
+        def old(fr, name, **kwargs):
+            row = next(row for row in fr.rows if row['name'] == name)
+            row['sync_status'] = 'Superseded'
+            return {'source_access_id': row['source_access_id'], 'status': 'Superseded',
+                    'reason': 'superseded_by_latest_access', 'current_source_access_id': '100'}
+        result = self.run_worker(fr, callback=old)
+        self.assertEqual((result['status'], result['errors']), ('completed', 0))
+        self.assertEqual(result['statuses'], {'Superseded': 2})
+
     def test_installed_frappe_16_rejects_sql_function_strings_but_completion_still_works(self):
         fr = FakeFrappe()
         original = fr.get_all
@@ -79,6 +103,8 @@ class RunActivationTest(unittest.TestCase):
                                ("event", lambda path, **value: self.events.append(copy.deepcopy(value)))):
             patcher = patch.object(worker, name, side_effect=callback)
             patcher.start(); self.addCleanup(patcher.stop)
+        schema = patch.object(target, 'ensure_schema', return_value={'ready': True})
+        self.schema = schema.start(); self.addCleanup(schema.stop)
     def run_worker(self, fr, *, callback=None, source_manifest=None, allow=True, **kwargs):
         with patch.object(worker.activation, "apply_one", side_effect=callback or fr.apply):
             return worker.run(fr, manifest(fr) if source_manifest is None else source_manifest,

@@ -3,6 +3,8 @@
 This is a conservative migration boundary, not an inferred original schedule.
 An accessible source checkbox is restored no earlier than its source snapshot;
 future offset formulas, prerequisites, progress and retention are not invented.
+For one account/contact/course pair, only the greatest numeric source access ID
+is authoritative. Earlier source snapshots remain unchanged as history.
 """
 import hashlib
 import json
@@ -42,14 +44,54 @@ def _source(ledger):
     return record
 
 
-def _decision(fr, ledger, now, excluded):
+def _duplicate_policy(value):
+    if value not in ("latest", "defer"):
+        raise target.Rejected("duplicate_policy_not_supported")
+    return value
+
+
+def _current_access(fr, record):
+    """Resolve the newest numeric link in one account/contact/course pair."""
+    rows = fr.get_all(target.DOCTYPE, filters={"account": target.ACCOUNT,
+        "source_contact_id": record["source_contact_id"], "source_course_id": record["source_course_id"]},
+        fields=["name", "account", "source_access_id", "source_contact_id", "source_course_id",
+                "grant", "enrollment"], limit_page_length=0)
+    seen = set()
+    for row in rows:
+        ident = row.get("source_access_id")
+        if (not target._id(ident) or int(ident) > 100997 or ident in seen
+                or row.get("name") != "avo-mv-centr-access-" + ident
+                or row.get("account") != target.ACCOUNT
+                or row.get("source_contact_id") != record["source_contact_id"]
+                or row.get("source_course_id") != record["source_course_id"]):
+            raise target.Rejected("source_access_pair_identity_mismatch")
+        seen.add(ident)
+    if record["source_access_id"] not in seen:
+        raise target.Rejected("source_access_pair_identity_mismatch")
+    current = max(seen, key=int)
+    return rows, current
+
+
+def _decision(fr, ledger, now, excluded, duplicate_policy="latest"):
+    duplicate_policy = _duplicate_policy(duplicate_policy)
     record = _source(ledger)
     access = record["access"]
+    pair, current = _current_access(fr, record)
     result = {"record": record, "status": "Needs Review", "reason": None, "lessons": [],
-              "missing_lesson_ids": [], "excluded_count": 0, "unavailable_count": 0}
+              "missing_lesson_ids": [], "excluded_count": 0, "unavailable_count": 0,
+              "current_source_access_id": current}
     def stop(status, reason):
         result.update(status=status, reason=reason)
         return result
+    # Resolve authority before examining any older status or permission. A newer
+    # frozen, expired or unresolved record must never fall back to an older one.
+    if duplicate_policy == "latest":
+        if any(row["source_access_id"] != current and (row.get("grant") or row.get("enrollment")) for row in pair):
+            raise target.Rejected("existing_native_references_require_review")
+        if record["source_access_id"] != current:
+            return stop("Superseded", "superseded_by_latest_access")
+    elif len(pair) > 1:
+        return stop("Needs Review", "duplicate_source_access")
     if access["frozen"] is True:
         return stop("Frozen", "source_frozen")
     if access["frozen"] is not False:
@@ -73,11 +115,6 @@ def _decision(fr, ledger, now, excluded):
     if any(ledger.get(key) and ledger.get(key) != mapped[key] for key in
            ("mapped_user", "mapped_contact", "mapped_course")):
         return stop("Needs Review", "target_mapping_changed")
-    duplicates = fr.get_all(target.DOCTYPE, filters={"account": target.ACCOUNT,
-        "source_contact_id": record["source_contact_id"], "source_course_id": record["source_course_id"]},
-        fields=["name"], limit_page_length=2)
-    if len(duplicates) != 1:
-        return stop("Needs Review", "duplicate_source_access")
     eligible = []
     for lesson in record["lessons"]:
         if not (lesson["assigned"] is True and lesson["accessible"] is True and lesson["hidden"] is False):
@@ -120,14 +157,17 @@ def _public(decision):
     return {"source_access_id": record["source_access_id"], "source_contact_id": record["source_contact_id"],
             "source_course_id": record["source_course_id"], "status": decision["status"], "reason": decision["reason"],
             "eligible_count": len(decision["lessons"]), "excluded_count": decision["excluded_count"],
-            "unavailable_count": decision["unavailable_count"], "missing_lesson_ids": decision["missing_lesson_ids"]}
+            "unavailable_count": decision["unavailable_count"], "missing_lesson_ids": decision["missing_lesson_ids"],
+            "current_source_access_id": decision["current_source_access_id"]}
 
 
-def preview_one(fr, ledger_name, *, allow_general_unlimited=False, excluded_lesson_ids=(), now=None):
+def preview_one(fr, ledger_name, *, allow_general_unlimited=False, duplicate_policy="latest",
+                excluded_lesson_ids=(), now=None):
     _check(fr, allow_general_unlimited)
+    duplicate_policy = _duplicate_policy(duplicate_policy)
     ledger = fr.get_doc(target.DOCTYPE, ledger_name)
     clock = target._instant(now) if now else datetime.now(timezone.utc)
-    return _public(_decision(fr, ledger, clock, _excluded(excluded_lesson_ids)))
+    return _public(_decision(fr, ledger, clock, _excluded(excluded_lesson_ids), duplicate_policy))
 
 
 def _same(doc, values):
@@ -192,12 +232,12 @@ def _native_values(decision):
     return grant_name, enrollment_name, grant, enrollment
 
 
-def _verify_expired(fr, ledger, decision, excluded):
+def _verify_expired(fr, ledger, decision, excluded, duplicate_policy):
     """Verify a previous projection without inserting or changing native access."""
     if ledger.get("sync_status") not in ("Applied", "Expired"):
         raise target.Rejected("existing_native_references_require_review")
     end = target._instant(decision["record"]["access"]["closes_at"]["iso"])
-    previous = _decision(fr, ledger, end - timedelta(microseconds=1), excluded)
+    previous = _decision(fr, ledger, end - timedelta(microseconds=1), excluded, duplicate_policy)
     if previous["status"] != "Ready":
         raise target.Rejected("existing_native_references_require_review")
     grant_name, enrollment_name, grant, enrollment = _native_values(previous)
@@ -216,22 +256,22 @@ def _verify_expired(fr, ledger, decision, excluded):
             raise target.Rejected("native_access_readback_mismatch")
 
 
-def apply_one(fr, ledger_name, *, allow_general_unlimited=False, duplicate_policy="defer",
+def apply_one(fr, ledger_name, *, allow_general_unlimited=False, duplicate_policy="latest",
               excluded_lesson_ids=(), now=None):
     """One atomic native projection; source snapshots and learning records stay intact."""
     _check(fr, allow_general_unlimited)
-    if duplicate_policy != "defer": raise target.Rejected("duplicate_policy_not_supported")
+    duplicate_policy = _duplicate_policy(duplicate_policy)
     clock = target._instant(now) if now else datetime.now(timezone.utc)
     excluded = _excluded(excluded_lesson_ids)
     fr.db.begin()
     try:
         ledger = fr.get_doc(target.DOCTYPE, ledger_name, for_update=True)
-        decision = _decision(fr, ledger, clock, excluded)
+        decision = _decision(fr, ledger, clock, excluded, duplicate_policy)
         if decision["status"] != "Ready":
             if ledger.get("grant") or ledger.get("enrollment"):
                 if decision["status"] != "Expired":
                     raise target.Rejected("existing_native_references_require_review")
-                _verify_expired(fr, ledger, decision, excluded)
+                _verify_expired(fr, ledger, decision, excluded, duplicate_policy)
             fr.db.set_value(target.DOCTYPE, ledger_name,
                 {"sync_status": decision["status"], "review_reason": decision["reason"]})
             fr.db.commit()

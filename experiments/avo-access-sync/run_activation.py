@@ -49,9 +49,11 @@ def _verify_registry(fr, manifest):
         raise target.Rejected("source_registry_fingerprint_mismatch")
 
 
-def run(fr, manifest, state_path, events_path, *, allow_general_unlimited=False, excluded_lesson_ids=(), limit=None):
+def run(fr, manifest, state_path, events_path, *, allow_general_unlimited=False, excluded_lesson_ids=(),
+        limit=None, skip_applied=False):
     state = {"status": "validating", "pid": os.getpid(), "processed": 0, "applied": 0,
-        "already_applied": 0, "errors": 0, "consecutive_errors": 0, "statuses": {}, "reasons": {}}
+        "already_applied": 0, "errors": 0, "consecutive_errors": 0, "statuses": {}, "reasons": {},
+        "current_access_rule": "highest_numeric_source_access_id", "skipped_applied": 0}
     save_state(state_path, state)
     statuses, reasons = Counter(), Counter()
     def stop(exc, code=None):
@@ -67,7 +69,12 @@ def run(fr, manifest, state_path, events_path, *, allow_general_unlimited=False,
         activation._check(fr, allow_general_unlimited)
         excluded = activation._excluded(excluded_lesson_ids)
         if limit is not None and (type(limit) is not int or limit < 1): raise target.Rejected("invalid_limit")
+        if type(skip_applied) is not bool: raise target.Rejected("invalid_skip_applied")
         _verify_registry(fr, manifest)
+        target.ensure_schema(fr)
+        if skip_applied:
+            state["skipped_applied"] = fr.db.count(target.DOCTYPE,
+                {"account": target.ACCOUNT, "sync_status": "Applied"})
         state.update(status="running", expected=manifest["record_count"], source_registry_verified=True,
                      aggregate_payload_hash=manifest["payload"]["aggregate_payload_hash"])
         save_state(state_path, state)
@@ -75,6 +82,7 @@ def run(fr, manifest, state_path, events_path, *, allow_general_unlimited=False,
         finished = False
         while not finished:
             filters = {"account": target.ACCOUNT}
+            if skip_applied: filters["sync_status"] = ("!=", "Applied")
             if cursor is not None: filters["source_access_id"] = (">", cursor)
             rows = fr.get_all(target.DOCTYPE, filters=filters, fields=["name", "source_access_id", "sync_status"],
                               order_by="source_access_id asc", limit_page_length=500)
@@ -87,7 +95,7 @@ def run(fr, manifest, state_path, events_path, *, allow_general_unlimited=False,
                 state.update(last_source_access_id=ident, processed=state["processed"] + 1)
                 try:
                     result = activation.apply_one(fr, row["name"], allow_general_unlimited=True,
-                                                  duplicate_policy="defer", excluded_lesson_ids=excluded)
+                                                  duplicate_policy="latest", excluded_lesson_ids=excluded)
                     if (type(result) is not dict or result.get("source_access_id") != ident
                             or result.get("status") not in EXPECTED
                             or type(result.get("reason")) is not str
@@ -112,7 +120,7 @@ def run(fr, manifest, state_path, events_path, *, allow_general_unlimited=False,
                     save_state(state_path, state); checkpoint = time.monotonic()
                     event(events_path, status="progress", processed=state["processed"], applied=state["applied"], already_applied=state["already_applied"])
                 if limit is not None and state["processed"] >= limit: finished = True; break
-        if limit is None and state["processed"] != state["expected"]:
+        if limit is None and state["processed"] + state["skipped_applied"] != state["expected"]:
             raise target.Rejected("activation_record_count_mismatch")
         # Frappe 16 rejects SQL function strings in SELECT. This bounded status
         # projection uses the same portable field contract as the source proof.
@@ -142,6 +150,7 @@ def main():
     parser.add_argument("--allow-general-unlimited", action="store_true", required=True)
     parser.add_argument("--exclude-lesson", action="append", type=int, default=[])
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--skip-applied", action="store_true")
     args = parser.parse_args()
     import fcntl
     import frappe
@@ -155,7 +164,7 @@ def main():
             frappe.init(site=target.SITE); frappe.connect(); frappe.set_user("Administrator")
             manifest = json.loads(args.manifest.read_text(encoding="utf-8")); running = True
             result = run(frappe, manifest, args.state, args.events, allow_general_unlimited=args.allow_general_unlimited,
-                         excluded_lesson_ids=args.exclude_lesson, limit=args.limit)
+                         excluded_lesson_ids=args.exclude_lesson, limit=args.limit, skip_applied=args.skip_applied)
             print(json.dumps({"ok": True, "result": result}, ensure_ascii=True)); return 0
         except Exception as exc:
             if not running:

@@ -15,6 +15,9 @@ Acceptance criteria:
 - One immutable source ledger document per source access ID, including repeated
   contact/course pairs. Preserve hashes, capture times, unknown values, dates and
   the complete independent lesson flags; omit names, email and credentials.
+- The owner identified the maximum numeric access ID per account/contact/course
+  as authoritative. Earlier records remain historical Superseded entries and
+  cannot contribute rights or substitute for a newer frozen/expired record.
 - Match target identities strictly by AVO account and source ID. Missing contacts,
   Contact-only profiles and missing courses remain explicit pending relationships.
 - A rerun cannot duplicate or overwrite a source snapshot. Pending mappings can

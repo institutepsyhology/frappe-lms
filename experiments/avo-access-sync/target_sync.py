@@ -19,7 +19,8 @@ ACCOUNT = "mv-centr"
 ORIGIN = "https://shop.mv-centr.ru"
 DOCTYPE = "AVO Course Access"
 MAX_BATCH = 100
-STATUSES = "Stored\nPending Contact\nPending Course\nNeeds Review\nApplied\nFrozen\nExpired"
+PREVIOUS_STATUSES = "Stored\nPending Contact\nPending Course\nNeeds Review\nApplied\nFrozen\nExpired"
+STATUSES = PREVIOUS_STATUSES + "\nSuperseded"
 DATE_FIELDS = ("opens_at", "closes_at", "report_check_ends_at", "training_start_at", "effective_closes_at")
 RECORD_FIELDS = {"schema_version", "account", "origin", "source_access_id", "source_contact_id",
                  "source_course_id", "source_snapshot_hash", "captured_at", "access", "lessons"}
@@ -151,6 +152,32 @@ def _validate_records(records):
     return result
 
 
+def _validate_schema_fields(meta, *, allow_previous_statuses=False):
+    """Recognize only our current fields or the one known status migration."""
+    if not meta.custom or meta.title_field != "source_access_id":
+        raise Rejected("unexpected_registry_doctype")
+    status_upgrade = False
+    for expected in FIELDS:
+        actual = meta.get_field(expected["fieldname"])
+        old_statuses = (allow_previous_statuses and expected["fieldname"] == "sync_status"
+                       and actual and actual.options == PREVIOUS_STATUSES)
+        if (not actual or actual.fieldtype != expected["fieldtype"] or not actual.read_only
+                or (expected.get("options") and actual.options != expected["options"] and not old_statuses)
+                or any(expected.get(key) and not actual.get(key) for key in ("reqd", "unique", "in_list_view"))
+                or expected.get("search_index") and not (actual.get("search_index") or actual.get("unique"))):
+            raise Rejected("registry_schema_mismatch")
+        status_upgrade = status_upgrade or old_statuses
+    return status_upgrade
+
+
+def _validate_registry_permissions(meta, permission_flags):
+    if (len(meta.permissions) != 1 or meta.permissions[0].role != "System Manager"
+            or meta.permissions[0].read != 1 or meta.permissions[0].get("permlevel")):
+        raise Rejected("registry_permissions_mismatch")
+    if any(meta.permissions[0].get(flag) for flag in permission_flags):
+        raise Rejected("registry_permissions_mismatch")
+
+
 def ensure_schema(fr):
     """Explicit DDL phase; call before store_batch, never inside its transaction."""
     _require(fr)
@@ -164,16 +191,8 @@ def ensure_schema(fr):
                     "engine": "InnoDB", "fields": FIELDS,
                     "permissions": [permission_row]}).insert()
         fr.db.commit()
-    meta = fr.get_meta(DOCTYPE)
-    if not meta.custom or meta.title_field != "source_access_id":
-        raise Rejected("unexpected_registry_doctype")
-    for expected in FIELDS:
-        actual = meta.get_field(expected["fieldname"])
-        if (not actual or actual.fieldtype != expected["fieldtype"] or not actual.read_only
-                or (expected.get("options") and actual.options != expected["options"])
-                or any(expected.get(key) and not actual.get(key) for key in ("reqd", "unique", "in_list_view"))
-                or expected.get("search_index") and not (actual.get("search_index") or actual.get("unique"))):
-            raise Rejected("registry_schema_mismatch")
+    meta = fr.get_meta(DOCTYPE, cached=False)
+    status_upgrade = _validate_schema_fields(meta, allow_previous_statuses=True)
     if (len(meta.permissions) != 1 or meta.permissions[0].role != "System Manager"
             or meta.permissions[0].read != 1 or meta.permissions[0].get("permlevel")):
         raise Rejected("registry_permissions_mismatch")
@@ -189,10 +208,27 @@ def ensure_schema(fr):
         document.save()
         fr.clear_cache(doctype=DOCTYPE)
         meta = fr.get_meta(DOCTYPE, cached=False)
-        if (len(meta.permissions) != 1 or meta.permissions[0].role != "System Manager"
-                or meta.permissions[0].read != 1 or meta.permissions[0].get("permlevel")
-                or any(meta.permissions[0].get(flag) for flag in permission_flags)):
-            raise Rejected("registry_permissions_mismatch")
+        _validate_registry_permissions(meta, permission_flags)
+        fr.db.commit()
+    if status_upgrade:
+        # This changes only Select metadata, including on a populated ledger.
+        # Unknown schemas/rights were rejected before saving anything.
+        document = fr.get_doc("DocType", DOCTYPE)
+        if (document.get("owner") != "Administrator" or document.get("module") != "LMS"
+                or document.get("custom") != 1):
+            raise Rejected("unexpected_registry_doctype")
+        fields = [field for field in document.get("fields") if field.get("fieldname") == "sync_status"]
+        if len(fields) != 1 or fields[0].get("options") != PREVIOUS_STATUSES:
+            raise Rejected("registry_schema_mismatch")
+        before_count = fr.db.count(DOCTYPE)
+        fields[0].update({"options": STATUSES})
+        document.save()
+        fr.clear_cache(doctype=DOCTYPE)
+        meta = fr.get_meta(DOCTYPE, cached=False)
+        _validate_schema_fields(meta)
+        _validate_registry_permissions(meta, permission_flags)
+        if fr.db.count(DOCTYPE) != before_count:
+            raise Rejected("registry_record_count_changed")
         fr.db.commit()
     return {"doctype": DOCTYPE, "ready": True}
 
