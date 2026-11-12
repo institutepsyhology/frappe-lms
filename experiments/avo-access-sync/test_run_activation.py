@@ -61,6 +61,18 @@ def manifest(fr):
 
 
 class RunActivationTest(unittest.TestCase):
+    def test_installed_frappe_16_rejects_sql_function_strings_but_completion_still_works(self):
+        fr = FakeFrappe()
+        original = fr.get_all
+        def checked(doctype, **kwargs):
+            if any(isinstance(field, str) and '(' in field for field in kwargs.get('fields', [])):
+                raise ValidationError('SQL functions are not allowed as strings in SELECT')
+            return original(doctype, **kwargs)
+        fr.get_all = checked
+        result = self.run_worker(fr)
+        self.assertEqual(result['status'], 'completed')
+        self.assertEqual(result['live_counts']['ledger_statuses'], {'Applied': 2})
+
     def setUp(self):
         self.saved, self.events = [], []
         for name, callback in (("save_state", lambda path, value: self.saved.append(copy.deepcopy(value))),

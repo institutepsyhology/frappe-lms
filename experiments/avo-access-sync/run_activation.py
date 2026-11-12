@@ -114,11 +114,13 @@ def run(fr, manifest, state_path, events_path, *, allow_general_unlimited=False,
                 if limit is not None and state["processed"] >= limit: finished = True; break
         if limit is None and state["processed"] != state["expected"]:
             raise target.Rejected("activation_record_count_mismatch")
-        counts = fr.get_all(target.DOCTYPE, filters={"account": target.ACCOUNT},
-            fields=["sync_status", "count(name) as count"], group_by="sync_status", limit_page_length=0)
-        if any(row.get("sync_status") not in EXPECTED | {"Stored"} for row in counts):
+        # Frappe 16 rejects SQL function strings in SELECT. This bounded status
+        # projection uses the same portable field contract as the source proof.
+        counts = Counter(row["sync_status"] for row in fr.get_all(target.DOCTYPE,
+            filters={"account": target.ACCOUNT}, fields=["sync_status"], limit_page_length=0))
+        if any(status not in EXPECTED | {"Stored"} for status in counts):
             raise target.Rejected("invalid_ledger_status")
-        state["live_counts"] = {"ledger_statuses": {row["sync_status"]: int(row["count"]) for row in counts},
+        state["live_counts"] = {"ledger_statuses": dict(counts),
             "native_grants": fr.db.count("LMS Access Grant", {"name": ("like", "avo-mv-centr-grant-%")}),
             "native_enrollments": fr.db.count("LMS Enrollment", {"name": ("like", "avo-mv-centr-enrollment-%")})}
         if sum(state["live_counts"]["ledger_statuses"].values()) != state["expected"]:
