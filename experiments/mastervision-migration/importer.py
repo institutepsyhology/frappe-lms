@@ -245,6 +245,8 @@ class Importer:
                     if not isinstance(images, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in images.items()):
                         raise ValueError()
                     images = copy.deepcopy(images)
+                except Review:
+                    raise
                 except Exception:
                     raise Review("image_requires_preparation") from None
                 image_sets[ident] = images

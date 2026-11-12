@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 import importer
+import assets
 import run as mod
 import source
 
@@ -80,10 +81,16 @@ class FakeClient:
     def close(self): self.closed = True
 
 
+class FakeAssets:
+    def __init__(self): self.closed = False
+    def lesson_images(self, payload): return {}
+    def close(self): self.closed = True
+
+
 class FakeImporter:
     def __init__(self, behavior):
         self.behavior, self.calls = behavior, []
-    def import_course(self, payloads, apply=False):
+    def import_course(self, payloads, apply=False, images_for_lesson=None):
         cid = payloads[0]['course_id']
         self.calls.append((cid, apply))
         error = self.behavior(cid)
@@ -123,6 +130,7 @@ class ControllerTests(unittest.TestCase):
              patch.object(mod, 'catalog', return_value=rows), patch.object(mod, 'course', side_effect=collecting), \
              patch.object(importer, 'MCPClient', return_value=client) as make_client, \
              patch.object(importer, 'Importer', return_value=target), patch.object(mod, 'emit', side_effect=output.append), \
+             patch.object(assets, 'AssetCache', return_value=FakeAssets()), \
              patch('sys.argv', ['run.py', *args]):
             status = mod.main()
         return status, store, transport, client, target, output, collected, make_client.call_count

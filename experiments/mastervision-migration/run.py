@@ -186,7 +186,7 @@ def main():
     if selected.apply and (selected.collect_only or selected.catalog_only):
         raise Stop('conflicting_mode')
     with Store(DATA) as store:
-        client = None
+        client, assets = None, None
         try:
             if selected.resume:
                 for stage in ('collect', 'import'): store.error(stage, False)
@@ -208,6 +208,8 @@ def main():
                     import importer
                     client = importer.MCPClient(workspace=ROOT)
                     target = importer.Importer(client)
+                    from assets import AssetCache
+                    assets = AssetCache(DATA / 'assets')
                 for row in rows:
                     cid = row['id']
                     try:
@@ -225,7 +227,7 @@ def main():
                         emit({'course': cid, 'status': 'collected', 'lessons': len(payloads)}); continue
                     try:
                         payloads, normalization_warnings = prepare_payloads(payloads)
-                        result = target.import_course(payloads, apply=selected.apply)
+                        result = target.import_course(payloads, apply=selected.apply, images_for_lesson=assets.lesson_images)
                         store.error('import', False)
                         if selected.apply: store.mark(cid, 'imported')
                         store.event('import', cid, None, result['status'])
@@ -254,6 +256,7 @@ def main():
             store.event('import', None, None, 'stopped', [code]); emit({'status': 'stopped', 'code': code}); return 1
         finally:
             store.report()
+            if assets: assets.close()
             if client: client.close()
 
 
