@@ -6,6 +6,7 @@ No login endpoint, passwords, API keys, tracking endpoints or browser JS are use
 """
 import json
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from urllib.error import HTTPError
 from urllib.parse import quote, urlencode
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -70,7 +71,7 @@ def temporary_session(fr, user, site):
         with patch("frappe.sessions.update_user_metadata", lambda *a, **kw: None):
             try:
                 Session.__init__(session, user=user, user_type="Website User", full_name="",
-                                 session_end=fr.utils.add_to_date(fr.utils.now_datetime(), minutes=10),
+                                 session_end=(datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
                                  audit_user="Administrator")
             finally:
                 candidate = getattr(session, "sid", None)
