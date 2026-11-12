@@ -10,8 +10,7 @@ import tarfile
 ROOT=Path(__file__).resolve().parents[2]
 FILES=['lms/lms/avo_course_routes.py','lms/lms/test_avo_course_routes_unit.py',
        'frontend/src/routes.js','frontend/src/router.js','frontend/src/components/AssessmentPlugin.vue',
-       'frontend/src/components/ChapterRow.vue','frontend/src/pages/Lesson.vue',
-       'frontend/src/utils/index.js','frontend/src/utils/mobileNav.ts',
+       'frontend/src/utils/mobileNav.ts','experiments/avo-course-urls/apply_live_delta.py',
        'frontend/src/pages/Courses/AvoCourseRoute.vue','frontend/src/utils/avoCourseRoutes.ts',
        'frontend/src/tests/avoCourseRoutes.test.ts','frontend/src/tests/ChapterRow.test.ts',
        'frontend/src/tests/mobileNav.test.ts']
