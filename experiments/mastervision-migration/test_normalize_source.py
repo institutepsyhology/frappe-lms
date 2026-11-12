@@ -25,6 +25,14 @@ def payload(html=None):
 
 
 class NormalizeTests(unittest.TestCase):
+    def test_legacy_fullscreen_boolean_attributes_do_not_change_rutube_video(self):
+        normalized, _ = normalize_payload(payload(frame(RUTUBE, ' webkitallowfullscreen mozallowfullscreen')))
+        self.assertEqual(normalized['ape']['children'][0]['fields']['videoSrc'], RUTUBE)
+        self.assertTrue(plan_import(normalized)['ready'])
+        for attribute in ('webkitallowfullscreen', 'mozallowfullscreen'):
+            with self.assertRaises(Review):
+                normalize_payload(payload(frame(RUTUBE, ' ' + attribute + '="javascript:bad()"')))
+
     def test_standalone_code_iframe_uses_the_same_strict_native_player_conversion(self):
         original = payload(frame(RUTUBE))
         original['ape']['children'][0]['name'] = 'code'

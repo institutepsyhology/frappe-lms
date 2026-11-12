@@ -81,15 +81,16 @@ class SingleFrame(HTMLParser):
             if self.video or "iframe" in self.stack:
                 raise Review("embedded_iframe_requires_review")
             values = dict(attrs)
-            if set(values) - {"src", "width", "height", "frameborder", "allow", "allowfullscreen"}:
+            if set(values) - {"src", "width", "height", "frameborder", "allow", "allowfullscreen", "webkitallowfullscreen", "mozallowfullscreen"}:
                 raise Review("embedded_iframe_requires_review")
             for key in ("width", "height"):
                 if key in values and (not isinstance(values[key], str) or not re.fullmatch(r"[1-9][0-9]{0,3}", values[key])):
                     raise Review("embedded_iframe_requires_review")
             if "frameborder" in values and values["frameborder"] not in {"0", "1"}:
                 raise Review("embedded_iframe_requires_review")
-            if "allowfullscreen" in values and values["allowfullscreen"] not in {None, "", "true", "allowfullscreen"}:
-                raise Review("embedded_iframe_requires_review")
+            for boolean in ('allowfullscreen', 'webkitallowfullscreen', 'mozallowfullscreen'):
+                if boolean in values and values[boolean] not in {None, '', 'true', boolean}:
+                    raise Review("embedded_iframe_requires_review")
             if "allow" in values and (not isinstance(values["allow"], str) or not {part.strip() for part in values["allow"].split(";") if part.strip()} <= FEATURES):
                 raise Review("embedded_iframe_requires_review")
             self.video = player(values.get("src"))
