@@ -28,7 +28,33 @@ ROOT = workspace_root()
 SITE = "https://my-lk.mv-centr.ru"
 EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+\Z")
 JOURNAL = ROOT / "exports/contacts-api-all-fields/mvcentr-user-import-events.jsonl"
-EXCLUDED_CONTACTS = {10}
+BUILTIN_EXCLUDED_CONTACTS = frozenset({10})
+
+
+def load_excluded_contacts(path=None):
+    """Read private MV-Centr exclusions, failing closed on invalid rules.
+
+    The optional file contains only this account's positive integer source IDs.
+    Keep it outside the repository; all importer clients share this loader.
+    """
+    path = (ROOT / "exports/contacts-api-all-fields/mvcentr-excluded-contact-ids.json"
+            if path is None else Path(path))
+    try:
+        rules = json.loads(path.read_text(encoding="utf-8-sig"))
+    except FileNotFoundError:
+        return set(BUILTIN_EXCLUDED_CONTACTS)
+    if (type(rules) is not dict or set(rules) != {"account", "excluded_ids"}
+            or rules["account"] != "mv-centr"
+            or type(rules["excluded_ids"]) is not list):
+        raise ValueError("invalid_contact_exclusions")
+    ids = rules["excluded_ids"]
+    if (any(type(ident) is not int or ident < 1 for ident in ids)
+            or len(set(ids)) != len(ids)):
+        raise ValueError("invalid_contact_exclusions")
+    return set(BUILTIN_EXCLUDED_CONTACTS).union(ids)
+
+
+EXCLUDED_CONTACTS = load_excluded_contacts()
 
 
 @contextmanager
@@ -218,7 +244,7 @@ def main():
     for ident, record in load():
         if selected is not None and ident not in selected:
             continue
-        if args.apply and ident in EXCLUDED_CONTACTS:
+        if ident in EXCLUDED_CONTACTS:
             counts["excluded_by_owner"] += 1
             continue
         if args.apply and ident in known_created:
