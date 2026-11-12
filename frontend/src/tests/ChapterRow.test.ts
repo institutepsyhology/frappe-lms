@@ -81,7 +81,7 @@ beforeEach(() => {
 it('highlights the selected lesson when the URL uses AVO IDs', () => {
 	const wrapper = mount(ChapterRow, {
 		props: { chapter, index:1, courseName:'course-1', allowEdit:false, selectedLessonNumber:'2-1' },
-		global: { provide: { $user:{data:{name:'student@example.test'}} }, stubs:{'router-link':{template:'<a><slot /></a>'}} },
+		global: { mocks:{__: (s:string) => s}, provide: { $user:{data:{name:'student@example.test'}} }, stubs:{'router-link':{template:'<a><slot /></a>'}} },
 	})
 	expect(wrapper.get('.outline-lesson').classes()).toContain('bg-surface-gray-3')
 })
