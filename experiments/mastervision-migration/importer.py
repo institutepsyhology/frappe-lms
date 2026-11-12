@@ -8,6 +8,8 @@ import importlib.util
 import json
 from pathlib import Path
 import re
+import time
+import urllib.error
 import urllib.request
 
 
@@ -69,16 +71,33 @@ class MCPClient:
                           ensure_ascii=True, allow_nan=False).encode()
         req = urllib.request.Request("https://" + SITE + "/api/v2/mcp", data=data,
             headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream", **self.auth})
-        try:
-            with self.opener.open(req, timeout=60) as response:
-                raw = response.read(32 * 1024 * 1024 + 1)
-                if len(raw) > 32 * 1024 * 1024:
-                    raise Stop("mcp_invalid_response")
-                body = json.loads(raw)
-        except Stop:
-            raise
-        except Exception:
-            raise Stop("mcp_connection_failed") from None
+        arguments = params.get('arguments', {}) if isinstance(params, dict) else {}
+        readonly = method == 'initialize' or (method == 'tools/call' and isinstance(params, dict) and
+            (params.get('name') in ('list_documents', 'get_document') or
+             params.get('name') == 'call_method' and isinstance(arguments, dict) and
+             arguments.get('method') == METHOD and isinstance(arguments.get('args'), dict) and
+             arguments['args'].get('dry_run') is True))
+        attempts = 3 if readonly else 1
+        for attempt in range(attempts):
+            try:
+                with self.opener.open(req, timeout=60) as response:
+                    raw = response.read(32 * 1024 * 1024 + 1)
+                    if len(raw) > 32 * 1024 * 1024:
+                        raise Stop("mcp_invalid_response")
+                    body = json.loads(raw)
+                break
+            except Stop:
+                raise
+            except urllib.error.HTTPError as error:
+                transient = error.code in (429, 502, 503, 504)
+                code = ('mcp_authentication_failed' if error.code in (401, 403) else
+                        'mcp_rate_limited' if error.code == 429 else 'mcp_http_failed')
+                if not transient or attempt + 1 == attempts: raise Stop(code) from None
+            except (urllib.error.URLError, OSError, TimeoutError):
+                if attempt + 1 == attempts: raise Stop('mcp_connection_failed') from None
+            except Exception:
+                raise Stop('mcp_invalid_response') from None
+            time.sleep(attempt + 1)
         if not isinstance(body, dict) or body.get("id") != self.n or "error" in body or not isinstance(body.get("result"), dict):
             raise Stop("mcp_invalid_response")
         return body["result"]

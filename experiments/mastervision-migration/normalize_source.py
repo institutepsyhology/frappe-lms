@@ -15,6 +15,7 @@ from urllib.parse import parse_qsl, urlsplit
 
 from importer import ACCOUNT, ORIGIN, Review
 from normalize_editor_nodes import normalize_nodes
+from normalize_inline_images import normalize_inline_images, CODE as IMAGE_CODE
 
 
 CODE = "embedded_video_iframe_normalized"
@@ -316,6 +317,7 @@ def normalize_payload(payload):
         raise Review("normalization_source_invalid")
     original_ape, changed, table_changes = copy.deepcopy(ape), [], []
     ape, editor_changes = normalize_nodes(ape, static_validator())
+    ape, image_changes = normalize_inline_images(ape, static_validator())
     result['ape'] = ape
 
     def visit(node, path):
@@ -341,7 +343,7 @@ def normalize_payload(payload):
             else:
                 candidate = False
         if candidate:
-            if node["name"] != "text" or node.get("children") or fields.get("anchor") or any(value not in (None, "", False, [], {}) for key, value in fields.items() if key not in {"html", "anchor"}):
+            if node["name"] not in {"text", "code"} or node.get("children") or fields.get("anchor") or any(value not in (None, "", False, [], {}) for key, value in fields.items() if key not in {"html", "anchor"}):
                 raise Review("embedded_iframe_requires_review")
             if len(markup.encode("utf-8")) > 200000:
                 raise Review("embedded_iframe_requires_review")
@@ -359,9 +361,15 @@ def normalize_payload(payload):
     visit(ape, [])
     codes = ([CODE] if changed else []) + ([TABLE_CODE] if table_changes else [])
     codes.extend(dict.fromkeys(change['code'] for change in editor_changes))
+    if image_changes:
+        codes.append(IMAGE_CODE)
     if codes:
         result["source_original_ape"] = original_ape
-        if table_changes or editor_changes:
+        if image_changes:
+            result["source_normalization"] = {"version": 3, "kind": "mastervision_editor_normalization", "codes": codes,
+                                               "blocks": changed, "table_blocks": table_changes, "editor_blocks": editor_changes,
+                                               "inline_image_blocks": image_changes}
+        elif table_changes or editor_changes:
             result["source_normalization"] = {"version": 2, "kind": "mastervision_editor_normalization", "codes": codes,
                                                "blocks": changed, "table_blocks": table_changes, "editor_blocks": editor_changes}
         else:

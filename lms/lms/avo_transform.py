@@ -3,6 +3,7 @@ from html import escape, unescape
 from html.parser import HTMLParser
 import hashlib
 import base64
+import binascii
 import json
 import math
 import re
@@ -17,6 +18,7 @@ ACCOUNT = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 IMAGE_KEY = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
 PLACEHOLDER_IMAGE_SHA256 = '44c98968db4973a119db3bbc00ca36392c1466e1b631596e1fff0ac4a2474ea2'
 PRIVATE_FILE = re.compile(r"^/private/files/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,180}$")
+MAX_INLINE_IMAGE = 5 * 1024 * 1024
 ALLOWED_TAGS = {"p", "br", "strong", "b", "em", "i", "u", "s", "a", "ul", "ol", "li",
                 "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "code"}
 EMPTY_LEGACY_VIDEO_OVERLAY = ('<div class="video_wrapper" style="margin: 0 auto;position: relative">'
@@ -572,6 +574,53 @@ def _url(value, providers=None):
         return True
     except ValueError:
         return False
+
+
+def _image_source_valid(value, prepared_url=None):
+    """Allow inline raster bytes only when bound to their prepared private file.
+
+    The import endpoint fully decodes images with Pillow first. This pure guard
+    checks canonical encoding, magic/MIME and the prepared original-byte hash;
+    it does not permit data URLs in links or any other general URL field.
+    """
+    if _url(value):
+        return True
+    if not isinstance(value, str) or not isinstance(prepared_url, str):
+        return False
+    mimes = {'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/webp': 'webp'}
+    prefixes = {f'data:{mime};base64,': extension for mime, extension in mimes.items()}
+    if len(value) > max(map(len, prefixes)) + 4 * ((MAX_INLINE_IMAGE + 2) // 3):
+        return False
+    prefix = next((prefix for prefix in prefixes if value.startswith(prefix)), None)
+    if prefix is None:
+        return False
+    encoded = value[len(prefix):]
+    if not encoded or len(encoded) % 4 or not re.fullmatch('[A-Za-z0-9+/]+={0,2}', encoded):
+        return False
+    padding = 2 if encoded.endswith('==') else 1 if encoded.endswith('=') else 0
+    size = len(encoded) // 4 * 3 - padding
+    if not 1 <= size <= MAX_INLINE_IMAGE:
+        return False
+    alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    if ((padding == 2 and alphabet.index(encoded[-3]) & 15) or
+            (padding == 1 and alphabet.index(encoded[-2]) & 3)):
+        return False
+    target = re.fullmatch(r'/private/files/avo-([0-9a-f]{64})\.(png|jpg|webp)', prepared_url)
+    extension = prefixes[prefix]
+    if target is None or target.group(2) != extension:
+        return False
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError):
+        return False
+    if extension == 'png':
+        magic = raw.startswith(b'\x89PNG\r\n\x1a\n')
+    elif extension == 'jpg':
+        magic = raw.startswith(b'\xff\xd8\xff') and raw.endswith(b'\xff\xd9')
+    else:
+        magic = (len(raw) >= 12 and raw[:4] == b'RIFF' and raw[8:12] == b'WEBP'
+                 and int.from_bytes(raw[4:8], 'little') == len(raw) - 8)
+    return bool(magic and hashlib.sha256(raw).hexdigest() == target.group(1))
 
 
 def _player_url(value, provider):
@@ -1604,7 +1653,8 @@ def plan_import(payload, image_urls=None):
                         and (account,course,lesson) in REVIEWED_IMAGE_LABELS and fields.get('html') == 'Изображение'):
                     allowed.add('html')
                     image_label = fields['html']
-                if (fields.get('anchor') or not _url(fields.get('imageSrc'))
+                prepared_image = image_urls.get(node.get('id')) if isinstance(node.get('id'), str) else None
+                if (fields.get('anchor') or not _image_source_valid(fields.get('imageSrc'), prepared_image)
                         or any(v not in (None, '', False, [], {}) for k, v in fields.items() if k not in allowed)):
                     issue('unsupported_image_settings')
                 else:

@@ -4,6 +4,7 @@ Only the private SQLite index retains source URLs. Blob names are content
 hashes; no source URLs or image bytes are emitted as diagnostics.
 """
 import base64
+import binascii
 from contextlib import closing
 import hashlib
 import io
@@ -25,6 +26,8 @@ MAX_IMAGE = 5 * 1024 * 1024
 MAX_IMAGES = 10
 PLACEHOLDER_IMAGE_SHA256 = '44c98968db4973a119db3bbc00ca36392c1466e1b631596e1fff0ac4a2474ea2'
 IMAGE_KEY = re.compile(r'[A-Za-z0-9_-]{1,80}')
+DATA_MIMES = {'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/webp': 'webp'}
+BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 
 def _binding():
@@ -42,9 +45,45 @@ def _url(value):
                 or url.port is not None or url.fragment):
             raise ValueError()
     except ValueError: raise Review('asset_url_invalid') from None
-    if url.hostname != 'shop.mastervision.su' and not re.fullmatch(r'f[0-9]+\.autoweboffice\.com', url.hostname or ''):
+    verified_ru = (url.hostname == 'f1.autoweboffice.ru' and not url.query and
+                   re.fullmatch(r'/mastergroup/school/[A-Za-z0-9][A-Za-z0-9_.-]*\.jpg', url.path))
+    verified_getcourse = (url.hostname == 'fs-thb01.getcourse.ru' and not url.query and
+        re.fullmatch(r'/fileservice/file/thumbnail/h/[a-f0-9]{32}\.png/s/f[0-9]{4}x/a/[0-9]{5}/sc/[0-9]{3}', url.path))
+    if (url.hostname != 'shop.mastervision.su' and
+            not re.fullmatch(r'f[0-9]+\.autoweboffice\.com', url.hostname or '')
+            and not verified_ru and not verified_getcourse):
         raise Review('asset_host_requires_review')
     return url.geturl()
+
+
+def _data_image(value):
+    """Validate canonical base64 and decoded size before allocating image bytes."""
+    _binding()
+    if not isinstance(value, str): raise Review('asset_data_uri_invalid')
+    prefixes = {f'data:{mime};base64,': mime for mime in DATA_MIMES}
+    maximum = max(map(len, prefixes)) + 4 * ((MAX_IMAGE + 2) // 3)
+    if len(value) > maximum: raise Review('asset_image_size_invalid')
+    prefix = next((prefix for prefix in prefixes if value.startswith(prefix)), None)
+    if prefix is None: raise Review('asset_data_uri_type_invalid')
+    encoded = value[len(prefix):]
+    if not encoded or len(encoded) % 4 or not re.fullmatch('[A-Za-z0-9+/]+={0,2}', encoded):
+        raise Review('asset_data_uri_invalid')
+    padding = 2 if encoded.endswith('==') else 1 if encoded.endswith('=') else 0
+    size = len(encoded) // 4 * 3 - padding
+    if not 1 <= size <= MAX_IMAGE: raise Review('asset_image_size_invalid')
+    # validate=True alone accepts nonzero unused pad bits; reject those without
+    # decoding/re-encoding or allocating a second encoded copy of the source.
+    if ((padding == 2 and BASE64_ALPHABET.index(encoded[-3]) & 15) or
+            (padding == 1 and BASE64_ALPHABET.index(encoded[-2]) & 3)):
+        raise Review('asset_data_uri_invalid')
+    return prefixes[prefix], encoded
+
+
+def _image_source(value):
+    if isinstance(value, str) and value.startswith('data:'):
+        _data_image(value)
+        return value
+    return _url(value)
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -184,26 +223,41 @@ class AssetCache:
         return raw, row['extension']
 
     def fetch(self, url):
-        url = _url(url); key = hashlib.sha256(url.encode()).hexdigest()
-        cached = self._cached(url, key)
+        if isinstance(url, str) and url.startswith('data:'):
+            inline = _data_image(url)
+        else:
+            url, inline = _url(url), None
+        key = hashlib.sha256(url.encode()).hexdigest()
+        # The original data URI remains in the source archive. Keep only its
+        # identity in this private index instead of duplicating a large payload.
+        indexed_url = f'data:{inline[0]};sha256,{key}' if inline else url
+        cached = self._cached(indexed_url, key)
+        if cached is not None and inline:
+            if _inspect(cached[0], inline[0]) != DATA_MIMES[inline[0]]: raise Review('asset_cache_invalid')
         if cached is not None: return cached
         if shutil.disk_usage(self.directory).free < 16 * 1024 * 1024: raise Review('asset_cache_space_low')
-        request = urllib.request.Request(url, headers={'Accept':'image/png,image/jpeg,image/webp',
-                                                      'User-Agent':'MasterVisionAssetCache/1.0'})
-        try:
-            with self.opener.open(request, timeout=25) as response:
-                if response.geturl() != url: raise Review('asset_redirect_forbidden')
-                if response.status != 200: raise Review('asset_http_failed')
-                length = response.headers.get('Content-Length')
-                if length is not None and (not re.fullmatch('[0-9]+', length) or not 1 <= int(length) <= MAX_IMAGE):
-                    raise Review('asset_image_size_invalid')
-                raw = response.read(MAX_IMAGE + 1)
-                if length is not None and len(raw) != int(length): raise Review('asset_image_size_invalid')
-                extension = _inspect(raw, response.headers.get('Content-Type', ''))
-        except urllib.error.HTTPError as error:
-            raise Review('asset_redirect_forbidden' if 300 <= error.code < 400 else 'asset_http_failed') from None
-        except Review: raise
-        except Exception: raise Review('asset_download_failed') from None
+        if inline:
+            try: raw = base64.b64decode(inline[1], validate=True)
+            except (binascii.Error, ValueError): raise Review('asset_data_uri_invalid') from None
+            extension = _inspect(raw, inline[0])
+            if extension != DATA_MIMES[inline[0]]: raise Review('asset_content_type_invalid')
+        else:
+            request = urllib.request.Request(url, headers={'Accept':'image/png,image/jpeg,image/webp',
+                                                          'User-Agent':'MasterVisionAssetCache/1.0'})
+            try:
+                with self.opener.open(request, timeout=25) as response:
+                    if response.geturl() != url: raise Review('asset_redirect_forbidden')
+                    if response.status != 200: raise Review('asset_http_failed')
+                    length = response.headers.get('Content-Length')
+                    if length is not None and (not re.fullmatch('[0-9]+', length) or not 1 <= int(length) <= MAX_IMAGE):
+                        raise Review('asset_image_size_invalid')
+                    raw = response.read(MAX_IMAGE + 1)
+                    if length is not None and len(raw) != int(length): raise Review('asset_image_size_invalid')
+                    extension = _inspect(raw, response.headers.get('Content-Type', ''))
+            except urllib.error.HTTPError as error:
+                raise Review('asset_redirect_forbidden' if 300 <= error.code < 400 else 'asset_http_failed') from None
+            except Review: raise
+            except Exception: raise Review('asset_download_failed') from None
         digest = hashlib.sha256(raw).hexdigest(); path = self.directory / (digest + '.' + extension)
         if path.is_symlink(): raise Review('asset_cache_invalid')
         try:
@@ -213,8 +267,8 @@ class AssetCache:
         else:
             with os.fdopen(fd, 'wb') as stream: stream.write(raw); stream.flush(); os.fsync(stream.fileno())
         with self.db:
-            self.db.execute('INSERT OR IGNORE INTO assets VALUES(?,?,?,?,?)',(key,url,digest,extension,len(raw)))
-        return self._cached(url, key)
+            self.db.execute('INSERT OR IGNORE INTO assets VALUES(?,?,?,?,?)',(key,indexed_url,digest,extension,len(raw)))
+        return self._cached(indexed_url, key)
 
     def lesson_images(self, payload):
         _binding()
@@ -234,7 +288,7 @@ class AssetCache:
             if node['name'] == 'image':
                 key = node.get('id')
                 if not isinstance(key, str) or not IMAGE_KEY.fullmatch(key) or key in seen: raise Review('asset_image_key_invalid')
-                seen.add(key); images.append((key, _url(fields.get('imageSrc'))))
+                seen.add(key); images.append((key, _image_source(fields.get('imageSrc'))))
                 if len(images) > MAX_IMAGES: raise Review('asset_too_many_images')
             pending.extend((child,depth + 1) for child in reversed(children))
         return {key:base64.b64encode(self.fetch(url)[0]).decode('ascii') for key,url in images}

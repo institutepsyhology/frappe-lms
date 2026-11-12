@@ -1,5 +1,6 @@
 """Synthetic image cache and HTTP stubs only; no network or real source data."""
 import base64
+import copy
 from contextlib import closing
 import hashlib
 from pathlib import Path
@@ -182,6 +183,121 @@ class AssetTests(unittest.TestCase):
         with self.assertRaisesRegex(Review,'asset_cache_account_mismatch'):assets.AssetCache(directory)
         self.assertEqual(path.read_bytes(),original)
         self.assertEqual(self.opener.calls,[])
+
+    def test_canonical_inline_png_is_preserved_and_uses_private_hashed_blob_cache(self):
+        encoded=base64.b64encode(png()).decode('ascii');url='data:image/png;base64,'+encoded
+        source=payload(image('inline',url));before=copy.deepcopy(source)
+        result=self.cache.lesson_images(source)
+        self.assertEqual(result,{'inline':encoded});self.assertEqual(source,before)
+        self.assertEqual(self.cache.fetch(url),(png(),'png'))
+        self.assertEqual(self.opener.calls,[])
+        self.assertEqual(len(list(self.cache.directory.glob('*.png'))),1)
+        rows=self.cache.db.execute('SELECT url_hash,url FROM assets').fetchall()
+        self.assertEqual(len(rows),1)
+        self.assertEqual(rows[0]['url_hash'],hashlib.sha256(url.encode()).hexdigest())
+        self.assertTrue(rows[0]['url'].startswith('data:image/png;sha256,'))
+        self.assertNotIn(encoded,rows[0]['url'])
+        self.cache.close()
+        with assets.AssetCache(self.folder/'private-assets') as reopened:
+            self.assertEqual(reopened.fetch(url),(png(),'png'))
+        self.assertEqual(self.opener.calls,[])
+
+    def test_inline_type_must_agree_with_real_magic_and_no_svg_is_accepted(self):
+        encoded=base64.b64encode(png()).decode('ascii')
+        for mime in ('image/jpeg','image/jpg','image/webp','image/svg+xml','text/html'):
+            with self.subTest(mime=mime),self.assertRaises(Review):
+                self.cache.fetch('data:'+mime+';base64,'+encoded)
+        self.assertEqual(self.opener.calls,[])
+        self.assertEqual(self.cache.db.execute('SELECT COUNT(*) FROM assets').fetchone()[0],0)
+
+    def test_explicit_jpeg_alias_is_forwarded_to_the_raster_validator(self):
+        raw=b'synthetic JPEG bytes';encoded=base64.b64encode(raw).decode('ascii')
+        for mime in ('image/jpeg','image/jpg'):
+            with self.subTest(mime=mime),patch.object(assets,'_inspect',return_value='jpg') as inspect:
+                self.assertEqual(self.cache.fetch('data:'+mime+';base64,'+encoded),(raw,'jpg'))
+                self.assertIn((raw,mime),[call.args for call in inspect.call_args_list])
+        self.assertEqual(self.opener.calls,[])
+
+    def test_malformed_or_noncanonical_base64_is_rejected_before_decoding(self):
+        encoded=base64.b64encode(png()).decode('ascii')
+        alphabet=assets.BASE64_ALPHABET
+        if encoded.endswith('=='):
+            noncanonical=encoded[:-3]+alphabet[alphabet.index(encoded[-3])+1]+'=='
+        else:
+            noncanonical='AB=='
+        invalid=[encoded.rstrip('='),encoded+'=',encoded[:4]+'\n'+encoded[4:],
+                 encoded[:4]+'-'+encoded[5:],encoded+'é',noncanonical,'']
+        with patch.object(assets.base64,'b64decode',side_effect=AssertionError('must reject before allocation')) as decoder:
+            for value in invalid:
+                with self.subTest(value=value[:8]),self.assertRaises(Review):
+                    self.cache.fetch('data:image/png;base64,'+value)
+            for prefix in ('data:image/png;charset=utf-8;base64,','data:image/PNG;base64,','data:image/png;base64url,'):
+                with self.subTest(prefix=prefix),self.assertRaises(Review):self.cache.fetch(prefix+encoded)
+            decoder.assert_not_called()
+        self.assertEqual(self.opener.calls,[])
+
+    def test_oversized_inline_image_is_rejected_before_decode_and_cache_write(self):
+        encoded=base64.b64encode(b'x'*33).decode('ascii')
+        with patch.object(assets,'MAX_IMAGE',32),patch.object(assets.base64,'b64decode',side_effect=AssertionError('oversize allocation')) as decoder:
+            for value in (encoded,encoded+'AAAA'):
+                with self.assertRaisesRegex(Review,'asset_image_size_invalid'):
+                    self.cache.fetch('data:image/png;base64,'+value)
+            decoder.assert_not_called()
+        self.assertEqual(self.cache.db.execute('SELECT COUNT(*) FROM assets').fetchone()[0],0)
+        self.assertEqual(self.opener.calls,[])
+
+    def test_inline_images_share_network_blob_cache_and_keep_ten_image_limit(self):
+        url='data:image/png;base64,'+base64.b64encode(png()).decode('ascii')
+        self.cache.fetch(URL);self.cache.fetch(url)
+        self.assertEqual(len(list(self.cache.directory.glob('*.png'))),1)
+        self.assertEqual(self.cache.db.execute('SELECT COUNT(*) FROM assets').fetchone()[0],2)
+        self.assertEqual(len(self.opener.calls),1)
+        self.assertEqual(len(self.cache.lesson_images(payload(*[image('inline'+str(i),url) for i in range(10)]))),10)
+        with patch.object(self.cache,'fetch',side_effect=AssertionError('all images must be preflighted')) as fetch:
+            with self.assertRaisesRegex(Review,'asset_too_many_images'):
+                self.cache.lesson_images(payload(*[image('inline'+str(i),url) for i in range(11)]))
+            fetch.assert_not_called()
+
+    def test_bad_inline_source_stops_whole_lesson_before_first_network_download(self):
+        with self.assertRaises(Review):
+            self.cache.lesson_images(payload(image(),image('inline','data:image/png;base64,AB==')))
+        self.assertEqual(self.opener.calls,[])
+
+    def test_verified_ru_cdn_allows_only_exact_host_school_jpeg_without_query(self):
+        valid='https://f1.autoweboffice.ru/mastergroup/school/Abc12345-_.jpg'
+        self.assertEqual(assets._url(valid),valid)
+        for url in ('https://f2.autoweboffice.ru/mastergroup/school/test.jpg',
+                    'https://f1.autoweboffice.ru.evil.test/mastergroup/school/test.jpg',
+                    'https://f1.autoweboffice.ru/other/test.jpg',
+                    'https://f1.autoweboffice.ru/mastergroup/school/test.png',
+                    'https://f1.autoweboffice.ru/mastergroup/school/dir/test.jpg',
+                    'https://f1.autoweboffice.ru/mastergroup/school/%2e%2e.jpg',
+                    valid+'?token=private',valid+'#fragment',
+                    'https://user:password@f1.autoweboffice.ru/mastergroup/school/test.jpg'):
+            with self.subTest(url=url),self.assertRaises(Review):assets._url(url)
+        self.assertEqual(self.opener.calls,[])
+
+    def test_verified_getcourse_route_is_exact_and_keeps_anonymous_download_guards(self):
+        route='/fileservice/file/thumbnail/h/'+'a'*32+'.png/s/f1200x/a/12345/sc/123'
+        valid='https://fs-thb01.getcourse.ru'+route
+        self.assertEqual(assets._url(valid),valid)
+        self.opener.response=Response(valid)
+        self.assertEqual(self.cache.fetch(valid),(png(),'png'))
+        request,timeout=self.opener.calls[0]
+        self.assertEqual(timeout,25)
+        self.assertFalse({'cookie','authorization'} & {name.lower() for name in request.headers})
+        for url in ('https://fs-thb02.getcourse.ru'+route,
+                    'https://fs-thb01.getcourse.ru.evil.test'+route,
+                    'https://fs-thb01.getcourse.ru'+route.replace('/thumbnail/','/download/'),
+                    valid.replace('a'*32,'A'*32),valid.replace('.png/','.jpg/'),
+                    valid.replace('f1200x','f120x'),valid.replace('f1200x','f1200x50'),
+                    valid.replace('/a/12345/','/a/123456/'),valid.replace('/sc/123','/sc/12'),
+                    valid+'/extra',valid+'?token=private',valid+'#fragment',
+                    'https://user:password@fs-thb01.getcourse.ru'+route,
+                    'https://fs-thb01.getcourse.ru:443'+route,
+                    'https://cdn1.savepice.ru/uploads/2020/1/01/'+'a'*32+'-full.png'):
+            with self.subTest(url=url),self.assertRaises(Review):assets._url(url)
+        self.assertEqual(len(self.opener.calls),1)
 
 
 if __name__=='__main__':unittest.main()

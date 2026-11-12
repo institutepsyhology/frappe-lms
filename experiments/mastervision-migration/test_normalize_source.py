@@ -25,6 +25,28 @@ def payload(html=None):
 
 
 class NormalizeTests(unittest.TestCase):
+    def test_standalone_code_iframe_uses_the_same_strict_native_player_conversion(self):
+        original = payload(frame(RUTUBE))
+        original['ape']['children'][0]['name'] = 'code'
+        normalized, codes = normalize_payload(original)
+        self.assertTrue(plan_import(normalized)['ready'])
+        self.assertEqual(normalized['ape']['children'][0]['name'], 'video')
+        self.assertEqual(normalized['source_original_ape'], original['ape'])
+        self.assertIn('embedded_video_iframe_normalized', codes)
+
+    def test_inline_image_integration_preserves_original_and_repeats_identically(self):
+        original = payload('<p>Before<img alt="" src="https://f1.autoweboffice.ru/mastergroup/school/example.jpg">After <a href="https://example.test/">Link</a></p>')
+        before = copy.deepcopy(original)
+        normalized, codes = normalize_payload(original)
+        self.assertEqual(original, before)
+        self.assertEqual(normalized['source_original_ape'], before['ape'])
+        self.assertEqual(normalized['source_normalization']['version'], 3)
+        self.assertIn('inline_html_images_normalized', codes)
+        nodes = normalized['ape']['children']
+        self.assertEqual([node['name'] for node in nodes], ['text', 'image', 'text'])
+        self.assertTrue(plan_import(normalized, {nodes[1]['id']: '/private/files/prepared.jpg'})['ready'])
+        self.assertEqual(normalize_payload(normalized), (normalized, codes))
+
     def test_existing_iframe_payload_fingerprint_is_unchanged(self):
         normalized, _ = normalize_payload(payload())
         encoded = json.dumps(normalized, ensure_ascii=True, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
@@ -139,7 +161,7 @@ class NormalizeTests(unittest.TestCase):
 
     def test_unknown_block_kind_with_iframe_is_reviewed(self):
         source = payload()
-        source["ape"]["children"][0]["name"] = "code"
+        source["ape"]["children"][0]["name"] = "future-block"
         with self.assertRaises(Review):
             normalize_payload(source)
 
