@@ -5,7 +5,7 @@
 				<CertificationLinks :courseName="courseName" />
 				<router-link
 					v-if="canEditLesson"
-					:to="{
+					:to="avoCourseId && avoLessonId ? { name:'AvoLessonEdit', params:{ avoCourseId, avoLessonId } } : {
 						name: 'CourseDetail',
 						params: { courseName: courseName },
 						hash: '#editor',

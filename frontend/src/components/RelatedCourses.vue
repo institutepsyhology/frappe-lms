@@ -11,7 +11,7 @@
 			<router-link
 				v-for="course in relatedCourses.data"
 				:key="course.name"
-				:to="{ name: 'CourseDetail', params: { courseName: course.name } }"
+				:to="courseCardRoute(course)"
 				v-external
 				class="cursor-pointer"
 			>
@@ -22,6 +22,7 @@
 </template>
 
 <script setup lang="ts">
+import { courseCardRoute } from '@/utils/avoCourseRoutes'
 import { createResource } from 'frappe-ui'
 import { watch } from 'vue'
 import CourseCard from '@/components/CourseCard.vue'

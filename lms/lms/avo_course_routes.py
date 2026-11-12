@@ -15,6 +15,30 @@ def _account():
     return row[0] if row else None
 
 
+def annotate_course_ids(courses):
+    """Add stable IDs to already-authorised course cards in two bounded reads."""
+    account = _account()
+    names = [c.get('name') for c in courses if c and c.get('name')]
+    if not account or not names:
+        return courses
+    rows = frappe.get_all('LMS Course', filters={'name':['in',names], 'custom_avo_account':account},
+                          fields=['name','custom_avo_id'], limit_page_length=0)
+    by_name = {row['name']:row.get('custom_avo_id') for row in rows if _id(row.get('custom_avo_id'))}
+    if not by_name:
+        return courses
+    matches = frappe.get_all('LMS Course', filters={'custom_avo_account':account, 'custom_avo_id':['in',list(set(by_name.values()))]},
+                             fields=['name','custom_avo_id'], limit_page_length=0)
+    counts = {}
+    for row in matches:
+        ident = row.get('custom_avo_id')
+        counts[ident] = counts.get(ident,0) + 1
+    for course in courses:
+        ident = by_name.get(course.get('name')) if course else None
+        if ident and counts.get(ident) == 1:
+            course['avo_course_id'] = ident
+    return courses
+
+
 def _permitted(course, lesson=None):
     from lms.lms.utils import can_view_course, guest_access_allowed
     if not guest_access_allowed() or not can_view_course(course):
@@ -88,6 +112,68 @@ def get_lesson_by_source(course_id, lesson_id):
     if not isinstance(data, dict) or data.get('name') != target['lesson_name']:
         return {'locked':1, 'not_found':1}
     return data
+
+
+@frappe.whitelist()
+def resolve_editor(course_id, lesson_id=None):
+    """Resolve an edit URL only for staff who can modify this course."""
+    target = resolve(course_id, lesson_id)
+    if not target:
+        return None
+    from lms.lms.utils import can_modify_course
+    if not can_modify_course(target['course_name']):
+        return None
+    if lesson_id is not None:
+        doc = frappe.get_doc('Course Lesson', target['lesson_name'])
+        if not frappe.has_permission('Course Lesson', 'write', doc=doc):
+            return None
+    return target
+
+
+@frappe.whitelist()
+def get_editor_by_source(course_id, lesson_id):
+    """Fetch editable lesson data directly from its verified document name."""
+    target = resolve_editor(course_id, lesson_id)
+    if not target:
+        frappe.throw('Lesson is unavailable for editing.', frappe.PermissionError)
+    fields = ['name','title','include_in_preview','is_draft','publication_audience','lesson_published_at',
+              'hide_title_when_locked','body','content','instructor_notes','instructor_content','youtube','quiz_id','chapter',
+              'custom_avo_account','custom_avo_id','course']
+    lesson = frappe.db.get_value('Course Lesson', target['lesson_name'], fields, as_dict=True)
+    if (not lesson or lesson.get('custom_avo_account') != _account() or
+        lesson.get('custom_avo_id') != lesson_id or lesson.get('course') != target['course_name']):
+        frappe.throw('Lesson is unavailable for editing.', frappe.PermissionError)
+    for field in ('custom_avo_account','custom_avo_id','course'):
+        lesson.pop(field, None)
+    chapter = frappe.db.get_value('Course Chapter', lesson.get('chapter'), ['title','name'], as_dict=True)
+    return {'course_title':frappe.db.get_value('LMS Course', target['course_name'], 'title'),
+            'chapter':chapter, 'lesson':lesson}
+
+
+@frappe.whitelist(methods=['POST'])
+def save_editor_by_source(course_id, lesson_id, expected_name, values):
+    """Recheck source identity and write permission for each autosave."""
+    target = resolve_editor(course_id, lesson_id)
+    if not target or target['lesson_name'] != expected_name:
+        frappe.throw('Lesson identity changed. Please reload.', frappe.PermissionError)
+    values = frappe.parse_json(values)
+    allowed = {'title','include_in_preview','body','content','instructor_notes','instructor_content'}
+    if not isinstance(values,dict) or not values or set(values) - allowed:
+        frappe.throw('Invalid lesson fields.', frappe.ValidationError)
+    for key, value in values.items():
+        if key == 'include_in_preview':
+            if type(value) not in (bool,int) or value not in (0,1):
+                frappe.throw('Invalid preview setting.', frappe.ValidationError)
+        elif (value is not None or key == 'title') and (not isinstance(value,str) or (key == 'title' and len(value) > 512)):
+            frappe.throw('Invalid lesson field.', frappe.ValidationError)
+    frappe.db.sql('SELECT name FROM `tabCourse Lesson` WHERE name=%s FOR UPDATE', (expected_name,))
+    doc = frappe.get_doc('Course Lesson', expected_name)
+    if (doc.get('custom_avo_account') != _account() or doc.get('custom_avo_id') != lesson_id or
+        doc.get('course') != target['course_name'] or not frappe.has_permission('Course Lesson','write',doc=doc)):
+        frappe.throw('Lesson identity changed. Please reload.', frappe.PermissionError)
+    doc.update(values)
+    doc.save()
+    return {'saved':True}
 
 
 @frappe.whitelist(allow_guest=True)

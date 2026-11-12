@@ -72,7 +72,7 @@
 
 		<template #card="{ row }">
 			<router-link
-				:to="{ name: 'CourseDetail', params: { courseName: row.name } }"
+				:to="courseCardRoute(row)"
 			>
 				<CourseCard :course="row" />
 			</router-link>
@@ -82,6 +82,7 @@
 	<router-view />
 </template>
 <script setup>
+import { courseCardRoute } from '@/utils/avoCourseRoutes'
 import {
 	Button,
 	createListResource,

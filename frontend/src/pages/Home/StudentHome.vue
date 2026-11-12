@@ -99,7 +99,7 @@
 				<router-link
 					v-for="course in myCourses.data"
 					:key="course.name"
-					:to="{ name: 'CourseDetail', params: { courseName: course.name } }"
+					:to="courseCardRoute(course)"
 				>
 					<CourseCard :course="course" />
 				</router-link>
@@ -141,6 +141,7 @@
 	</div>
 </template>
 <script setup lang="ts">
+import { courseCardRoute } from '@/utils/avoCourseRoutes'
 import { inject } from 'vue'
 import { createResource, Tooltip } from 'frappe-ui'
 import { formatTime } from '@/utils'

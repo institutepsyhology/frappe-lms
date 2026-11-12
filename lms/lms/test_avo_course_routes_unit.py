@@ -13,10 +13,13 @@ class AvoRoutesTest(unittest.TestCase):
             'Course Lesson':[{'name':'lesson-a','custom_avo_account':'mv-centr','custom_avo_id':'26','course':'course-a','chapter':'chapter-a'}],
             'Chapter Reference':[{'parent':'course-a','parenttype':'LMS Course','chapter':'chapter-a','idx':2}],
             'Lesson Reference':[{'parent':'chapter-a','parenttype':'Course Chapter','lesson':'lesson-a','idx':3}],
+            'Course Chapter':[{'name':'chapter-a','title':'Chapter'}],
         }
-        self.allow_course=True;self.allow_lesson=True;self.locked=set()
+        self.allow_course=True;self.allow_lesson=True;self.allow_edit=True;self.allow_write=True;self.locked=set();self.saved=[]
         f=types.ModuleType('frappe');f.local=types.SimpleNamespace(site='my-lk.mv-centr.ru')
         f.whitelist=lambda **kw:lambda fn:fn
+        f.PermissionError=PermissionError;f.ValidationError=ValueError
+        f.throw=lambda message,typ:(_ for _ in ()).throw(typ(message))
         def matches(row,filters):
             for key,value in filters.items():
                 if isinstance(value,list) and value[0]=='in':
@@ -26,11 +29,22 @@ class AvoRoutesTest(unittest.TestCase):
         def get_all(doctype,filters,fields,limit_page_length):
             rows=[{k:r.get(k) for k in fields} for r in self.rows[doctype] if matches(r,filters)]
             return rows[:limit_page_length] if limit_page_length else rows
-        def get_value(doctype,name,fields,as_dict):
-            return next(({k:r.get(k) for k in fields} for r in self.rows[doctype] if r['name']==name),None)
-        f.get_all=get_all;f.db=types.SimpleNamespace(get_value=get_value)
+        def get_value(doctype,name,fields,as_dict=False):
+            row=next((r for r in self.rows[doctype] if r['name']==name),None)
+            if not row:return None
+            return row.get(fields) if isinstance(fields,str) else {k:row.get(k) for k in fields}
+        class Doc:
+            def __init__(self,row):self.row=row
+            def get(self,key):return self.row.get(key)
+            def update(self,values):self.row.update(values)
+            def save(self):self_saved.append(self.row['name'])
+        self_saved=self.saved
+        f.get_doc=lambda doctype,name:Doc(next(r for r in self.rows[doctype] if r['name']==name))
+        f.has_permission=lambda *args,**kwargs:self.allow_write
+        f.parse_json=lambda x:x
+        f.get_all=get_all;f.db=types.SimpleNamespace(get_value=get_value,sql=lambda *args:None)
         imp=types.ModuleType('lms.lms.avo_import');imp.SITE_ACCOUNTS={'my-lk.mv-centr.ru':('mv-centr','example'),'my-lk.iomp.ru':('iomp','example')}
-        util=types.ModuleType('lms.lms.utils');util.can_view_course=lambda course:self.allow_course;util.guest_access_allowed=lambda:True
+        util=types.ModuleType('lms.lms.utils');util.can_view_course=lambda course:self.allow_course;util.guest_access_allowed=lambda:True;util.can_modify_course=lambda course:self.allow_edit
         perm=types.ModuleType('lms.lms.permissions');perm.can_access_lesson=lambda lesson:self.allow_lesson;perm.get_lesson_gate=lambda course:(self.locked,None)
         self.modules=patch.dict(sys.modules,{'frappe':f,'lms.lms.avo_import':imp,'lms.lms.utils':util,'lms.lms.permissions':perm})
         self.modules.start();self.addCleanup(self.modules.stop);self.frappe=f
@@ -88,6 +102,50 @@ class AvoRoutesTest(unittest.TestCase):
         self.assertEqual(self.mod.get_lesson_by_source('11','26')['content'],'correct')
         self.allow_lesson=False
         self.assertEqual(self.mod.get_lesson_by_source('11','26'),{'locked':1,'not_found':1})
+
+    def test_course_cards_only_receive_unique_ids_from_current_site(self):
+        cards=[{'name':'course-a'},{'name':'native-course'}]
+        self.assertEqual(self.mod.annotate_course_ids(cards)[0]['avo_course_id'],'11')
+        self.assertNotIn('avo_course_id',cards[1])
+        self.rows['LMS Course'].append(dict(self.rows['LMS Course'][0],name='duplicate'))
+        self.assertNotIn('avo_course_id',self.mod.annotate_course_ids([{'name':'course-a'}])[0])
+
+    def test_editor_requires_course_author_and_document_write_permission(self):
+        self.assertEqual(self.mod.resolve_editor('11','26')['lesson_name'],'lesson-a')
+        self.allow_edit=False
+        self.assertIsNone(self.mod.resolve_editor('11','26'))
+        with self.assertRaises(PermissionError):self.mod.get_editor_by_source('11','26')
+        self.allow_edit=True;self.allow_write=False
+        with self.assertRaises(PermissionError):self.mod.get_editor_by_source('11','26')
+
+    def test_source_editor_saves_only_original_document_and_allowed_fields(self):
+        data=self.mod.get_editor_by_source('11','26')
+        self.assertEqual(data['lesson']['name'],'lesson-a')
+        with self.assertRaises(PermissionError):self.mod.save_editor_by_source('11','26','other',{'title':'Edited'})
+        with self.assertRaises(ValueError):self.mod.save_editor_by_source('11','26','lesson-a',{'course':'other'})
+        self.assertEqual(self.saved,[])
+        self.assertEqual(self.mod.save_editor_by_source('11','26','lesson-a',{'title':'Edited'}),{'saved':True})
+        self.assertEqual(self.saved,['lesson-a'])
+        self.rows['Course Lesson'][0]['custom_avo_id']='27'
+        with self.assertRaises(PermissionError):self.mod.save_editor_by_source('11','26','lesson-a',{'title':'Wrong'})
+        self.assertEqual(self.saved,['lesson-a'])
+        self.rows['LMS Course'].pop();self.frappe.local.site='my-lk.iomp.ru'
+        self.assertNotIn('avo_course_id',self.mod.annotate_course_ids([{'name':'course-a'}])[0])
+
+    def test_editor_rechecks_identity_after_lookup_and_before_save(self):
+        original=self.frappe.db.get_value
+        def swapped(doctype, name, fields, as_dict=False):
+            result=original(doctype, name, fields, as_dict)
+            if doctype == 'Course Lesson' and isinstance(fields,list) and 'body' in fields:
+                result['custom_avo_id']='27'
+            return result
+        self.frappe.db.get_value=swapped
+        with self.assertRaises(PermissionError):self.mod.get_editor_by_source('11','26')
+        self.frappe.db.get_value=original
+        def change_mapping(*args):self.rows['Course Lesson'][0]['custom_avo_id']='27'
+        self.frappe.db.sql=change_mapping
+        with self.assertRaises(PermissionError):self.mod.save_editor_by_source('11','26','lesson-a',{'title':'Wrong'})
+        self.assertEqual(self.saved,[])
 
 
 if __name__=='__main__':unittest.main()

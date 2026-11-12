@@ -1136,6 +1136,8 @@ def get_courses(filters: dict = None, start: int = 0, limit_page_length: int | s
 
 	courses = get_enrollment_details(courses)
 	courses = get_course_card_details(courses)
+	from lms.lms.avo_course_routes import annotate_course_ids
+	courses = annotate_course_ids(courses)
 	return courses
 
 
@@ -1393,7 +1395,8 @@ def get_course_details(course: str):
 		_locked, resume = get_lesson_gate(course)
 		course_details.current_lesson = get_lesson_index(resume or course_details.membership.current_lesson)
 
-	return course_details
+	from lms.lms.avo_course_routes import annotate_course_ids
+	return annotate_course_ids([course_details])[0]
 
 
 def get_categorized_courses(courses: list) -> dict:

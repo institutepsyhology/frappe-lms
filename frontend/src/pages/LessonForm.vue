@@ -1,5 +1,6 @@
 <template>
-	<div class="py-6 sm:py-10">
+	<div v-if="props.avoCourseId && props.avoLessonId && !lessonDetails.data?.lesson" class="p-8" role="status">Загрузка урока для редактирования… Если урок недоступен, обновите страницу.</div>
+	<div v-else class="py-6 sm:py-10">
 		<div class="mx-0 space-y-6 px-4 sm:mx-10 sm:px-20">
 			<nav class="flex gap-2 border-b border-outline-gray-2" aria-label="Разделы урока">
 				<button type="button" class="px-4 py-3 font-medium" :class="lessonSection === 'content' ? 'border-b-2 border-ink-gray-9' : 'text-ink-gray-5'" :aria-current="lessonSection === 'content' ? 'page' : undefined" @click="lessonSection = 'content'">Содержание урока</button>
@@ -298,6 +299,8 @@ const props = defineProps({
 		type: String,
 		required: true,
 	},
+	avoCourseId: { type: String, default: '' },
+	avoLessonId: { type: String, default: '' },
 })
 
 const isDirty = ref(false)
@@ -365,8 +368,8 @@ const lesson = reactive({
 const lessonHasVideo = computed(() => hasVideoContent(lesson))
 
 const lessonDetails = createResource({
-	url: 'lms.lms.utils.get_lesson_creation_details',
-	params: {
+	url: props.avoCourseId && props.avoLessonId ? 'lms.lms.avo_course_routes.get_editor_by_source' : 'lms.lms.utils.get_lesson_creation_details',
+	params: props.avoCourseId && props.avoLessonId ? { course_id:props.avoCourseId, lesson_id:props.avoLessonId } : {
 		course: props.courseName,
 		chapter: props.chapterNumber,
 		lesson: props.lessonNumber,
@@ -388,7 +391,7 @@ const lessonDetails = createResource({
 			contentUploadContext.docname = data.lesson.name
 			instructorUploadContext.docname = data.lesson.name
 			nextTick(autoGrowTitle)
-			Promise.all([addLessonContent(data), addInstructorNotes(data)]).then(
+			nextTick(() => Promise.all([addLessonContent(data), addInstructorNotes(data)]).then(
 				() => {
 					nextTick(() => {
 						// Loaded content isn't user input; arm autosave after render.
@@ -405,7 +408,7 @@ const lessonDetails = createResource({
 						}
 					})
 				}
-			)
+			))
 		}
 	},
 })
@@ -470,8 +473,13 @@ const newLessonResource = createResource({
 })
 
 const editLesson = createResource({
-	url: 'frappe.client.set_value',
+	url: props.avoCourseId && props.avoLessonId ? 'lms.lms.avo_course_routes.save_editor_by_source' : 'frappe.client.set_value',
 	makeParams(values) {
+		if (props.avoCourseId && props.avoLessonId) {
+			const fields=['title','include_in_preview','body','content','instructor_notes','instructor_content']
+			return { course_id:props.avoCourseId, lesson_id:props.avoLessonId, expected_name:values.lesson,
+				values:Object.fromEntries(fields.map(field => [field, lesson[field] ?? (field === 'include_in_preview' ? false : null)])) }
+		}
 		return {
 			doctype: 'Course Lesson',
 			name: values.lesson,
@@ -550,6 +558,7 @@ function saveLesson({ flush = false } = {}) {
 }
 
 function persistLesson(bodyData, notesData, flush) {
+	if (props.avoCourseId && props.avoLessonId && !lessonDetails.data?.lesson) return
 	const bodyHasContent = foldEditorData(bodyData, notesData)
 
 	// Nothing to save: no title, no body.
@@ -660,7 +669,7 @@ const editCurrentLesson = (isRetry = false) => {
 			// The daily untitled-lesson rename can move the docname under an open
 			// editor; re-resolve it by index and retry once (a plain reload would
 			// drop the unsaved edits we're saving).
-			if (!isRetry && err?.exc_type === 'DoesNotExistError') {
+			if (!props.avoCourseId && !isRetry && err?.exc_type === 'DoesNotExistError') {
 				resolveLessonName().then((name) => {
 					if (name) editCurrentLesson(true)
 					else toast.error(err.messages?.[0] || err.message || err)

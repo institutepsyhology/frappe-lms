@@ -1,20 +1,39 @@
 import { describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { canonicalAvoCourseRoute } from '@/utils/avoCourseRoutes'
+import { canonicalAvoCourseRoute, courseCardRoute } from '@/utils/avoCourseRoutes'
 import { routes } from '@/routes'
 
 const { callMock } = vi.hoisted(() => ({ callMock:vi.fn() }))
 vi.mock('frappe-ui', () => ({ call:callMock }))
 vi.mock('@/pages/Courses/CourseDetail.vue', () => ({ default: { props:['courseName'], template:'<div data-testid="course">{{ courseName }}</div>' } }))
 vi.mock('@/pages/Lesson.vue', () => ({ default: { props:['courseName','chapterNumber','lessonNumber'], template:'<div data-testid="lesson">{{ courseName }}:{{ chapterNumber }}-{{ lessonNumber }}</div>' } }))
+vi.mock('@/pages/LessonForm.vue', () => ({ default: { props:['courseName','avoCourseId','avoLessonId'], template:'<div data-testid="editor">{{ courseName }}:{{ avoCourseId }}-{{ avoLessonId }}</div>' } }))
 import AvoCourseRoute from '@/pages/Courses/AvoCourseRoute.vue'
+import AvoLessonEditor from '@/pages/Courses/AvoLessonEditor.vue'
 
 describe('AVO course and lesson URLs', () => {
+	it('generates a directly copyable course URL with the AVO ID', () => {
+		const router=createRouter({history:createMemoryHistory(),routes})
+		expect(router.resolve(courseCardRoute({name:'xr',avo_course_id:'206'})).href).toContain('/courses/avo/206')
+		expect(router.resolve(courseCardRoute({name:'native'})).href).toContain('/courses/native')
+	})
 	it('matches the actual routes using both source IDs', () => {
 		const router=createRouter({ history:createMemoryHistory(), routes })
 		expect(router.resolve('/courses/avo/11').name).toBe('AvoCourse')
 		expect(router.resolve('/courses/avo/11/lessons/26').name).toBe('AvoLesson')
+		expect(router.resolve('/courses/avo/11/lessons/26/edit').name).toBe('AvoLessonEdit')
+	})
+	it('opens the editor only for the verified source lesson', async () => {
+		callMock.mockResolvedValueOnce({course_name:'course-a',lesson_name:'lesson-a',chapter_number:2,lesson_number:3})
+		const wrapper=mount(AvoLessonEditor,{props:{avoCourseId:'11',avoLessonId:'26'},global:{stubs:{RouterLink:true}}})
+		await flushPromises()
+		expect(callMock).toHaveBeenCalledWith('lms.lms.avo_course_routes.resolve_editor',{course_id:'11',lesson_id:'26'})
+		expect(wrapper.get('[data-testid=editor]').text()).toBe('course-a:11-26')
+		callMock.mockResolvedValueOnce(null)
+		await wrapper.setProps({avoLessonId:'27'});await flushPromises()
+		expect(wrapper.find('[data-testid=editor]').exists()).toBe(false)
+		expect(wrapper.get('[role=alert]').text()).toContain('нет прав')
 	})
 	it('resolves a direct lesson URL and reloads on another ID', async () => {
 		callMock.mockResolvedValueOnce({course_name:'course-a',chapter_number:2,lesson_number:3})

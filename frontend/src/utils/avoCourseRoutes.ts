@@ -1,5 +1,11 @@
 import type { RouteLocationNormalized } from 'vue-router'
 
+export function courseCardRoute(course: { name:string; avo_course_id?:string }) {
+	return typeof course.avo_course_id === 'string' && /^[1-9]\d{0,19}$/.test(course.avo_course_id)
+		? { name:'AvoCourse', params:{ avoCourseId:course.avo_course_id } }
+		: { name:'CourseDetail', params:{ courseName:course.name } }
+}
+
 // Canonicalise only mapped, authorised AVO records. Old and non-AVO routes
 // continue working if the lookup fails or there is no unique mapping.
 export async function canonicalAvoCourseRoute(to: RouteLocationNormalized, call: (method: string, args: object) => Promise<any>) {

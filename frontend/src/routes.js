@@ -40,6 +40,12 @@ export const routes = [
 		props: true,
 	},
 	{
+		path: '/courses/avo/:avoCourseId/lessons/:avoLessonId/edit',
+		name: 'AvoLessonEdit',
+		component: () => import('@/pages/Courses/AvoLessonEditor.vue'),
+		props: true,
+	},
+	{
 		path: '/courses/avo/:avoCourseId/lessons/:avoLessonId',
 		name: 'AvoLesson',
 		component: () => import('@/pages/Courses/AvoCourseRoute.vue'),
