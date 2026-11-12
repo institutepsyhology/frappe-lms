@@ -1,4 +1,5 @@
 """Session lifecycle regression checks; no Frappe, network or real user data."""
+import json
 import sys
 import types
 import unittest
@@ -6,6 +7,37 @@ from datetime import datetime, timezone
 from unittest.mock import patch
 
 import http_probe as probe
+
+
+class JSONTransportTests(unittest.TestCase):
+    def check_body(self, arguments):
+        class Response:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+            def read(self, limit):
+                return b'{"message": []}'
+
+        with patch.object(probe, "build_opener") as opener:
+            opener.return_value.open.return_value = Response()
+            probe.request(probe.SITE, "/api/method/synthetic", arguments,
+                          ("synthetic-session", "synthetic-csrf"), post=True)
+            req = opener.return_value.open.call_args.args[0]
+        self.assertEqual(json.loads(req.data), arguments)
+        self.assertEqual(req.get_header("Content-type"), "application/json")
+        self.assertEqual(req.get_header("X-frappe-csrf-token"), "synthetic-csrf")
+        self.assertEqual(req.method, "POST")
+
+    def test_typed_filters_are_native_json_objects(self):
+        self.check_body({"filters": {"enrolled": 1, "custom_avo_id": "1"}, "limit_page_length": 100})
+
+    def test_self_enrollment_doc_remains_native_json(self):
+        self.check_body({"doc": {"doctype": "LMS Enrollment", "course": "synthetic-course", "member": "synthetic-user"}})
 
 
 class SessionLifecycleTests(unittest.TestCase):

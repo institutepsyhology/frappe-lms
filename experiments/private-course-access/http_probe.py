@@ -26,14 +26,15 @@ class NoRedirect(HTTPRedirectHandler):
 def request(site, path, args=None, credentials=None, post=False):
     if site != SITE or not path.startswith(("/api/", "/personal/training/")) or "://" in path:
         raise ValueError("probe_destination_rejected")
-    args = {k: json.dumps(v) if isinstance(v, (dict, list)) else v for k, v in (args or {}).items()}
-    payload = urlencode(args).encode() if post else None
-    url = "https://" + site + path + (("?" + urlencode(args)) if args and not post else "")
+    values = args or {}
+    query = {k: json.dumps(v) if isinstance(v, (dict, list)) else v for k, v in values.items()}
+    payload = json.dumps(values).encode() if post else None
+    url = "https://" + site + path + (("?" + urlencode(query)) if query and not post else "")
     headers = {"Accept": "application/json", "Accept-Language": "en", "User-Agent": "LMS-access-verification"}
     if credentials:
         headers.update({"Cookie": "sid=" + credentials[0] + "; user_lang=en", "X-Frappe-CSRF-Token": credentials[1]})
     if post:
-        headers["Content-Type"] = "application/x-www-form-urlencoded"
+        headers["Content-Type"] = "application/json"
     req = Request(url, data=payload, headers=headers, method="POST" if post else "GET")
     try:
         response = build_opener(NoRedirect).open(req, timeout=25)
@@ -177,7 +178,7 @@ def run(fr, *, site, member, course_id, lesson_id, outsider=None):
                 status, data = api("lms.lms.utils.get_course_details", {"course": course.name})
                 value = data.get("message") if isinstance(data, dict) else None
                 checks["course_visibility"] = visible_as_expected(status, isinstance(value, dict) and value.get("name") == course.name, allowed) and (allowed or value in (None, {}))
-                status, data = api("lms.lms.utils.get_courses", {"filters": {"enrolled": 1, "custom_avo_id": str(course_id)}, "limit_page_length": 100})
+                status, data = request(site, "/api/method/lms.lms.utils.get_courses", {"filters": {"enrolled": 1, "custom_avo_id": str(course_id)}, "limit_page_length": 100}, cookie, post=True)
                 rows = data.get("message", []) if isinstance(data, dict) else []
                 checks["enrolled_listing"] = visible_as_expected(status, isinstance(rows, list) and any(isinstance(r, dict) and r.get("name") == course.name for r in rows), allowed)
                 status, data = api("lms.lms.avo_course_routes.resolve", {"course_id": str(course_id), "lesson_id": str(lesson_id)})
