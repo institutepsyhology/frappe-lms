@@ -13,6 +13,11 @@ import AvoCourseRoute from '@/pages/Courses/AvoCourseRoute.vue'
 import AvoLessonEditor from '@/pages/Courses/AvoLessonEditor.vue'
 import AvoCourseStart from '@/pages/Courses/AvoCourseStart.vue'
 
+const stubRouteViews = (rows:any[]):any[] => rows.map(row => ({ ...row,
+	...(row.component ? {component:{}} : {}),
+	...(row.children ? {children:stubRouteViews(row.children)} : {}),
+}))
+
 describe('AVO course and lesson URLs', () => {
 	it('resumes a course-only AVO link at the permitted lesson without adding a history entry', async () => {
 		const router=createRouter({history:createMemoryHistory(),routes:[
@@ -38,7 +43,7 @@ describe('AVO course and lesson URLs', () => {
 		expect((ambiguous.matched[0].props.default as Function)(ambiguous)).toEqual({avoLessonId:''})
 	})
 	it('keeps the previous ID URLs working and respects a custom native prefix', async () => {
-		const router=createRouter({history:createMemoryHistory(),routes:getSiteRoutes('academy')})
+		const router=createRouter({history:createMemoryHistory(),routes:stubRouteViews(getSiteRoutes('academy'))})
 		await router.push('/academy/courses/avo/11/lessons/26?lg=ru#part')
 		expect(router.currentRoute.value.fullPath).toBe('/personal/training/11/view/26?lg=ru#part')
 		await router.push('/academy/courses/avo/11/lessons/26/edit')
