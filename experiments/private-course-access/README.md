@@ -4,6 +4,10 @@ Imported courses remain unpublished and unavailable for self-enrollment. The
 frontend permits an existing entitled student to open a private course; an
 unassigned user still receives no course/lesson access. Personal dates, freezes,
 and exact lesson assignments are enforced by the existing server access policy.
+Ordinary learners see only the Enrolled tab, including when following a saved
+catalogue-tab query. Staff and guest catalogue behavior is unchanged.
+
+Completed deployment and authorization results: [verification-20261112.md](verification-20261112.md).
 
 ## Data operator
 
