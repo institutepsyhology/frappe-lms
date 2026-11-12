@@ -12,10 +12,13 @@ BASELINE = 'sha256:d4a1f221ed802b0625963909334c067d0ba6f164563193519416537e8d9b2
 FILES = (
     'frontend/src/pages/Courses/CourseDetail.vue',
     'frontend/src/pages/Courses/Courses.vue',
+    'frontend/src/directives/safeHtmlLevels.ts',
     'frontend/src/tests/courseMemberVisibility.test.ts',
     'frontend/src/tests/coursesDefaultTab.test.ts',
     'frontend/src/tests/coursesFilters.test.ts',
     'frontend/src/tests/courseDetailOutlet.test.ts',
+    'frontend/src/tests/safeHtmlDirective.test.ts',
+    'frontend/src/tests/safeHtmlRetention.test.ts',
 )
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent

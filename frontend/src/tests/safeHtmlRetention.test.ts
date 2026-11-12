@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SAFE_HTML_LEVELS, sanitizeAt } from '../directives/safeHtmlLevels'
+import { sanitizeAt } from '../directives/safeHtmlLevels'
 
 // The companion to safeHtmlDirective.test.ts. That file proves the profiles
 // block what they must; this one proves they do not eat what authors write.
@@ -70,11 +70,17 @@ describe('rich renders authored content without trimming it', () => {
 		expect(sanitizeAt('rich', '<iframe></iframe>')).toBe('')
 	})
 
-	it('degrades embeds at every level, not only rich', () => {
-		for (const level of Object.keys(SAFE_HTML_LEVELS)) {
+	it('degrades embeds in body and biography profiles, not only rich', () => {
+		for (const level of ['rich', 'basic', 'bio']) {
 			expect(
 				sanitizeAt(level, '<iframe src="https://x.test/e"></iframe>')
 			).toContain('href="https://x.test/e"')
+		}
+	})
+
+	it('drops embedded media from title profiles', () => {
+		for (const level of ['title', 'titlelabel']) {
+			expect(sanitizeAt(level, '<iframe src="https://x.test/e"></iframe>')).toBe('')
 		}
 	})
 

@@ -8,7 +8,9 @@ RUN cd apps/lms/frontend && \
       src/tests/courseMemberVisibility.test.ts \
       src/tests/coursesDefaultTab.test.ts \
       src/tests/coursesFilters.test.ts \
-      src/tests/courseDetailOutlet.test.ts && \
+      src/tests/courseDetailOutlet.test.ts \
+      src/tests/safeHtmlDirective.test.ts \
+      src/tests/safeHtmlRetention.test.ts && \
     NODE_OPTIONS=--max-old-space-size=4096 nice -n 10 yarn build
 LABEL org.opencontainers.image.source="https://github.com/institutepsyhology/frappe-lms" \
       org.opencontainers.image.revision="${SOURCE_REVISION}" \

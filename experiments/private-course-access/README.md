@@ -39,13 +39,16 @@ python -m unittest discover -s experiments/private-course-access -p 'test_releas
 
 The Dockerfile literally pins baseline
 `sha256:d4a1f221ed802b0625963909334c067d0ba6f164563193519416537e8d9b2d8d`.
-It overlays only `CourseDetail.vue`, `Courses.vue`, and four frontend regression
-tests. It runs the tests and one Vite build with a 4096 MB Node heap. No Python
+Its nine source files are `CourseDetail.vue`, `Courses.vue`, their required
+`safeHtmlLevels.ts` directive (including `titleText`), and six frontend regression
+tests. The pinned baseline already has identical `safeUrl.ts`, `safeHtml.ts`,
+and DOMPurify 3.2.6, so no dependency changes are required. It runs the tests and
+one Vite build with a 4096 MB Node heap. No Python
 application files, database schema changes, or unrelated editor tests enter
 this overlay.
 
 Commit and publish the reviewed source first. Create the context outside the
-checkout; it reads those six files and the Dockerfile from the specified Git
+checkout; it reads those nine files and the Dockerfile from the specified Git
 commit, never arbitrary working files or private exports:
 
 ```sh
