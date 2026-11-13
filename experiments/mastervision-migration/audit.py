@@ -44,7 +44,9 @@ def _inventory(directory):
         db.row_factory = sqlite3.Row
         if [tuple(r) for r in db.execute('SELECT account,origin,site FROM meta').fetchall()] != [(ACCOUNT, ORIGIN, SITE)]:
             raise AuditError('audit_account_mismatch')
-        rows = db.execute("SELECT c.id,c.state,c.lesson_ids,c.source_digest,p.course_digest,p.lesson_digests FROM courses c LEFT JOIN course_checkpoints p ON p.course=c.id WHERE c.state IN ('review','partial') ORDER BY c.id").fetchall()
+        rows = db.execute("SELECT c.id,c.state,c.lesson_ids,c.source_digest,p.course_digest,p.lesson_digests FROM courses c LEFT JOIN course_checkpoints p ON p.course=c.id WHERE c.state!='imported' ORDER BY c.id").fetchall()
+        if any(r['state'] not in {'pending','review','partial','collected','empty'} for r in rows):
+            raise AuditError('audit_state_invalid')
         courses = [{'id':r['id'],'state':r['state'],'lesson_ids':r['lesson_ids'],'source_digest':r['source_digest']} for r in rows]
         checkpoints = {r['id']:{'course_digest':r['course_digest'],'lesson_digests':r['lesson_digests']}
                        for r in rows if r['course_digest'] is not None}
@@ -231,7 +233,9 @@ def audit_remaining(directory, audio_assets=None, progress=None):
     report = {'version':1,'account':ACCOUNT,'origin':ORIGIN,'site':SITE,'mode':'offline',
               'created_at_utc':datetime.now(timezone.utc).isoformat(), 'courses':results,
               'issue_counts':[{'code':code,'lessons':n,'courses':len(affected[code])} for code,n in counts.most_common()],
-              'summary':{'review_courses':len(results),'lessons':sum(len(r['lesson_ids']) for r in results),
+              'summary':{'review_courses':len(results),'remaining_courses':len(results),
+                         'state_counts':dict(collections.Counter(r['state'] for r in results)),
+                         'lessons':sum(len(r['lesson_ids']) for r in results),
                          'partial_courses':sum(r['state'] == 'partial' for r in results),
                          'deferred_lessons':sum(len(r['deferred_lesson_ids']) for r in results),
                          'known_excluded_lessons':sum(len(r['known_excluded']) for r in results),

@@ -82,18 +82,29 @@ class AuditTests(unittest.TestCase):
                 pairs.append((lid,store.capture('lesson',cid,lid,record({'payload':payload}))))
             store.bind_course(cid,digest,pairs);store.mark(cid,state)
 
-    def test_only_review_courses_ordered_and_no_payload_or_credentials_in_report(self):
+    def test_all_unfinished_courses_ordered_and_no_payload_or_credentials_in_report(self):
         self.course(lids=(12,11));self.course(8,(81,),state='imported');self.course(9,(91,),state='collected')
         before=self.path.read_bytes();progress=[]
         with patch.object(storage.Store,'__init__',side_effect=AssertionError('must not open writer')):
             report=mod.audit_remaining(self.folder,progress=progress.append)
-        self.assertEqual(report['summary']['review_courses'],1)
+        self.assertEqual(report['summary']['remaining_courses'],2)
+        self.assertEqual(report['summary']['state_counts'],{'review':1,'collected':1})
+        self.assertEqual([c['course_id'] for c in report['courses']],[7,9])
         self.assertEqual(report['courses'][0]['lesson_ids'],[12,11])
         self.assertTrue(report['courses'][0]['pure_ready'])
         self.assertEqual(report['courses'][0]['media_availability'],'unverified')
         self.assertEqual(progress[-1]['status'],'completed')
         self.assertEqual(before,self.path.read_bytes())
         self.assertNotIn('PRIVATE',json.dumps(report));self.assertNotIn('PRIVATE',json.dumps(progress))
+
+    def test_pending_missing_source_and_empty_course_remain_visible(self):
+        self.course(7,checkpoint=False);self.course(8,(),state='empty')
+        report=mod.audit_remaining(self.folder)
+        self.assertEqual(report['summary']['remaining_courses'],2)
+        self.assertEqual(report['summary']['state_counts'],{'pending':1,'empty':1})
+        self.assertFalse(report['courses'][0]['pure_ready'])
+        self.assertTrue(report['courses'][1]['pure_ready'])
+        self.assertEqual(report['courses'][1]['planned_lesson_ids'],[])
 
     def test_missing_collection_checkpoint_retains_latest_specific_lesson_diagnostic(self):
         self.course(317,checkpoint=False)
