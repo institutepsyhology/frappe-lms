@@ -2,7 +2,7 @@
 import argparse
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
@@ -174,6 +174,10 @@ refresh();setInterval(refresh,5000);
 def make_server(path=archive_status.PATH, checker=windows_process_matches, port=0):
     if type(port) is not int or not 0 <= port <= 65535: raise ValueError('invalid_local_port')
     class Handler(BaseHTTPRequestHandler):
+        def setup(self):
+            super().setup()
+            self.connection.settimeout(10)
+
         def do_GET(self):
             if self.headers.get('Host') not in {host + ':' + str(self.server.server_address[1]) for host in ('127.0.0.1', 'localhost')}:
                 code, kind, body = 403, 'text/plain; charset=utf-8', b'Forbidden'
@@ -192,7 +196,7 @@ def make_server(path=archive_status.PATH, checker=windows_process_matches, port=
             self.end_headers(); self.wfile.write(body)
 
         def log_message(self, *args): pass
-    return HTTPServer(('127.0.0.1', port), Handler)
+    return ThreadingHTTPServer(('127.0.0.1', port), Handler)
 
 
 def main():

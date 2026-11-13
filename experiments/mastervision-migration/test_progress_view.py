@@ -5,6 +5,7 @@ import http.client
 import json
 from pathlib import Path
 import shutil
+import socket
 import sqlite3
 import threading
 from types import SimpleNamespace
@@ -90,6 +91,19 @@ class Tests(unittest.TestCase):
     def test_invalid_ports_do_not_open_sockets(self):
         for value in (-1,65536,True,'61929'):
             with self.subTest(value=value), self.assertRaises(ValueError): mod.make_server(self.path, port=value)
+
+    def test_browser_preconnect_does_not_block_status_requests(self):
+        with mod.make_server(self.path) as server:
+            thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+            try:
+                with socket.create_connection(server.server_address,timeout=2):
+                    connection=http.client.HTTPConnection(*server.server_address,timeout=2)
+                    connection.request('GET','/status.json')
+                    response=connection.getresponse()
+                    self.assertEqual(response.status,200)
+                    self.assertEqual(json.loads(response.read())['status'],'ok')
+                    connection.close()
+            finally:server.shutdown();thread.join(timeout=3)
 
     def test_stale_running_pid_is_not_reported_running(self):
         self.job()
