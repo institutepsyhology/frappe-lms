@@ -27,6 +27,83 @@ def payload(html=None):
 
 
 class NormalizeTests(unittest.TestCase):
+    def test_empty_discussion_shells_v10_keep_instructions_and_links(self):
+        from test_normalize_empty_discussion_widgets import SOURCE,CLEANED
+        source=payload(SOURCE);before=copy.deepcopy(source)
+        normalized,codes=normalize_payload(source)
+        self.assertEqual(source,before)
+        self.assertEqual(normalized['source_normalization']['version'],10)
+        self.assertIn('empty_discussion_widget_omitted',codes)
+        self.assertEqual(normalized['ape']['children'][0]['fields']['html'],CLEANED)
+        self.assertTrue(plan_import(normalized)['ready'])
+        self.assertEqual(normalize_payload(normalized),(normalized,codes))
+
+    def test_keyboard_v10_keeps_exact_shortcut_text_and_replays(self):
+        source=payload('<p>Press <kbd>Ctrl + Enter</kbd> after reading.</p>')
+        normalized,codes=normalize_payload(source)
+        self.assertEqual(normalized['source_original_ape'],source['ape'])
+        self.assertEqual(normalized['source_normalization']['version'],10)
+        self.assertIn('keyboard_markup_normalized',codes)
+        self.assertTrue(plan_import(normalized)['ready'])
+        self.assertEqual(normalize_payload(normalized),(normalized,codes))
+
+    def test_empty_material_button_keeps_video_and_static_text_with_original_witness(self):
+        source=payload('<p>Keep task</p>')
+        source['ape']['children'].extend([{'name':'button','fields':{'html':'АУДИОЗАПИСЬ','linkType':'url','url':''}},
+            {'name':'video','fields':{'videoProvider':'youtube','videoSrc':YOUTUBE}}])
+        normalized,codes=normalize_payload(source)
+        self.assertEqual(normalized['source_original_ape'],source['ape'])
+        self.assertEqual(normalized['source_normalization']['version'],10)
+        self.assertIn('empty_material_button_omitted',codes)
+        self.assertEqual([n['name'] for n in normalized['ape']['children']],['text','video'])
+        self.assertTrue(plan_import(normalized)['ready'])
+        self.assertEqual(normalize_payload(normalized),(normalized,codes))
+
+    def test_secondary_only_player_keeps_real_media_and_replays(self):
+        source=payload('<p>Keep material</p>')
+        source['ape']['children'].append({'name':'video','id':'secondary','fields':{
+            'videoProvider':'youtube','videoSrc':'','videoProvider2':'rutube','videoSrc2':RUTUBE}})
+        normalized,codes=normalize_payload(source)
+        self.assertEqual(normalized['source_normalization']['version'],10)
+        self.assertIn('native_video_values_normalized',codes)
+        self.assertEqual(normalized['source_original_ape'],source['ape'])
+        self.assertTrue(plan_import(normalized)['ready'])
+        self.assertEqual(normalize_payload(normalized),(normalized,codes))
+
+    def test_static_presentation_v10_preserves_material_audio_and_replays(self):
+        from test_normalize_audio import audio,key,receipt
+        source=payload('<div align="center"><button>Keep &amp; material</button><pre> A\n B </pre></div>')
+        source['ape']['children'].append(audio());before=copy.deepcopy(source)
+        normalized,codes=normalize_payload(source,{key():receipt()})
+        self.assertEqual(source,before)
+        self.assertEqual(normalized['source_original_ape'],before['ape'])
+        self.assertEqual(normalized['source_normalization']['version'],10)
+        self.assertIn('static_presentation_normalized',codes)
+        self.assertTrue(plan_import(normalized)['ready'])
+        self.assertEqual(normalize_payload(normalized),(normalized,codes))
+        self.assertEqual(normalized['source_normalization']['audio_assets'],{key():receipt()})
+
+    def test_unknown_presentation_keeps_prior_audio_repairs_and_still_needs_review(self):
+        from test_normalize_audio import audio,key,receipt
+        source=payload('<div align="center" class="unapproved">Keep</div>')
+        source['ape']['children'].append(audio())
+        normalized,codes=normalize_payload(source,{key():receipt()})
+        self.assertEqual(normalized['ape']['children'][0],source['ape']['children'][0])
+        self.assertEqual(normalized['ape']['children'][1]['name'],'button')
+        self.assertEqual(normalized['source_normalization']['version'],7)
+        self.assertNotIn('static_presentation_normalized',codes)
+        self.assertIn('unsafe_or_unrecognized_html',plan_import(normalized)['issues'])
+        self.assertEqual(normalize_payload(normalized),(normalized,codes))
+
+    def test_table_with_existing_plain_hr_keeps_prior_table_normalization(self):
+        source=payload('<table style="height:23px"><thead><tr><th>Heading</th></tr></thead>'
+                       '<tbody><tr><td>Cell</td></tr></tbody></table><hr>')
+        normalized,codes=normalize_payload(source)
+        self.assertEqual(normalized['source_normalization']['version'],2)
+        self.assertEqual(codes,['static_table_presentation_normalized'])
+        self.assertTrue(plan_import(normalized)['ready'])
+        self.assertEqual(normalize_payload(normalized),(normalized,codes))
+
     def test_image_editor_label_v9_keeps_the_image_and_replays_with_audio(self):
         from test_normalize_audio import audio,key,receipt
         source=payload('<p>Body</p>')

@@ -45,6 +45,19 @@ class ApprovedImageTests(unittest.TestCase):
         out,_=approved.normalize_approved_images(original,377,3185)
         self.assertEqual(out['children'][0]['children'][1],original['children'][0]['children'][1])
 
+    def test_separate_flat_path_is_scoped_and_keeps_all_other_blocks(self):
+        original={'name':'page','children':[{'name':'text','fields':{'html':str(i)}} for i in range(7)]}
+        original['children'].append({'name':'image','fields':{'anchor':'','imageSrc':URL}})
+        original['children'].append({'name':'text','fields':{'html':'Keep final block'}})
+        with patch.object(approved,'APPROVED',{(280,1802):SHA,(286,1857):SHA}):
+            for cid,lid in ((280,1802),(286,1857)):
+                out,changes=approved.normalize_approved_images(original,cid,lid)
+                self.assertEqual(out['children'],original['children'][:7]+original['children'][8:])
+                self.assertEqual(changes,[{'path':[7],'code':approved.CODE,'url_sha256':SHA}])
+                shifted=copy.deepcopy(original);shifted['children'].insert(0,{'name':'text','fields':{'html':'New'}})
+                self.assertEqual(approved.normalize_approved_images(shifted,cid,lid),(shifted,[]))
+            self.assertEqual(approved.normalize_approved_images(original,280,1857),(original,[]))
+
     def test_changed_hash_whitespace_or_missing_path_leaves_the_complete_tree_unchanged(self):
         for value in (OTHER,' '+URL,URL+' ',None,7):
             original=source();original['children'][0]['children'][0]['children'][0]['fields']['imageSrc']=value

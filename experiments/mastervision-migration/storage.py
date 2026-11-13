@@ -16,7 +16,7 @@ SITE = 'my-lk.mastervision.su'
 MAX_CAPTURE_BYTES = 128 * 1024 * 1024
 TABLES = {'meta', 'captures', 'courses', 'events', 'errors', 'course_checkpoints'}
 STAGES = {'collect', 'import', 'catalog', 'cover', 'settings', 'audio'}
-STATES = {'pending', 'review', 'imported', 'collected', 'empty'}
+STATES = {'pending', 'review', 'partial', 'imported', 'collected', 'empty'}
 
 
 class StorageError(RuntimeError):
@@ -261,10 +261,10 @@ class Store:
             course = self.db.execute('SELECT state,source_digest FROM courses WHERE id=?', (course_id,)).fetchone()
             if course is None: raise StorageError('course_not_in_catalog')
             previous = self.db.execute('SELECT course_digest,lesson_digests FROM course_checkpoints WHERE course=?', (course_id,)).fetchone()
-            unchanged = (course['state'] == 'imported' and course['source_digest'] == course_digest and previous is not None
+            unchanged = (course['state'] in ('imported', 'partial') and course['source_digest'] == course_digest and previous is not None
                          and previous['course_digest'] == course_digest and previous['lesson_digests'] == pairs_json)
             self.db.execute('UPDATE courses SET lesson_ids=?,source_digest=?,state=? WHERE id=?',
-                (json.dumps(record['lesson_ids']), course_digest, 'imported' if unchanged else 'collected', course_id))
+                (json.dumps(record['lesson_ids']), course_digest, course['state'] if unchanged else 'collected', course_id))
             self.db.execute('INSERT INTO course_checkpoints VALUES(?,?,?) ON CONFLICT(course) DO UPDATE SET '
                             'course_digest=excluded.course_digest,lesson_digests=excluded.lesson_digests',
                             (course_id, course_digest, pairs_json))
@@ -320,13 +320,22 @@ class Store:
         if not self.db.execute("SELECT 1 FROM captures WHERE kind='course' AND course=? AND lesson=0 AND digest=?", (course_id, digest)).fetchone():
             raise StorageError('unknown_course_capture')
         with self.db:
-            changed = self.db.execute("UPDATE courses SET lesson_ids=?,source_digest=?,state=CASE WHEN source_digest=? AND state='imported' THEN state ELSE 'collected' END WHERE id=?",
+            changed = self.db.execute("UPDATE courses SET lesson_ids=?,source_digest=?,state=CASE WHEN source_digest=? AND state IN ('imported','partial') THEN state ELSE 'collected' END WHERE id=?",
                         (json.dumps(lesson_ids), digest, digest, course_id))
             if changed.rowcount != 1: raise StorageError('course_not_in_catalog')
 
     def mark(self, course_id, state):
         if not _id(course_id) or not isinstance(state, str) or state not in STATES - {'pending'}:
             raise StorageError('invalid_course_state')
+        if state == 'partial':
+            from lesson_policy import deferred_ids
+            row = self.db.execute('SELECT lesson_ids FROM courses WHERE id=?', (course_id,)).fetchone()
+            if row is None: raise StorageError('course_not_in_catalog')
+            allowed = deferred_ids(course_id)
+            try: ids = json.loads(row['lesson_ids'])
+            except (ValueError, TypeError): raise StorageError('invalid_partial_course') from None
+            if not isinstance(ids, list) or any(not _id(lid) for lid in ids) or not allowed.intersection(ids):
+                raise StorageError('invalid_partial_course')
         with self.db:
             if self.db.execute('UPDATE courses SET state=? WHERE id=?', (state, course_id)).rowcount != 1:
                 raise StorageError('course_not_in_catalog')
@@ -361,7 +370,7 @@ class Store:
           WHERE e.status='review' AND e.id=(SELECT MAX(x.id) FROM events x WHERE
           x.course=e.course AND x.stage=e.stage AND x.lesson IS e.lesson)
           AND EXISTS(SELECT 1 FROM courses c WHERE c.id=e.course AND
-            (c.state='review' OR (e.stage='cover' AND e.lesson IS NULL)))
+            (c.state IN ('review','partial') OR (e.stage='cover' AND e.lesson IS NULL)))
           ORDER BY e.course,e.lesson''').fetchall()
         for row in rows:
             lesson = row['lesson']
@@ -375,6 +384,17 @@ class Store:
                          f": [{row['stage']}]({url}) — {', '.join(codes)}")
         if not rows:
             lines.append('Проблемы ещё не зарегистрированы.')
+        from lesson_policy import EXCLUDED, EXCLUDED_CODE
+        excluded = []
+        for cid, approved in sorted(EXCLUDED.items()):
+            row = self.db.execute('SELECT lesson_ids,state FROM courses WHERE id=?', (cid,)).fetchone()
+            if row is None or row['lesson_ids'] is None: continue
+            ids = json.loads(row['lesson_ids'])
+            for lid in ids:
+                if lid in approved: excluded.append((cid, lid))
+        if excluded:
+            lines += ['', '## Исключены из переноса по решению владельца', '']
+            lines += [f'- Курс {cid}, урок {lid}: {EXCLUDED_CODE}. Исходник АВО сохранён.' for cid, lid in excluded]
         path = self.directory / 'ОТЧЁТ-перенос-mastervision.md'
         temporary = path.with_name(path.name + '.tmp-' + os.urandom(6).hex())
         fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)

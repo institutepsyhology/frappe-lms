@@ -21,6 +21,11 @@ from normalize_accordions import normalize_accordions, CODE as ACCORDION_CODE
 from normalize_stage_widgets import normalize_stage_widgets, CODE as STAGE_CODE
 from normalize_approved_images import normalize_approved_images, CODE as OMIT_IMAGE_CODE
 from normalize_image_labels import normalize_image_labels, CODE as IMAGE_LABEL_CODE
+from normalize_static_presentation import normalize_static_presentation, CODE as PRESENTATION_CODE
+from normalize_empty_material_buttons import normalize_empty_material_buttons, CODE as EMPTY_BUTTON_CODE
+from normalize_video_values import normalize_video_values, CODE as VIDEO_VALUE_CODE
+from normalize_empty_discussion_widgets import normalize_empty_discussion_widgets, CODE as EMPTY_WIDGET_CODE
+from normalize_keyboard_markup import normalize_keyboard_markup, CODE as KEYBOARD_CODE
 from normalize_audio import normalize_audio, CODE as AUDIO_CODE
 
 
@@ -317,7 +322,7 @@ def normalize_payload(payload, audio_assets=None):
             raise Review("normalization_metadata_conflict")
         metadata = result['source_normalization']
         is_audio = isinstance(metadata, dict) and (metadata.get('version') == 7 or
-            metadata.get('version') in (8,9) and ('audio_assets' in metadata or bool(metadata.get('audio_blocks'))))
+            metadata.get('version') in (8,9,10) and ('audio_assets' in metadata or bool(metadata.get('audio_blocks'))))
         stored_assets = metadata.get('audio_assets') if is_audio else None
         if is_audio:
             if (not isinstance(stored_assets, dict) or not stored_assets
@@ -347,6 +352,7 @@ def normalize_payload(payload, audio_assets=None):
     original_ape, changed, table_changes = copy.deepcopy(ape), [], []
     ape, approved_image_omissions = normalize_approved_images(ape, result.get('course_id'), result.get('lesson_id'))
     ape, image_label_changes = normalize_image_labels(ape, static_validator())
+    ape, video_value_changes = normalize_video_values(ape, static_validator())
     ape, audio_changes = normalize_audio(ape, audio_assets)
     ape, stage_changes = normalize_stage_widgets(ape, static_validator())
     ape, accordion_changes = normalize_accordions(ape, static_validator())
@@ -354,7 +360,26 @@ def normalize_payload(payload, audio_assets=None):
     ape, image_changes = normalize_inline_images(ape, static_validator())
     ape, extracted_image_changes = normalize_nodes(ape, static_validator())
     editor_changes.extend(extracted_image_changes)
+    ape, empty_button_changes = normalize_empty_material_buttons(ape, static_validator())
     ape, button_changes = normalize_button_labels(ape, static_validator())
+    ape, empty_widget_changes = normalize_empty_discussion_widgets(ape, static_validator())
+    try:
+        ape, presentation_changes = normalize_static_presentation(ape, static_validator())
+    except Review as exc:
+        if str(exc) != 'static_presentation_requires_review':
+            raise
+        # Keep earlier safe repairs; unknown HTML still reaches the core parser.
+        presentation_changes = []
+    try:
+        ape, keyboard_changes = normalize_keyboard_markup(ape, static_validator())
+    except Review as exc:
+        if str(exc) != 'keyboard_markup_requires_review': raise
+        keyboard_changes = []
+    if presentation_changes:
+        ape, repaired_headers = normalize_nodes(ape, static_validator())
+        editor_changes.extend(repaired_headers)
+        ape, repaired_buttons = normalize_button_labels(ape, static_validator())
+        button_changes.extend(repaired_buttons)
     result['ape'] = ape
 
     def visit(node, path):
@@ -412,9 +437,33 @@ def normalize_payload(payload, audio_assets=None):
         codes.append(OMIT_IMAGE_CODE)
     if image_label_changes:
         codes.append(IMAGE_LABEL_CODE)
+    if presentation_changes:
+        codes.append(PRESENTATION_CODE)
+    if empty_button_changes:
+        codes.append(EMPTY_BUTTON_CODE)
+    if video_value_changes:
+        codes.append(VIDEO_VALUE_CODE)
+    if empty_widget_changes:
+        codes.append(EMPTY_WIDGET_CODE)
+    if keyboard_changes:
+        codes.append(KEYBOARD_CODE)
     if codes:
         result["source_original_ape"] = original_ape
-        if image_label_changes:
+        if presentation_changes or empty_button_changes or video_value_changes or empty_widget_changes or keyboard_changes:
+            metadata = {"version": 10, "kind": "mastervision_editor_normalization", "codes": codes,
+                        "blocks": changed, "table_blocks": table_changes, "editor_blocks": editor_changes,
+                        "inline_image_blocks": image_changes, "button_blocks": button_changes,
+                        "accordion_blocks": accordion_changes, "stage_blocks": stage_changes,
+                        "approved_image_omissions": approved_image_omissions, "image_label_blocks": image_label_changes,
+                        "presentation_blocks": presentation_changes, "empty_button_blocks": empty_button_changes,
+                        "video_value_blocks": video_value_changes, "empty_widget_blocks": empty_widget_changes,
+                        "keyboard_blocks": keyboard_changes}
+            if audio_changes:
+                metadata["audio_blocks"] = audio_changes
+                metadata["audio_assets"] = {key: copy.deepcopy(audio_assets[key])
+                    for key in sorted({change['url_sha256'] for change in audio_changes})}
+            result["source_normalization"] = metadata
+        elif image_label_changes:
             metadata = {"version": 9, "kind": "mastervision_editor_normalization", "codes": codes,
                         "blocks": changed, "table_blocks": table_changes, "editor_blocks": editor_changes,
                         "inline_image_blocks": image_changes, "button_blocks": button_changes,

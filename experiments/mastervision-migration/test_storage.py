@@ -42,6 +42,41 @@ def uuid_lesson(root_id, block_id, body='original'):
 
 
 class StorageTests(unittest.TestCase):
+    def test_permanent_exclusions_are_reported_without_rewriting_source_ids(self):
+        store=self.store();cid=207;ids=(11,1976,12)
+        store.catalog([{'id':cid,'title':'Course'}])
+        course=verified_course(ids);course['parsed']['course_id']=cid
+        digest=store.capture('course',cid,0,course);pairs=[]
+        for lid in ids:
+            lesson=verified_lesson(lid);lesson['parsed']['payload']['course_id']=cid
+            pairs.append((lid,store.capture('lesson',cid,lid,lesson)))
+        store.bind_course(cid,digest,pairs);before=store.completed_course(cid)
+        store.mark(cid,'imported');store.event('import',cid,1976,'warning',['owner_excluded_obsolete_lesson'])
+        self.assertEqual(store.summary(),{'imported':1});self.assertEqual(store.completed_course(cid),before)
+        report=store.report().read_text(encoding='utf-8')
+        self.assertIn('207',report);self.assertIn('1976',report);self.assertIn('owner_excluded_obsolete_lesson',report)
+        with self.assertRaisesRegex(storage.StorageError,'invalid_partial_course'):store.mark(cid,'partial')
+
+    def test_partial_is_scoped_preserves_checkpoint_and_reports_pending(self):
+        store=self.store();cid=598;ids=(11,7544,12)
+        store.catalog([{'id':cid,'title':'Course'}])
+        course=verified_course(ids);course['parsed']['course_id']=cid
+        digest=store.capture('course',cid,0,course);pairs=[]
+        for lid in ids:
+            lesson=verified_lesson(lid);lesson['parsed']['payload']['course_id']=cid
+            pairs.append((lid,store.capture('lesson',cid,lid,lesson)))
+        store.bind_course(cid,digest,pairs);before=store.completed_course(cid)
+        store.mark(cid,'partial');store.event('import',cid,7544,'review',['owner_deferred_lesson'])
+        self.assertEqual(store.summary(),{'partial':1})
+        self.assertEqual(store.completed_course(cid),before)
+        store.bind_course(cid,digest,pairs)
+        self.assertEqual(store.summary(),{'partial':1})
+        store.course(cid,list(ids),digest);self.assertEqual(store.summary(),{'partial':1})
+        report=store.report().read_text(encoding='utf-8')
+        self.assertIn('partial: 1',report);self.assertIn('7544',report);self.assertIn('owner_deferred_lesson',report)
+        store.catalog([{'id':599,'title':'Other'}])
+        with self.assertRaisesRegex(storage.StorageError,'invalid_partial_course'):store.mark(599,'partial')
+
     def setUp(self):
         self.parent=Path(__file__).resolve().parents[3]/'.tmp-mastervision-storage-tests'
         self.parent.mkdir(exist_ok=True)

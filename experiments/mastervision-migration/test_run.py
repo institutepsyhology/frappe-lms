@@ -19,8 +19,8 @@ class FakeCursor:
 class FakeDB:
     def __init__(self, store): self.store = store
     def execute(self, sql, parameters=()):
-        if sql == "SELECT id FROM courses WHERE state='review'":
-            return FakeCursor([(cid,) for cid in self.store.review_ids])
+        if sql == "SELECT id FROM courses WHERE state IN ('review','partial')":
+            return FakeCursor([(cid,) for cid in self.store.review_ids | self.store.partial_ids])
         if sql == 'SELECT id,title FROM courses ORDER BY id':
             return FakeCursor(self.store.catalog_rows)
         if sql != 'SELECT stage FROM errors WHERE consecutive>=?':
@@ -35,6 +35,7 @@ class FakeStore:
         self.events, self.marks, self.captures, self.completed = [], [], [], []
         self.catalog_rows, self.bound, self.checkpoints = [], [], {}
         self.review_ids = set()
+        self.partial_ids = set()
         self.reports = 0
         self.closed = False
 
@@ -95,9 +96,11 @@ class FakeAssets:
 class FakeImporter:
     def __init__(self, behavior):
         self.behavior, self.calls = behavior, []
+        self.payloads = []
     def import_course(self, payloads, apply=False, images_for_lesson=None, progress_callback=None):
         cid = payloads[0]['course_id']
         self.calls.append((cid, apply))
+        self.payloads.append(copy.deepcopy(payloads))
         error = self.behavior(cid)
         if error: raise error
         return {'status': 'imported' if apply else 'ready', 'warnings': [], 'created_lesson_ids': []}
@@ -117,6 +120,80 @@ def course_snapshot(ids=(10,), title='Synthetic course'):
 
 
 class ControllerTests(unittest.TestCase):
+    def test_permanent_owner_omissions_allow_complete_import_without_source_changes(self):
+        for cid,lid in ((207,1976),(445,4089)):
+            source=[{**payload(cid),'lesson_id':x} for x in (11,lid,12)];before=copy.deepcopy(source)
+            source[1]['ape']={'name':'unsupported-owner-excluded-block'}
+            before=copy.deepcopy(source)
+            with patch.object(mod,'stored_course',return_value=source):
+                result=self.invoke(cid,args=['--stored','--apply','--course',str(cid)])
+            self.assertEqual(result[0],0);self.assertEqual(source,before)
+            self.assertEqual([p['lesson_id'] for p in result[4].payloads[0]],[11,12])
+            self.assertEqual(result[1].marks,[(cid,'imported')])
+            self.assertIn(('import',cid,lid,'warning',['owner_excluded_obsolete_lesson']),result[1].events)
+            event=next(e for e in result[5] if e.get('course')==cid and e.get('status')=='imported')
+            self.assertEqual(event['excluded'],[lid]);self.assertNotIn('deferred',event)
+
+    def test_all_permanently_excluded_never_creates_a_fake_empty_target(self):
+        import course_metadata
+        with patch.object(mod,'stored_course',return_value=[{**payload(207),'lesson_id':1976}]), \
+                patch.object(course_metadata,'ensure_empty_course') as empty:
+            result=self.invoke(207,args=['--stored','--apply','--course','207'])
+        self.assertEqual(result[4].calls,[]);empty.assert_not_called()
+        self.assertEqual(result[1].marks,[(207,'collected')])
+        self.assertIn({'course':207,'status':'excluded','lessons':0,'excluded':[1976]},result[5])
+
+    def deferred_source(self):
+        ids=list(range(1,128));ids[94]=7544
+        return [{**payload(598),'lesson_id':lid} for lid in ids]
+
+    def test_owner_deferral_imports_126_in_source_order_and_reports_partial(self):
+        source=self.deferred_source();before=copy.deepcopy(source)
+        with patch.object(mod,'stored_course',return_value=source):
+            result=self.invoke(598,args=['--stored','--apply','--course','598'])
+        self.assertEqual(result[0],0);self.assertEqual(source,before)
+        sent=result[4].payloads[0]
+        self.assertEqual(len(sent),126)
+        self.assertEqual([p['lesson_id'] for p in sent],[p['lesson_id'] for p in source if p['lesson_id']!=7544])
+        self.assertEqual(result[1].marks,[(598,'partial')]);self.assertNotIn((598,'imported'),result[1].marks)
+        self.assertIn(('import',598,7544,'review',['owner_deferred_lesson']),result[1].events)
+        event=next(e for e in result[5] if e.get('status')=='partial')
+        self.assertEqual(event['lessons'],126);self.assertEqual(event['deferred'],[7544])
+
+    def test_already_present_partial_rerun_stays_partial_and_dry_run_is_not_complete(self):
+        with patch.object(mod,'stored_course',return_value=self.deferred_source()):
+            result=self.invoke(598,args=['--stored','--course','598'])
+            self.assertEqual(result[1].marks,[(598,'collected')])
+            with patch.object(FakeImporter,'import_course',return_value={
+                    'status':'already_present','warnings':[],'created_lesson_ids':[]}):
+                result=self.invoke(598,args=['--stored','--course','598'])
+        self.assertEqual(result[1].marks,[(598,'partial')])
+        self.assertEqual(next(e for e in result[5] if e.get('status')=='partial')['deferred'],[7544])
+
+    def test_all_deferred_never_creates_fake_empty_course_or_lesson(self):
+        import course_metadata
+        with patch.object(mod,'stored_course',return_value=[{**payload(598),'lesson_id':7544}]), \
+                patch.object(course_metadata,'ensure_empty_course') as empty:
+            result=self.invoke(598,args=['--stored','--apply','--course','598'])
+        self.assertEqual(result[4].calls,[]);empty.assert_not_called()
+        self.assertEqual(result[1].marks,[(598,'review')])
+        self.assertIn({'course':598,'status':'deferred','lessons':0,'deferred':[7544]},result[5])
+
+    def test_review_selection_includes_partial_and_cover_settings_accept_partial(self):
+        result=self.invoke(6,review_ids=[2],partial_ids=[4],args=['--review-only','--collect-only'])
+        self.assertEqual(result[6],[2,4])
+        import covers
+        store=FakeStore();store.marks=[(598,'partial')]
+        store.completed_metadata=lambda cid:{'cover_url':'https://f1.autoweboffice.com/synthetic.jpg'}
+        cache=FakeAssets();cache.fetch=lambda url:(b'synthetic','jpg')
+        with patch.object(mod,'target_course_ids',return_value={'598'}), \
+                patch.object(covers,'sync_cover',return_value={'status':'updated'}) as cover, \
+                patch.object(settings,'ensure_private_course',return_value={'status':'updated'}) as private, \
+                patch.object(mod,'emit'):
+            mod.transfer_covers(store,[{'id':598}],FakeClient(),cache,True)
+            mod.transfer_settings(store,[{'id':598}],FakeClient(),True)
+        self.assertEqual(cover.call_args.args[1],598);self.assertEqual(private.call_args.args[1],598)
+
     def test_audio_staging_runs_without_mcp_or_lesson_mutations(self):
         import audio_stage_client
         def staging(store, callback):
@@ -177,9 +254,10 @@ class ControllerTests(unittest.TestCase):
         result = self.invoke(2, importing=lambda cid: error, args=['--apply'])
         self.assertNotIn('PRIVATE', repr(result[5]) + repr(result[1].events))
 
-    def invoke(self, count, *, collect=None, importing=None, args=(), errors=None, review_ids=()):
+    def invoke(self, count, *, collect=None, importing=None, args=(), errors=None, review_ids=(), partial_ids=()):
         store, transport, client = FakeStore(errors), FakeTransport(), FakeClient()
         store.review_ids = set(review_ids)
+        store.partial_ids = set(partial_ids)
         target = FakeImporter(importing or (lambda cid: None))
         output, collected = [], []
 

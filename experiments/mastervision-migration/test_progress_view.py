@@ -88,6 +88,23 @@ class Tests(unittest.TestCase):
         (directory/'audio-stage-index.json').write_text(json.dumps(index),encoding='utf-8')
         with self.assertRaises(ValueError): mod.audio_progress(directory)
 
+    def test_partial_course_counts_only_transferred_lessons_and_is_not_complete(self):
+        with closing(sqlite3.connect(self.path)) as db, db:
+            db.execute('INSERT INTO courses VALUES(?,?,?)',(598,'partial','[7543,7544,7545]'))
+        result=mod.snapshot(self.path,Mock(return_value=False))
+        self.assertEqual(result['courses']['imported'],2)
+        self.assertEqual(result['courses']['partial'],1)
+        self.assertEqual(result['complete_course_lessons'],2)
+        self.assertEqual(result['partial_lessons'],2)
+        self.assertEqual(result['imported_lessons'],4)
+
+    def test_permanently_excluded_lesson_is_not_counted_as_transferred(self):
+        with closing(sqlite3.connect(self.path)) as db, db:
+            db.execute('INSERT INTO courses VALUES(?,?,?)',(207,'imported','[1975,1976,4965]'))
+        result=mod.snapshot(self.path,Mock(return_value=False))
+        self.assertEqual(result['courses']['imported'],3)
+        self.assertEqual(result['imported_lessons'],4)
+
     def test_invalid_ports_do_not_open_sockets(self):
         for value in (-1,65536,True,'61929'):
             with self.subTest(value=value), self.assertRaises(ValueError): mod.make_server(self.path, port=value)

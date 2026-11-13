@@ -10,6 +10,7 @@ import threading
 from urllib.parse import urljoin
 
 import source
+from lesson_policy import CODE as DEFERRED_CODE, EXCLUDED_CODE, excluded_ids, partition_payloads
 from storage import Store, StorageError, ACCOUNT, ORIGIN, SITE, STAGES
 
 HERE = Path(__file__).resolve().parent
@@ -161,11 +162,14 @@ def prepare_payloads(payloads, audio_assets=None):
             normalized, codes = (normalize_payload(payload) if audio_assets is None else
                                  normalize_payload(payload, audio_assets=audio_assets))
         except ImportReview as exc:
-            if str(exc) in ('normalization_account_mismatch', 'normalization_metadata_conflict', 'normalization_source_invalid'):
+            if str(exc) in ('normalization_account_mismatch', 'normalization_metadata_conflict', 'normalization_source_invalid',
+                            'static_presentation_material_mismatch', 'keyboard_markup_material_mismatch'):
                 raise Stop(str(exc)) from None
             # The unchanged source still goes through the stricter server parser.
             # Unknown embeds are never silently dropped or locally authorized.
-            normalized, codes = payload, ['embedded_iframe_requires_review']
+            diagnostic = str(exc)
+            if not re.fullmatch('[a-z0-9_]{1,80}', diagnostic): diagnostic = 'normalization_requires_review'
+            normalized, codes = payload, [diagnostic]
         prepared.append(normalized)
         if codes:
             warnings.append({'lesson_id': str(payload['lesson_id']), 'codes': codes})
@@ -284,7 +288,7 @@ def main():
                     rows = [row for row in rows if row['id'] in selected_ids]
                     if len(rows) != len(selected_ids): raise Stop('selected_course_not_in_catalog')
                 if selected.review_only:
-                    review_ids = {row[0] for row in store.db.execute("SELECT id FROM courses WHERE state='review'")}
+                    review_ids = {row[0] for row in store.db.execute("SELECT id FROM courses WHERE state IN ('review','partial')")}
                     rows = [row for row in rows if row['id'] in review_ids]
                 rows = [row for row in rows if row['id'] >= selected.from_course]
                 if selected.limit: rows = rows[:selected.limit]
@@ -356,6 +360,18 @@ def main():
                     if selected.collect_only:
                         emit({'course': cid, 'status': 'collected', 'lessons': len(payloads)}); continue
                     try:
+                        source_payloads = payloads
+                        payloads, deferred = partition_payloads(payloads)
+                        excluded = [p['lesson_id'] for p in source_payloads if p['lesson_id'] in excluded_ids(cid)]
+                        for lid in excluded: store.event('import', cid, lid, 'warning', [EXCLUDED_CODE])
+                        if not payloads:
+                            store.mark(cid, 'review' if deferred else 'collected')
+                            for lid in deferred: store.event('import', cid, lid, 'review', [DEFERRED_CODE])
+                            event = {'course': cid, 'status': 'deferred' if deferred else 'excluded', 'lessons': 0}
+                            if deferred: event['deferred'] = deferred
+                            if excluded: event['excluded'] = excluded
+                            emit(event)
+                            store.report(); continue
                         payloads, normalization_warnings = prepare_payloads(payloads, audio_assets=audio_assets)
                         result = target.import_course(payloads, apply=selected.apply, images_for_lesson=assets.lesson_images,
                                                       progress_callback=record_target_event)
@@ -363,12 +379,17 @@ def main():
                             from settings import ensure_private_course
                             ensure_private_course(client, cid, apply=True)
                         store.error('import', False)
-                        store.mark(cid, 'imported' if selected.apply or result['status'] == 'already_present' else 'collected')
+                        complete = selected.apply or result['status'] == 'already_present'
+                        store.mark(cid, ('partial' if deferred else 'imported') if complete else 'collected')
                         store.event('import', cid, None, result['status'])
+                        for lid in deferred: store.event('import', cid, lid, 'review', [DEFERRED_CODE])
                         for warning in result['warnings'] + normalization_warnings:
                             store.event('import', cid, int(warning['lesson_id']), 'warning', warning['codes'])
-                        emit({'course': cid, 'status': result['status'], 'lessons': len(payloads),
-                              'created': len(result['created_lesson_ids'])})
+                        event = {'course': cid, 'status': 'partial' if deferred and complete else result['status'],
+                                 'lessons': len(payloads), 'created': len(result['created_lesson_ids'])}
+                        if deferred: event['deferred'] = deferred
+                        if excluded: event['excluded'] = excluded
+                        emit(event)
                     except importer.Review as exc:
                         store.mark(cid, 'review')
                         for problem in exc.problems or [{'lesson_id': None, 'codes': [str(exc)]}]:

@@ -9,9 +9,10 @@ from pathlib import Path
 import re
 import sqlite3
 import status as archive_status
+from lesson_policy import deferred_ids, excluded_ids
 
 MSK = timezone(timedelta(hours=3))
-STATES = {'pending', 'review', 'imported', 'collected', 'empty'}
+STATES = {'pending', 'review', 'imported', 'collected', 'empty', 'partial'}
 EVENTS = {'complete', 'captured', 'equivalent_source_reused', 'review', 'created', 'already_present', 'audio_staged', 'audio_registered',
           'ready', 'empty_created', 'empty_already_present', 'lesson_created', 'lesson_write_started',
           'warning', 'stopped', 'cover_created', 'cover_already_imported', 'private_updated', 'private_already_private'}
@@ -130,11 +131,16 @@ def snapshot(path=archive_status.PATH, checker=windows_process_matches):
     with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=5)) as db:
         if db.execute('SELECT account,origin,site FROM meta').fetchall() != [('mastervision', 'https://shop.mastervision.su', 'my-lk.mastervision.su')]:
             raise ValueError('status_account_mismatch')
-        imported = 0
-        for row in db.execute("SELECT lesson_ids FROM courses WHERE state='imported'"):
-            ids = json.loads(row[0])
+        imported, partial_lessons = 0, 0
+        for row in db.execute("SELECT id,state,lesson_ids FROM courses WHERE state IN ('imported','partial')"):
+            ids = json.loads(row[2])
             if not isinstance(ids, list) or any(type(i) is not int or i <= 0 for i in ids): raise ValueError('invalid_ids')
-            imported += len(ids)
+            excluded = excluded_ids(row[0]) & set(ids)
+            if row[1] == 'imported': imported += len(ids) - len(excluded)
+            else:
+                deferred = deferred_ids(row[0])
+                if not deferred or not deferred <= set(ids): raise ValueError('invalid_partial_state')
+                partial_lessons += len(ids) - len(deferred) - len(excluded)
     last = stats.get('last_event')
     if last:
         last = {'at_msk': msk(last['at_utc']), 'stage': last['stage'] if last['stage'] in {'collect', 'import', 'catalog', 'cover', 'settings', 'audio'} else 'unknown',
@@ -144,7 +150,8 @@ def snapshot(path=archive_status.PATH, checker=windows_process_matches):
     return {'status': 'ok', 'updated_at_msk': datetime.now(MSK).strftime('%d.%m.%Y %H:%M:%S МСК'),
             'courses': stats['courses'], 'catalog_courses': stats['catalog_courses'],
             'source_courses': stats['completed_source_courses'], 'source_lessons': stats['completed_source_lessons'],
-            'imported_lessons': imported, 'last_event': last, 'worker': worker_status(path.parent / 'jobs', checker),
+            'imported_lessons': imported + partial_lessons, 'complete_course_lessons': imported,
+            'partial_lessons': partial_lessons, 'last_event': last, 'worker': worker_status(path.parent / 'jobs', checker),
             'audio': audio_progress(path.parent)}
 
 
@@ -153,8 +160,8 @@ HTML = '''<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewp
 body{font:17px system-ui,sans-serif;background:#f4f6fa;color:#172332;margin:0;padding:32px;max-width:1120px;margin:auto}h1{font-size:32px;margin-bottom:8px}.hint{color:#5c6979}#worker{padding:18px 22px;background:white;border-left:6px solid #8b97a8;border-radius:8px;font-weight:600;margin:24px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}.card{background:white;padding:22px;border-radius:12px}.number{font-size:38px;font-weight:700;margin-bottom:8px}.details{background:white;border-radius:12px;padding:24px;margin-top:24px;line-height:1.8}code{overflow-wrap:anywhere}p{margin:8px 0}
 </style><h1>Перенос Master Vision</h1><div class="hint">Обновляется каждые 5 секунд. Эта страница показывает состояние и не запускает перенос.</div>
 <div id="worker">Проверяю состояние процесса…</div><div class="grid">
-<div class="card"><div class="number" id="imported">—</div>Курсов перенесено</div><div class="card"><div class="number" id="lessons">—</div>Уроков в перенесённых курсах</div><div class="card"><div class="number" id="review">—</div>Курсов на разборе</div><div class="card"><div class="number" id="total">—</div>Курсов в исходной базе</div></div>
-<div class="details"><p id="source"></p><p id="audio"></p><p id="event"></p><p id="job"></p><p id="updated" class="hint"></p></div>
+<div class="card"><div class="number" id="imported">—</div>Подтверждено курсов во Frappe</div><div class="card"><div class="number" id="lessons">—</div>Перенесено уроков</div><div class="card"><div class="number" id="review">—</div>Курсов на разборе</div><div class="card"><div class="number" id="total">—</div>Курсов в исходной базе</div></div>
+<div class="details"><p id="source"></p><p id="partial"></p><p id="audio"></p><p id="event"></p><p id="job"></p><p id="updated" class="hint"></p></div>
 <script>
 const put=(id,v)=>document.getElementById(id).textContent=v;
 const states={none:'Сборщик сейчас не запущен',stopped:'Сборщик сейчас не работает: прежний процесс не подтверждён',completed:'Сборщик сейчас не запущен. Предыдущий запуск завершён',failed:'Сборщик сейчас не запущен. Предыдущий запуск остановился с ошибкой',starting:'Запуск готовится; работа процесса пока не подтверждена',running:'Сборщик работает — процесс подтверждён'};
@@ -162,7 +169,8 @@ const stages={collect:'сбор исходников',import:'перенос',ca
 const actions={complete:'завершено',captured:'урок сохранён',equivalent_source_reused:'снимок проверен',review:'требуется разбор',created:'курс перенесён',already_present:'курс уже перенесён',ready:'готово к переносу',empty_created:'курс без уроков перенесён',empty_already_present:'курс без уроков уже есть',lesson_created:'урок перенесён',lesson_write_started:'переносится урок',warning:'замечание сохранено',stopped:'остановлено',cover_created:'обложка перенесена',cover_already_imported:'обложка уже есть',private_updated:'доступ настроен',private_already_private:'доступ проверен',audio_staged:'аудиофайл сохранён на сервере'};
 async function refresh(){try{const response=await fetch('/status.json',{cache:'no-store'});if(!response.ok)throw Error();const d=await response.json();if(d.status!=='ok')throw Error();
 put('worker',states[d.worker.state]||'Состояние процесса не подтверждено');document.getElementById('worker').style.borderLeftColor=d.worker.running?'#2f8757':'#8b97a8';
-put('imported',d.courses.imported||0);put('lessons',d.imported_lessons);put('review',d.courses.review||0);put('total',d.catalog_courses);
+put('imported',(d.courses.imported||0)+(d.courses.partial||0));put('lessons',d.imported_lessons);put('review',d.courses.review||0);put('total',d.catalog_courses);
+put('partial',d.courses.partial?`Полностью перенесено: ${d.courses.imported||0} курсов. Курсов с временно отложенными уроками: ${d.courses.partial}; в них сохранено ${d.partial_lessons} уроков.`:'');
 put('audio',d.audio?`Аудиофайлы сохранены на сервере: ${d.audio.staged} из ${d.audio.total}; ${Math.round(d.audio.bytes_staged/1048576)} из ${Math.round(d.audio.bytes_total/1048576)} МБ. Подключены к базе: ${d.audio.registered||0} из ${d.audio.total}.`:'');
 put('source',`Сохранено исходников: ${d.source_courses} курсов, ${d.source_lessons} уроков.`);const e=d.last_event;put('event',e?`Последнее действие: ${e.at_msk}; ${stages[e.stage]||'проверка'}; ${actions[e.status]||'проверка'}${e.course?' · курс '+e.course:''}${e.lesson?' · урок '+e.lesson:''}`:'Действий пока нет.');
 put('job',d.worker.created_at_msk?`Последний запуск создан: ${d.worker.created_at_msk}${d.worker.finished_at_msk?'; завершён: '+d.worker.finished_at_msk:''}`:'Запусков пока нет.');put('updated','Проверено: '+d.updated_at_msk);

@@ -1,4 +1,4 @@
-"""Omit scoped references to the owner's two approved missing-image files."""
+"""Omit scoped references to the owner's approved missing-image files."""
 import copy
 import hashlib
 
@@ -10,10 +10,13 @@ CODE='owner_approved_missing_image_omitted'
 PATH=[0,0,0]
 A='b818cf308e8653fb70263908a40f410f5680d9a3ace670884fe45f4bd2f38a25'
 B='656420023fc55b84b2fe8c69ca647b3f3305e9e414cba50dfcab6a5fa5946c14'
+C='fc93e347a1ef59ba7b9b32601c74cb670ee69f34403eea8f854f11768224aab8'
 APPROVED={(377,lid):(B if lid==3189 else A) for lid in range(3185,3196)}
 APPROVED.update({(486,lid):(B if lid==4662 else A) for lid in range(4658,4669)})
 APPROVED.update({(331,lid):(B if lid==2779 else A)
                  for lid in (2775,2776,2777,2778,2779,2780,2782,2783,2784,2785,2786)})
+APPROVED.update({(280,1802):C,(286,1857):C})
+APPROVED_PATHS={(280,1802):[7],(286,1857):[7]}
 
 
 def _children(node,index):
@@ -38,14 +41,15 @@ def normalize_approved_images(ape,course_id,lesson_id):
             or not isinstance(copied,dict) or copied.get('name')!='page'):return copied,[]
     expected=APPROVED.get((course_id,lesson_id))
     if expected is None:return copied,[]
+    path=APPROVED_PATHS.get((course_id,lesson_id),PATH)
     parent=copied
-    for index in PATH[:-1]:
+    for index in path[:-1]:
         children=_children(parent,index)
         if children is None:return copied,[]
         parent=children[index]
-    children=_children(parent,PATH[-1])
+    children=_children(parent,path[-1])
     if children is None:return copied,[]
-    node=children[PATH[-1]]
+    node=children[path[-1]]
     if (not isinstance(node,dict) or node.get('name')!='image'
             or set(node)-{'id','name','fields','children','style'} or node.get('children',[])!=[]):return copied,[]
     fields=node.get('fields');style=node.get('style')
@@ -57,5 +61,5 @@ def normalize_approved_images(ape,course_id,lesson_id):
     try:digest=hashlib.sha256(url.encode('utf-8')).hexdigest()
     except UnicodeError:return copied,[]
     if digest!=expected:return copied,[]
-    children.pop(PATH[-1])
-    return copied,[{'path':list(PATH),'code':CODE,'url_sha256':digest}]
+    children.pop(path[-1])
+    return copied,[{'path':list(path),'code':CODE,'url_sha256':digest}]
