@@ -180,6 +180,7 @@ class StorageTests(unittest.TestCase):
         self.assertIn('207',report);self.assertIn('1976',report);self.assertIn('owner_excluded_obsolete_lesson',report)
         with self.assertRaisesRegex(storage.StorageError,'invalid_partial_course'):store.mark(cid,'partial')
 
+    @patch.object(lesson_policy, 'DEFERRED', {})  # This fixture covers only final 557/598 exclusions.
     def test_final_owner_exclusions_have_no_reminders_and_keep_full_source_checkpoints(self):
         store=self.store()
         self.deferred_checkpoint(store,557,(5941,5952,5942))

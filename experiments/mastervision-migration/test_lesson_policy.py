@@ -1,7 +1,10 @@
 import copy
 import unittest
+from unittest.mock import patch
 from importer import ACCOUNT, ORIGIN, Stop
-from lesson_policy import DEFERRED, deferred_ids, excluded_ids, partition_payloads
+from lesson_policy import DEFERRED, EXCLUDED, deferred_ids, excluded_ids, partition_payloads
+
+PENDING = {607:{6577},624:{7050},627:{7198},628:{7247},629:{7252},630:{7295}}
 
 
 def payload(cid, lid):
@@ -10,6 +13,58 @@ def payload(cid, lid):
 
 
 class PolicyTests(unittest.TestCase):
+    def test_exact_six_owner_deferrals_leave_all_16_exclusions_unchanged(self):
+        self.assertEqual(DEFERRED, PENDING)
+        self.assertTrue(all(isinstance(ids, frozenset) for ids in DEFERRED.values()))
+        expected={1:{1,6},2:{2,5},17:{2558},23:{30},207:{1976},259:{1536},273:{1735},274:{1749},
+                  354:{2937},355:{2952},445:{4089},557:{5952},598:{7544},618:{6870}}
+        self.assertEqual(EXCLUDED, expected)
+        self.assertEqual(sum(map(len, EXCLUDED.values())), 16)
+        self.assertNotIn(9037, set().union(*DEFERRED.values(), *EXCLUDED.values()))
+
+    def test_six_deferrals_keep_source_payloads_order_and_exact_identity(self):
+        for cid, ids in PENDING.items():
+            lid = next(iter(ids))
+            source = [payload(cid, x) for x in (900001, lid, 900002)]
+            before = copy.deepcopy(source)
+            selected, pending = partition_payloads(source)
+            self.assertEqual([p['lesson_id'] for p in selected], [900001,900002])
+            self.assertEqual(pending, [lid]); self.assertEqual(source, before)
+            self.assertIs(selected[0], source[0]); self.assertIs(selected[1], source[2])
+            self.assertEqual(deferred_ids(cid), {lid}); self.assertEqual(excluded_ids(cid), set())
+            outside = [payload(999999,lid)]
+            self.assertEqual(partition_payloads(outside), (outside, []))
+
+    def test_selected_five_courses_run_as_partial_without_normalizing_deferred_content(self):
+        import test_run as controller
+        for cid in (607,624,627,628,630):
+            lid = next(iter(PENDING[cid]))
+            source = [{**controller.payload(cid),'lesson_id':x} for x in (900001,lid,900002)]
+            source[1]['ape'] = {'name':'unrecognized_owner_pending_source'}
+            before = copy.deepcopy(source)
+            with patch.object(controller.mod,'stored_course',return_value=source):
+                result=controller.ControllerTests().invoke(cid,args=['--stored','--apply','--course',str(cid)])
+            self.assertEqual(result[0],0); self.assertEqual(source,before)
+            self.assertEqual([p['lesson_id'] for p in result[4].payloads[0]],[900001,900002])
+            self.assertEqual(result[1].marks,[(cid,'partial')])
+            self.assertIn(('import',cid,lid,'review',['owner_deferred_lesson']),result[1].events)
+            self.assertIn({'course':cid,'status':'partial','lessons':2,'created':0,'deferred':[lid]},result[5])
+            self.assertEqual(result[2].urls,[])
+
+    def test_629_all_deferred_retains_review_without_fake_empty_target(self):
+        import test_run as controller
+        import course_metadata
+        source=[{**controller.payload(629),'lesson_id':7252}]; before=copy.deepcopy(source)
+        with patch.object(controller.mod,'stored_course',return_value=source), \
+                patch.object(course_metadata,'ensure_empty_course') as empty:
+            result=controller.ControllerTests().invoke(629,args=['--stored','--apply','--course','629'])
+        self.assertEqual(result[0],0); self.assertEqual(source,before)
+        self.assertEqual(result[4].calls,[]); empty.assert_not_called()
+        self.assertEqual(result[1].marks,[(629,'review')])
+        self.assertIn({'course':629,'status':'deferred','lessons':0,'deferred':[7252]},result[5])
+        self.assertIn(('import',629,7252,'review',['owner_deferred_lesson']),result[1].events)
+        self.assertEqual(result[2].urls,[])
+
     def test_bulk_test_and_obsolete_lesson_exclusions_keep_other_source_items(self):
         approved={1:{1,6},2:{2,5},17:{2558},23:{30},259:{1536},273:{1735},274:{1749},354:{2937},355:{2952}}
         for cid,lids in approved.items():
@@ -45,7 +100,7 @@ class PolicyTests(unittest.TestCase):
     def test_empty_and_all_excluded_are_explicitly_empty_without_reminders(self):
         self.assertEqual(partition_payloads([]),([],[]))
         self.assertEqual(partition_payloads([payload(598,7544)]),([],[]))
-        self.assertEqual(DEFERRED,{})
+        self.assertEqual(DEFERRED,PENDING)
         self.assertEqual(deferred_ids(598),set());self.assertEqual(deferred_ids(557),set())
 
     def test_final_owner_exclusion_keeps_source_and_order_and_cannot_return_as_pending(self):
