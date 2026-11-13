@@ -20,7 +20,8 @@ from lesson_policy import CODE as DEFERRED_CODE, EXCLUDED_CODE, deferred_ids, ex
 
 DEFAULT = Path(__file__).resolve().parents[3] / 'exports/lesson-content/mastervision-migration'
 FATAL = {'normalization_account_mismatch', 'normalization_metadata_conflict', 'normalization_source_invalid',
-         'static_presentation_material_mismatch', 'keyboard_markup_material_mismatch'}
+         'static_presentation_material_mismatch', 'keyboard_markup_material_mismatch',
+         'redundant_link_material_mismatch', 'legacy_html_decoration_material_mismatch'}
 # Historical evidence, not a claim of a fresh HTTP check. Never silently retry.
 KNOWN_404 = {(280, 1802): 'fc93e347a1ef59ba7b9b32601c74cb670ee69f34403eea8f854f11768224aab8',
              (286, 1857): 'fc93e347a1ef59ba7b9b32601c74cb670ee69f34403eea8f854f11768224aab8'}

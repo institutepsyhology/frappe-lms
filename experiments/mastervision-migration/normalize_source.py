@@ -26,6 +26,9 @@ from normalize_empty_material_buttons import normalize_empty_material_buttons, C
 from normalize_video_values import normalize_video_values, CODE as VIDEO_VALUE_CODE
 from normalize_empty_discussion_widgets import normalize_empty_discussion_widgets, CODE as EMPTY_WIDGET_CODE
 from normalize_keyboard_markup import normalize_keyboard_markup, CODE as KEYBOARD_CODE
+from normalize_redundant_link_metadata import normalize_redundant_link_metadata, CODE as LINK_METADATA_CODE
+from normalize_legacy_html_decorations import normalize_legacy_html_decorations, CODE as LEGACY_DECORATION_CODE
+from normalize_native_video_sources import normalize_native_video_sources, CODE as VIDEO_SOURCE_CODE
 from normalize_audio import normalize_audio, CODE as AUDIO_CODE
 
 
@@ -322,7 +325,7 @@ def normalize_payload(payload, audio_assets=None):
             raise Review("normalization_metadata_conflict")
         metadata = result['source_normalization']
         is_audio = isinstance(metadata, dict) and (metadata.get('version') == 7 or
-            metadata.get('version') in (8,9,10) and ('audio_assets' in metadata or bool(metadata.get('audio_blocks'))))
+            metadata.get('version') in (8,9,10,11) and ('audio_assets' in metadata or bool(metadata.get('audio_blocks'))))
         stored_assets = metadata.get('audio_assets') if is_audio else None
         if is_audio:
             if (not isinstance(stored_assets, dict) or not stored_assets
@@ -353,6 +356,7 @@ def normalize_payload(payload, audio_assets=None):
     ape, approved_image_omissions = normalize_approved_images(ape, result.get('course_id'), result.get('lesson_id'))
     ape, image_label_changes = normalize_image_labels(ape, static_validator())
     ape, video_value_changes = normalize_video_values(ape, static_validator())
+    ape, video_source_changes = normalize_native_video_sources(ape, static_validator())
     ape, audio_changes = normalize_audio(ape, audio_assets)
     ape, stage_changes = normalize_stage_widgets(ape, static_validator())
     ape, accordion_changes = normalize_accordions(ape, static_validator())
@@ -375,7 +379,13 @@ def normalize_payload(payload, audio_assets=None):
     except Review as exc:
         if str(exc) != 'keyboard_markup_requires_review': raise
         keyboard_changes = []
-    if presentation_changes:
+    ape, link_metadata_changes = normalize_redundant_link_metadata(ape, static_validator())
+    try:
+        ape, legacy_decoration_changes = normalize_legacy_html_decorations(ape, static_validator())
+    except Review as exc:
+        if str(exc) != 'legacy_html_decoration_requires_review': raise
+        legacy_decoration_changes = []
+    if presentation_changes or link_metadata_changes or legacy_decoration_changes:
         ape, repaired_headers = normalize_nodes(ape, static_validator())
         editor_changes.extend(repaired_headers)
         ape, repaired_buttons = normalize_button_labels(ape, static_validator())
@@ -447,9 +457,16 @@ def normalize_payload(payload, audio_assets=None):
         codes.append(EMPTY_WIDGET_CODE)
     if keyboard_changes:
         codes.append(KEYBOARD_CODE)
+    if link_metadata_changes:
+        codes.append(LINK_METADATA_CODE)
+    if legacy_decoration_changes:
+        codes.append(LEGACY_DECORATION_CODE)
+    if video_source_changes:
+        codes.append(VIDEO_SOURCE_CODE)
     if codes:
         result["source_original_ape"] = original_ape
-        if presentation_changes or empty_button_changes or video_value_changes or empty_widget_changes or keyboard_changes:
+        if (presentation_changes or empty_button_changes or video_value_changes or empty_widget_changes or keyboard_changes
+                or link_metadata_changes or legacy_decoration_changes or video_source_changes):
             metadata = {"version": 10, "kind": "mastervision_editor_normalization", "codes": codes,
                         "blocks": changed, "table_blocks": table_changes, "editor_blocks": editor_changes,
                         "inline_image_blocks": image_changes, "button_blocks": button_changes,
@@ -458,6 +475,10 @@ def normalize_payload(payload, audio_assets=None):
                         "presentation_blocks": presentation_changes, "empty_button_blocks": empty_button_changes,
                         "video_value_blocks": video_value_changes, "empty_widget_blocks": empty_widget_changes,
                         "keyboard_blocks": keyboard_changes}
+            if link_metadata_changes or legacy_decoration_changes or video_source_changes:
+                metadata.update(version=11, link_metadata_blocks=link_metadata_changes,
+                                legacy_decoration_blocks=legacy_decoration_changes,
+                                video_source_blocks=video_source_changes)
             if audio_changes:
                 metadata["audio_blocks"] = audio_changes
                 metadata["audio_assets"] = {key: copy.deepcopy(audio_assets[key])

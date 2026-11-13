@@ -163,7 +163,8 @@ def prepare_payloads(payloads, audio_assets=None):
                                  normalize_payload(payload, audio_assets=audio_assets))
         except ImportReview as exc:
             if str(exc) in ('normalization_account_mismatch', 'normalization_metadata_conflict', 'normalization_source_invalid',
-                            'static_presentation_material_mismatch', 'keyboard_markup_material_mismatch'):
+                            'static_presentation_material_mismatch', 'keyboard_markup_material_mismatch',
+                            'redundant_link_material_mismatch', 'legacy_html_decoration_material_mismatch'):
                 raise Stop(str(exc)) from None
             # The unchanged source still goes through the stricter server parser.
             # Unknown embeds are never silently dropped or locally authorized.

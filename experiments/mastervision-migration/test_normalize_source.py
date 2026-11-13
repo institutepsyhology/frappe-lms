@@ -486,6 +486,40 @@ class NormalizeTests(unittest.TestCase):
         self.assertEqual(normalize_payload(normalized), (normalized, codes))
 
 
+class VersionElevenTests(unittest.TestCase):
+    def test_non_native_bare_video_id_becomes_same_video_and_round_trips(self):
+        source = payload('<p>Keep all material</p>')
+        source['ape']['children'].append({'name': 'video', 'fields': {
+            'videoProvider': 'youtube', 'videoSrc': 'AbCdEfGhI_1', 'nativePlayer': False,
+            'videoProvider2': 'rutube',
+            'videoSrc2': 'https://rutube.ru/video/private/0123456789abcdef0123456789abcdef/?p=Synthetic',
+            'nativePlayer2': False}})
+        normalized, codes = normalize_payload(source)
+        self.assertEqual(normalized['source_normalization']['version'], 11)
+        self.assertIn('native_video_url_normalized', codes)
+        self.assertEqual(normalized['ape']['children'][-1]['fields']['videoSrc'], 'https://youtu.be/AbCdEfGhI_1')
+        self.assertEqual(normalized['source_original_ape'], source['ape'])
+        self.assertTrue(plan_import(normalized)['ready'])
+        self.assertEqual(normalize_payload(normalized), (normalized, codes))
+
+    def test_redundant_link_metadata_is_reproducible_and_keeps_original(self):
+        source = payload('<p><a href="https://example.test/file" data-cke-saved-href="https://example.test/file">Material</a></p>')
+        normalized, codes = normalize_payload(source)
+        self.assertEqual(normalized['source_normalization']['version'], 11)
+        self.assertIn('redundant_editor_link_metadata_normalized', codes)
+        self.assertEqual(normalized['source_original_ape'], source['ape'])
+        self.assertTrue(plan_import(normalized)['ready'])
+        self.assertEqual(normalize_payload(normalized), (normalized, codes))
+
+    def test_inline_decoration_preserves_text_link_and_original(self):
+        source = payload('<p>Keep <a style="display:inline !important" href="https://example.test/file">Material</a></p>')
+        normalized, codes = normalize_payload(source)
+        self.assertEqual(normalized['source_normalization']['version'], 11)
+        self.assertIn('legacy_html_decoration_normalized', codes)
+        self.assertTrue(plan_import(normalized)['ready'])
+        self.assertEqual(normalize_payload(normalized), (normalized, codes))
+
+
 def table_signature(markup):
     class Signature(HTMLParser):
         def __init__(self):
