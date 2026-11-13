@@ -29,6 +29,37 @@ def binding(source, tag=MISSING, path=None, result=None):
 
 
 class MissingCourseImageTests(unittest.TestCase):
+    def test_v19_access_denied_omission_preserves_audio_original_and_exact_replay(self):
+        from normalize_source import normalize_payload
+        from test_normalize_audio import audio, key, receipt
+        from lms.lms.avo_transform import plan_import
+        source = MISSING + '<p>Keep all authored material and <a href="https://example.test/file">File</a>.</p>'
+        selected = binding(source); selected.update(lesson_id=5197, code=mod.ACCESS_DENIED_CODE)
+        data = {'account':'mastervision','source_origin':'https://shop.mastervision.su',
+                'course_id':520,'lesson_id':5197,'course_title':'Synthetic','lesson_title':'Synthetic',
+                'format':'ape','ape':page(source)}
+        data['ape']['children'].append(audio()); before = copy.deepcopy(data)
+        with patch.object(mod, 'BINDINGS', [selected]):
+            normalized, codes = normalize_payload(data, {key():receipt()})
+            self.assertEqual(data, before)
+            self.assertEqual(normalized['source_original_ape'], before['ape'])
+            meta = normalized['source_normalization']
+            self.assertEqual(meta['version'], 19)
+            self.assertIn(mod.ACCESS_DENIED_CODE, codes)
+            self.assertNotIn(mod.CODE, codes)
+            self.assertEqual(meta['audio_assets'], {key():receipt()})
+            omission = meta['missing_course_images'][0]
+            self.assertEqual(omission['http_status'], 403)
+            self.assertEqual(omission['reason'], 'owner_approved_access_denied')
+            self.assertEqual(omission['code'], mod.ACCESS_DENIED_CODE)
+            self.assertTrue(plan_import(normalized)['ready'])
+            self.assertEqual(normalize_payload(normalized), (normalized, codes))
+            for field, value in (('http_status',404), ('reason','confirmed_missing')):
+                changed = copy.deepcopy(normalized)
+                changed['source_normalization']['missing_course_images'][0][field] = value
+                with self.assertRaisesRegex(Review,'normalization_metadata_conflict'):
+                    normalize_payload(changed)
+
     def test_v17_integration_retains_original_and_audio_receipt_and_replays(self):
         from normalize_source import normalize_payload
         from test_normalize_audio import audio,key,receipt
@@ -164,12 +195,40 @@ class MissingCourseImageTests(unittest.TestCase):
             with self.assertRaises(Review):
                 mod.normalize_missing_course_images(tree, cid, lid, static_validator())
 
-    def test_public_bindings_are_only_confirmed_404_metadata(self):
-        self.assertEqual(len(mod.BINDINGS), 26)
-        self.assertEqual(sum(len(item['images']) for item in mod.BINDINGS), 47)
+    def test_public_bindings_separate_47_confirmed_404_and_one_owner_denied_image(self):
+        missing = [item for item in mod.BINDINGS if item.get('code', mod.CODE) == mod.CODE]
+        denied = [item for item in mod.BINDINGS if item.get('code') == mod.ACCESS_DENIED_CODE]
+        self.assertEqual(len(missing), 26)
+        self.assertEqual(sum(len(item['images']) for item in missing), 47)
+        self.assertEqual(len(denied), 1)
+        self.assertEqual((denied[0]['course_id'], denied[0]['lesson_id'], denied[0]['path']), (520, 5197, [2]))
+        self.assertEqual(len(denied[0]['images']), 1)
+        self.assertEqual(denied[0]['images'][0][0], '3662ecb5917de8b02aab745da6fd6173421ae2aaac3ef6ea9708feccb89e5dbd')
         self.assertTrue(all(item['course_id'] == 520 and item['kind'] == 'html' for item in mod.BINDINGS))
         self.assertNotIn(5176, {item['lesson_id'] for item in mod.BINDINGS})
-        self.assertNotIn('http', repr(mod.BINDINGS))
+        self.assertNotIn('https://', repr(mod.BINDINGS))
+
+    def test_denied_metadata_only_for_exact_scope_and_changed_source_requires_review(self):
+        selected = binding(MISSING); selected.update(lesson_id=5197, code=mod.ACCESS_DENIED_CODE)
+        out, changes = self.clean(MISSING, selected=[selected], lid=5197)
+        self.assertEqual(out['children'][0]['fields']['html'], '')
+        self.assertEqual(changes[0]['code'], mod.ACCESS_DENIED_CODE)
+        self.assertEqual(changes[0]['http_status'], 403)
+        self.assertEqual(changes[0]['reason'], 'owner_approved_access_denied')
+        with self.assertRaises(Review): self.clean(MISSING + 'changed', selected=[selected], lid=5197)
+        for lid in (5171, 5198):
+            changed = copy.deepcopy(selected); changed['lesson_id'] = lid
+            with self.assertRaises(Review): self.clean(MISSING, selected=[changed], lid=lid)
+        changed = copy.deepcopy(selected); changed['code'] = 'unknown_decision'
+        with self.assertRaises(Review): self.clean(MISSING, selected=[changed], lid=5197)
+        changed = copy.deepcopy(selected); changed.pop('code')
+        with self.assertRaises(Review): self.clean(MISSING, selected=[changed], lid=5197)
+
+    def test_old_missing_receipt_shape_has_no_denied_status_or_reason(self):
+        _, changes = self.clean(MISSING)
+        self.assertEqual(set(changes[0]), {'path','code','images','empty_image_wrappers',
+                                          'source_sha256','result_sha256','url_sha256'})
+        self.assertEqual(changes[0]['code'], mod.CODE)
 
 
 if __name__ == '__main__': unittest.main()

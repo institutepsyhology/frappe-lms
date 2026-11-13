@@ -1,6 +1,9 @@
-"""Omit only owner-approved, source-bound HTTP404 course images; never fetch URLs.
+"""Omit source-bound owner-approved images; never fetch URLs.
 
-The bindings were checked anonymously on 2026-11-13.  They describe original
+47 source images returned HTTP404. One separately scoped source image in
+520/5197 returned access-denied HTTP403 after redirects; the owner separately
+approved its omission. It is never labelled as confirmed missing.
+The checks were made anonymously on 2026-11-13. They describe original
 Master Vision APE, before image extraction. Only IMG tags and image-only span
 tags around them are removed; surrounding text and links remain byte-exact. The
 normal caller must retain the original APE witness and run the usual converter.
@@ -17,6 +20,7 @@ from normalize_static_presentation import _material
 from normalize_static_presentation import VOID
 
 CODE = 'owner_confirmed_missing_course_image_omitted'
+ACCESS_DENIED_CODE = 'owner_access_denied_image_omitted'
 
 
 def _sha(value):
@@ -207,6 +211,10 @@ def normalize_missing_course_images(ape, course_id, lesson_id, validate_static):
             fields.get(key) not in (None, '', False, [], {}) for key in ('visibleConditions', 'displayDelay'))
         binding = expected.get(tuple(path))
         if binding is not None:
+            code = binding.get('code', CODE)
+            if code not in {CODE, ACCESS_DENIED_CODE} or (
+                    (code == ACCESS_DENIED_CODE) != ((course_id, lesson_id) == (520, 5197))):
+                _review()
             if (protected or binding['kind'] != 'html' or node.get('name') not in {'text', 'code'}
                     or children or set(fields) - {'html', 'anchor'}
                     or set(node) - {'id', 'name', 'fields', 'children', 'style'}
@@ -217,11 +225,14 @@ def normalize_missing_course_images(ape, course_id, lesson_id, validate_static):
             seen.add(tuple(path))
             if cleaned is not None:
                 fields['html'], wrappers = cleaned
-                changes.append({'path': list(path), 'code': CODE, 'images': len(binding['images']),
+                change = {'path': list(path), 'code': code, 'images': len(binding['images']),
                                 'empty_image_wrappers': wrappers,
                                 'source_sha256': binding['source_sha256'],
                                 'result_sha256': binding['result_sha256'],
-                                'url_sha256': [item[0] for item in binding['images']]})
+                                'url_sha256': [item[0] for item in binding['images']]}
+                if code == ACCESS_DENIED_CODE:
+                    change.update(http_status=403, reason='owner_approved_access_denied')
+                changes.append(change)
         for index, child in enumerate(children):
             walk(child, path + [index], protected)
 
@@ -481,3 +492,14 @@ BINDINGS = [{'course_id': 520,
   'images': [['6a7b60c6cfdedde90f571c8c87d5a95b16403119b672be1aa2d9eaabc6f86ebf',
               '57c7fa06394fefc13820abcc843a8a1799e7d8d0cff0170bde63901707d9ed35']],
   'result_sha256': '2800187243d113724fee26c9adafcf3df49d67cc20aa059672c78d6962449229'}]
+
+# Separately owner-approved access denial, not a confirmed HTTP404.
+BINDINGS.append({'course_id': 520,
+ 'lesson_id': 5197,
+ 'path': [2],
+ 'kind': 'html',
+ 'code': 'owner_access_denied_image_omitted',
+ 'source_sha256': 'c66acaeec02f3fe380194c2acd06a0ea72f727cc3e0e9b23bdde60b3d5aec444',
+ 'images': [['3662ecb5917de8b02aab745da6fd6173421ae2aaac3ef6ea9708feccb89e5dbd',
+             'c185eeaae7c627a5871a9d35b0e535984bef6abfaae8ebeac5c94185c6c3e225']],
+ 'result_sha256': '059627f3f19948819f223f3ba7187571e2fa26ef05a7d63345689433268c0dcf'})

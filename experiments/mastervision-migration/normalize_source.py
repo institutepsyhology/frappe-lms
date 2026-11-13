@@ -34,7 +34,7 @@ from normalize_owner_material_links import normalize_owner_material_links, CODE 
 from normalize_image_wrapper_layout import normalize_image_wrapper_layout, CODE as IMAGE_WRAPPER_CODE
 from normalize_annotated_material_buttons import normalize_annotated_material_buttons, CODE as ANNOTATED_MATERIAL_CODE
 from normalize_reviewed_static_material import normalize_reviewed_static_material
-from normalize_missing_course_images import normalize_missing_course_images, CODE as MISSING_IMAGE_CODE
+from normalize_missing_course_images import normalize_missing_course_images
 from normalize_reviewed_image_rotation import normalize_reviewed_image_rotation, CODE as REVIEWED_ROTATION_CODE
 from normalize_audio import normalize_audio, CODE as AUDIO_CODE
 
@@ -332,7 +332,7 @@ def normalize_payload(payload, audio_assets=None):
             raise Review("normalization_metadata_conflict")
         metadata = result['source_normalization']
         is_audio = isinstance(metadata, dict) and (metadata.get('version') == 7 or
-            metadata.get('version') in (8,9,10,11,12,13,14,15,16,17,18) and ('audio_assets' in metadata or bool(metadata.get('audio_blocks'))))
+            metadata.get('version') in (8,9,10,11,12,13,14,15,16,17,18,19) and ('audio_assets' in metadata or bool(metadata.get('audio_blocks'))))
         stored_assets = metadata.get('audio_assets') if is_audio else None
         if is_audio:
             if (not isinstance(stored_assets, dict) or not stored_assets
@@ -500,7 +500,7 @@ def normalize_payload(payload, audio_assets=None):
         codes.append(ANNOTATED_MATERIAL_CODE)
     codes.extend(dict.fromkeys(change['code'] for change in reviewed_material_changes))
     if missing_course_images:
-        codes.append(MISSING_IMAGE_CODE)
+        codes.extend(dict.fromkeys(change['code'] for change in missing_course_images))
     if reviewed_image_rotations:
         codes.append(REVIEWED_ROTATION_CODE)
     if codes:
@@ -535,6 +535,8 @@ def normalize_payload(payload, audio_assets=None):
                 metadata.update(version=17, missing_course_images=missing_course_images)
             if reviewed_image_rotations:
                 metadata.update(version=18, reviewed_image_rotations=reviewed_image_rotations)
+            if any(change.get('http_status') == 403 for change in missing_course_images):
+                metadata['version'] = 19
             if audio_changes:
                 metadata["audio_blocks"] = audio_changes
                 metadata["audio_assets"] = {key: copy.deepcopy(audio_assets[key])
