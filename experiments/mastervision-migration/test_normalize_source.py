@@ -25,6 +25,39 @@ def payload(html=None):
 
 
 class NormalizeTests(unittest.TestCase):
+    def test_verified_accordion_integration_retains_header_body_and_original(self):
+        original = payload('<p>Body</p>')
+        body = original['ape']['children']
+        original['ape']['children'] = [{'name':'unfolding','id':'accordion','fields':{
+            'initialState':'all-folded','expandedSpeedRate':1,'onlyOneExpanded':True},
+            'children':[{'name':'unfolding-item','id':'item','fields':{'headerHtml':'<p>Header</p>'},'children':body}]}]
+        before = copy.deepcopy(original)
+        normalized, codes = normalize_payload(original)
+        self.assertEqual(original, before)
+        self.assertTrue(plan_import(normalized)['ready'])
+        self.assertEqual(normalized['source_original_ape'], before['ape'])
+        self.assertEqual(normalized['source_normalization']['version'], 5)
+        self.assertIn('accordion_content_flattened', codes)
+        contents = normalized['ape']['children'][0]['children'][0]['children']
+        self.assertEqual([node['fields']['html'] for node in contents], ['<p>Header</p>','<p>Body</p>'])
+        self.assertEqual(normalize_payload(normalized), (normalized, codes))
+
+    def test_verified_stage_integration_is_static_and_retains_original(self):
+        from unittest.mock import patch
+        import normalize_stage_widgets as widgets
+        from test_normalize_stage_widgets import widget, sha, canonical, EXPECTED_DOM, SCRIPT, CSS
+        original = payload('<p>Body</p>')
+        original['ape']['children'].insert(0, widget())
+        with patch.multiple(widgets, DOM_SHA256=sha(canonical(EXPECTED_DOM)),
+                            SCRIPT_SHA256=sha(SCRIPT), STYLESHEET_SHA256=sha(CSS)):
+            normalized, codes = normalize_payload(original)
+            self.assertTrue(plan_import(normalized)['ready'])
+            self.assertEqual(normalized['source_original_ape'], original['ape'])
+            self.assertEqual(normalized['source_normalization']['version'], 6)
+            self.assertIn('static_course_stage_preserved', codes)
+            self.assertEqual(normalize_payload(normalized), (normalized, codes))
+            self.assertEqual(normalized['ape']['children'][0]['fields']['html'], '<p><strong>Course stage</strong> · 14%</p>')
+
     def test_formatted_button_integration_retains_original_and_old_plain_payload(self):
         original = payload('<p>Keep text</p>')
         original['ape']['children'].append({'name':'button','id':'material','fields':{

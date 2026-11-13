@@ -243,6 +243,7 @@ def main():
     args.add_argument('--covers-only', action='store_true')
     args.add_argument('--settings-only', action='store_true')
     args.add_argument('--review-only', action='store_true', help='Process only courses currently awaiting review')
+    args.add_argument('--audio-stage-only', action='store_true', help='Stage verified MP3 files directly on the MV server')
     selected = args.parse_args()
     if (selected.limit is not None and selected.limit < 1 or
             selected.course is not None and any(cid < 1 for cid in selected.course) or selected.from_course < 1):
@@ -252,6 +253,10 @@ def main():
             (not selected.stored or selected.collect_only or selected.catalog_only) or
             selected.covers_only and selected.settings_only or
             selected.review_only and (selected.covers_only or selected.settings_only or selected.catalog_only)):
+        raise Stop('conflicting_mode')
+    if selected.audio_stage_only and (not selected.stored or not selected.apply or selected.collect_only
+            or selected.catalog_only or selected.covers_only or selected.settings_only or selected.review_only
+            or selected.course or selected.limit or selected.from_course != 1):
         raise Stop('conflicting_mode')
     with Store(DATA) as store:
         client, assets = None, None
@@ -278,6 +283,15 @@ def main():
                 if selected.limit: rows = rows[:selected.limit]
                 if selected.review_only and not rows:
                     emit({'status': 'nothing_to_review'}); return 0
+                if selected.audio_stage_only:
+                    from audio_stage_client import stage_audio
+                    def audio_progress(event):
+                        store.event('audio', None, None, 'audio_staged')
+                        emit(event)
+                    stage_audio(store, audio_progress)
+                    store.error('audio', False)
+                    emit({'status': 'audio_stage_finished'})
+                    return 0
                 if not selected.collect_only:
                     import importer
                     client = importer.MCPClient(workspace=ROOT)

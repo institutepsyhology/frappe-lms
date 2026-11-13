@@ -26,7 +26,7 @@ MANIFEST = 'source-manifest.json'
 MAX_SOURCE_BYTES = 2 * 1024 * 1024
 MAX_ARCHIVE_BYTES = 4 * 1024 * 1024
 MAX_META_BYTES = 128 * 1024
-BOOL_FLAGS = {'--apply', '--stored', '--resume', '--collect-only', '--catalog-only', '--covers-only', '--settings-only', '--review-only'}
+BOOL_FLAGS = {'--apply', '--stored', '--resume', '--collect-only', '--catalog-only', '--covers-only', '--settings-only', '--review-only', '--audio-stage-only'}
 INT_FLAGS = {'--from-course', '--limit', '--course'}
 JOB_KEYS = {'version', 'job_id', 'workspace', 'source_commit', 'source_manifest_sha256',
             'arguments', 'status', 'monitor_pid', 'pid', 'created_at_utc', 'started_at_utc',

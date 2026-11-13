@@ -71,6 +71,23 @@ class Tests(unittest.TestCase):
         self.assertFalse(result['running']);self.assertEqual(result['state'],'completed')
         self.assertIsNone(result['pid']);checker.assert_not_called()
 
+    def test_audio_summary_contains_counts_only_and_checks_source_binding(self):
+        directory = self.path.parent
+        inventory = {'version':1,'account':'mastervision','origin':'https://shop.mastervision.su',
+                     'files':[{'url_sha256':'a'*64,'size_bytes':100,'source':'PRIVATE'}]}
+        index = {'version':1,'account':'mastervision','origin':'https://shop.mastervision.su','site':'my-lk.mastervision.su',
+                 'files':{'a'*64:{'url_sha256':'a'*64,'size':100,'basename':'PRIVATE'}}}
+        for name, data in (('audio-inventory.json',inventory),('audio-stage-index.json',index)):
+            (directory/name).write_text(json.dumps(data),encoding='utf-8')
+        self.assertEqual(mod.audio_progress(directory), {'staged':1,'total':1,'bytes_staged':100,'bytes_total':100})
+        index['account'] = 'mv-centr'
+        (directory/'audio-stage-index.json').write_text(json.dumps(index),encoding='utf-8')
+        with self.assertRaises(ValueError): mod.audio_progress(directory)
+
+    def test_invalid_ports_do_not_open_sockets(self):
+        for value in (-1,65536,True,'61929'):
+            with self.subTest(value=value), self.assertRaises(ValueError): mod.make_server(self.path, port=value)
+
     def test_stale_running_pid_is_not_reported_running(self):
         self.job()
         checker=Mock(return_value=False)

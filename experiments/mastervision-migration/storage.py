@@ -15,7 +15,7 @@ ORIGIN = 'https://shop.mastervision.su'
 SITE = 'my-lk.mastervision.su'
 MAX_CAPTURE_BYTES = 128 * 1024 * 1024
 TABLES = {'meta', 'captures', 'courses', 'events', 'errors', 'course_checkpoints'}
-STAGES = {'collect', 'import', 'catalog', 'cover', 'settings'}
+STAGES = {'collect', 'import', 'catalog', 'cover', 'settings', 'audio'}
 STATES = {'pending', 'review', 'imported', 'collected', 'empty'}
 
 

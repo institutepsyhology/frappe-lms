@@ -117,6 +117,27 @@ def course_snapshot(ids=(10,), title='Synthetic course'):
 
 
 class ControllerTests(unittest.TestCase):
+    def test_audio_staging_runs_without_mcp_or_lesson_mutations(self):
+        import audio_stage_client
+        def staging(store, callback):
+            callback({'stage':'audio','completed':1,'total':1})
+        with patch.object(audio_stage_client,'stage_audio',side_effect=staging) as stage:
+            result = self.invoke(1,args=['--stored','--audio-stage-only','--apply'])
+        self.assertEqual(result[0],0)
+        self.assertEqual(result[7],0)
+        self.assertEqual(result[4].calls,[])
+        self.assertEqual(result[1].marks,[])
+        self.assertIn(('audio',None,None,'audio_staged'),result[1].events)
+        self.assertEqual(result[5][-1],{'status':'audio_stage_finished'})
+        stage.assert_called_once()
+
+    def test_audio_staging_requires_explicit_apply_and_stored_source(self):
+        for arguments in (['--audio-stage-only'], ['--stored','--audio-stage-only'],
+                          ['--audio-stage-only','--apply'],
+                          ['--stored','--audio-stage-only','--apply','--course','1']):
+            with self.subTest(arguments=arguments), self.assertRaises(mod.Stop):
+                self.invoke(1,args=arguments)
+
     def test_unknown_write_cause_is_fixed_metadata_in_status_and_journal(self):
         error = importer.Stop('write_result_uncertain')
         error.reason = 'mcp_connection_failed'
