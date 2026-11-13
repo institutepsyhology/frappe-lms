@@ -1,5 +1,6 @@
 """Synthetic source observations only: no accounts, files, browser or network."""
 import base64
+import copy
 import json
 import unittest
 from unittest.mock import patch
@@ -162,6 +163,96 @@ class CourseTests(unittest.TestCase):
 
 
 class LessonTests(unittest.TestCase):
+    def conditions_page(self, option='visibleConditionsTypes:{"purchaseGoods":1}'):
+        before, after = lesson().rsplit('});</script>', 1)
+        return before + ',' + option + '});</script>' + after
+
+    def test_absent_page_children_adds_only_reversible_empty_list(self):
+        ape={'id':'page-uuid','name':'page','fields':{'commonFontName':'Arial',
+             'commonFontLink':'https://fonts.googleapis.com/css?family=Arial'},
+             'style':{'lists':{'container':{'paddingTop':{'value':{'number':0,'units':'px'}}}}}}
+        before=copy.deepcopy(ape)
+        out=source.parse_lesson(lesson(ape),7,11,'Course','Lesson 11')
+        self.assertEqual(ape,before)
+        self.assertEqual(out['payload']['ape'],{**ape,'children':[]})
+        self.assertIs(out['ape_root_children_defaulted'],True)
+        reconstructed=copy.deepcopy(out['payload']['ape']);reconstructed.pop('children')
+        self.assertEqual(reconstructed,ape)
+        self.assertNotIn('empty_reason',out)
+        ordinary=source.parse_lesson(lesson({'name':'page','children':[]}),7,11,'Course','Lesson 11')
+        self.assertNotIn('ape_root_children_defaulted',ordinary)
+
+    def test_unknown_nonempty_root_material_is_preserved_and_not_claimed_ready(self):
+        ape={'name':'page','fields':{'html':'<p>Unknown authored material.</p>'},
+             'style':{'caption':'Keep style material'}}
+        out=source.parse_lesson(lesson(ape),7,11,'Course','Lesson 11')
+        self.assertEqual(out['payload']['ape'],{**ape,'children':[]})
+        self.assertNotIn('empty_reason',out)
+        self.assertNotIn('ready',out)
+
+    def test_explicit_null_nonlist_or_nonpage_roots_are_never_defaulted(self):
+        for ape in ({'name':'page','children':None},{'name':'page','children':{}},
+                    {'name':'page','children':'not empty'},{'name':'section'},[], 'unknown'):
+            with self.subTest(ape=ape),self.assertRaisesRegex(source.Review,'^ape_(?:root|payload)_unrecognized$'):
+                source.parse_lesson(lesson(ape),7,11,'Course','Lesson 11')
+
+    def test_exact_visible_conditions_option_retains_payload_and_editor_option(self):
+        ordinary=source.parse_lesson(lesson(),7,11,'Course','Lesson 11')
+        for key in ('visibleConditionsTypes',"'visibleConditionsTypes'",'"visibleConditionsTypes"'):
+            for purchase in ('purchaseGoods',"'purchaseGoods'",'"purchaseGoods"'):
+                out=source.parse_lesson(self.conditions_page(key+':{'+purchase+':7}'),7,11,'Course','Lesson 11')
+                self.assertEqual(out['payload'],ordinary['payload']);self.assertEqual(out['settings'],ordinary['settings'])
+                self.assertEqual(out['editor_options'],{'visibleConditionsTypes':{'purchaseGoods':7}})
+        self.assertNotIn('editor_options',ordinary)
+
+    def test_conditions_duplicate_unknown_expression_or_wrong_type_is_rejected(self):
+        options=(
+            'visibleConditionsTypes:{purchaseGoods:1,purchaseGoods:2}',
+            'visibleConditionsTypes:{purchaseGoods:1},visibleConditionsTypes:{purchaseGoods:2}',
+            'visibleConditionsTypes:{purchaseGoods:1,other:2}',
+            'visibleConditionsTypes:{other:1}', 'visibleConditionsTypes:[1]',
+            'visibleConditionsTypes:{purchaseGoods:true}', 'visibleConditionsTypes:{purchaseGoods:null}',
+            'visibleConditionsTypes:{purchaseGoods:"1"}', 'visibleConditionsTypes:{purchaseGoods:-1}',
+            'visibleConditionsTypes:{purchaseGoods:1.5}', 'visibleConditionsTypes:{purchaseGoods:2147483648}',
+            'visibleConditionsTypes:{purchaseGoods:99999999999}',
+            'visibleConditionsTypes:{purchaseGoods:dangerous()}',
+            'visibleConditionsTypes:{purchaseGoods:1+1}', 'otherOption:{purchaseGoods:1}',
+            'visibleConditionsTypes:{purchaseGoods:1},otherOption:2',
+        )
+        for option in options:
+            with self.subTest(option=option),self.assertRaises(source.Review):
+                source.parse_lesson(self.conditions_page(option),7,11,'Course','Lesson 11')
+
+    def test_conditions_malformed_brackets_keys_and_duplicate_primary_options_rejected(self):
+        good=self.conditions_page()
+        pages=(good.replace('purchaseGoods":1}','purchaseGoods":1]'),
+               good.replace('visibleConditionsTypes:', '"visibleConditionsTypes\':'),
+               good.replace('formatVersion:4,','formatVersion:4,formatVersion:4,'),
+               good.replace('packed:true,','packed:true,packed:true,'),
+               good.replace('formatVersion:4,','"formatVersion\':4,'))
+        for page in pages:
+            with self.subTest(page=page[-80:]),self.assertRaises(source.Review):
+                source.parse_lesson(page,7,11,'Course','Lesson 11')
+
+    def test_second_malformed_target_call_cannot_hide_behind_one_valid_call(self):
+        malformed='<script>AWO.APE("#TrainingLessons_description_ape", {unknown:dangerous()});</script>'
+        extended=self.conditions_page()
+        extra_script='<script>'+extended.split('<script>',1)[1]
+        for page in (lesson()+malformed,extended+malformed,lesson()+extra_script):
+            with self.assertRaisesRegex(source.Review,'^ape_payload_missing_or_ambiguous$'):
+                source.parse_lesson(page,7,11,'Course','Lesson 11')
+        other=malformed.replace('TrainingLessons_description_ape','Other_editor')
+        self.assertEqual(source.parse_lesson(lesson()+other,7,11,'Course','Lesson 11'),
+                         source.parse_lesson(lesson(),7,11,'Course','Lesson 11'))
+
+    def test_extended_option_still_requires_original_source_identity(self):
+        page=self.conditions_page()
+        for changed in (page.replace(source.COURSE+'?id=7',source.COURSE+'?id=8'),
+                        page.replace(source.LESSON+'?id=11',source.LESSON+'?id=12'),
+                        page.replace(source.COURSE+'?id=7','https://shop.mv-centr.ru'+source.COURSE+'?id=7')):
+            with self.assertRaisesRegex(source.Review,'source_identity_mismatch'):
+                source.parse_lesson(changed,7,11,'Course','Lesson 11')
+
     def test_payload_exact_ape_and_all_settings(self):
         ape={'name':'page','children':[{'name':'future-block','fields':{'newType':[1,False,None,'{name}']}}]}
         out=source.parse_lesson(lesson(ape,extra='<input name="future" type="future-widget" value="raw">'),7,11,'Course & title','Lesson 11')

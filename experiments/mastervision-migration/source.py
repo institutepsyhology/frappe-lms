@@ -41,10 +41,23 @@ _packed = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = _packed
 _spec.loader.exec_module(_packed)
 _STRING = r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\""
-_APE = re.compile(r"AWO\.APE\s*\(\s*(['\"])#TrainingLessons_description_ape\1\s*,\s*\{"
-                  r"\s*['\"]?formatVersion['\"]?\s*:\s*(\d+)\s*,"
-                  r"\s*['\"]?packed['\"]?\s*:\s*(true|false)\s*,"
-                  r"\s*['\"]?block['\"]?\s*:\s*(" + _STRING + r")\s*\}\s*[,)]", re.S)
+
+
+def _js_key(name):
+    return '(?:' + name + "|'" + name + "'|\"" + name + '\")'
+
+
+_APE_CALL = re.compile(r"AWO\.APE\s*\(\s*(['\"])#TrainingLessons_description_ape\1\s*,", re.S)
+_APE_HEAD = (_APE_CALL.pattern + r'\s*\{\s*' + _js_key('formatVersion') + r'\s*:\s*(\d+)\s*,'
+             r'\s*' + _js_key('packed') + r'\s*:\s*(true|false)\s*,'
+             r'\s*' + _js_key('block') + r'\s*:\s*(' + _STRING + r')')
+_APE = re.compile(_APE_HEAD + r'\s*\}\s*[,)]', re.S)
+# Observed editor UI option, not lesson content. Only this exact literal
+# fieldset and integer map is accepted; expressions and duplicate keys cannot
+# match the complete object grammar. The original option is retained below.
+_APE_CONDITIONS = re.compile(_APE_HEAD + r'\s*,\s*' + _js_key('visibleConditionsTypes')
+    + r'\s*:\s*\{\s*' + _js_key('purchaseGoods') + r'\s*:\s*(0|[1-9][0-9]{0,9})'
+    + r'\s*\}\s*\}\s*[,)]', re.S)
 
 
 class Node:
@@ -303,8 +316,20 @@ def parse_lesson(html, course_id, lesson_id, course_title, lesson_title):
     if parent and parent != [str(course_id)]: raise Review('source_identity_mismatch')
     if form.attrs.get('action'): _url(form.attrs['action'], LESSON, lesson_id)
     elif not own: raise Review('lesson_identity_unconfirmed')
-    matches = [m for s in root.nodes('script') if not s.attrs.get('src') for m in _APE.findall(s.text())]
-    _, version, packed, token = _one(matches, 'ape_payload_missing_or_ambiguous')
+    scripts = [s.text() for s in root.nodes('script') if not s.attrs.get('src')]
+    # A malformed second initializer must never be silently ignored just
+    # because one of its neighbours happens to match a recognized grammar.
+    calls = [m for script in scripts for m in _APE_CALL.finditer(script)]
+    _one(calls, 'ape_payload_missing_or_ambiguous')
+    matches = [m for script in scripts for m in _APE.findall(script)]
+    editor_options = None
+    if matches:
+        _, version, packed, token = _one(matches, 'ape_payload_missing_or_ambiguous')
+    else:
+        extended = [m for script in scripts for m in _APE_CONDITIONS.findall(script)]
+        _, version, packed, token, condition_type = _one(extended, 'ape_payload_missing_or_ambiguous')
+        if int(condition_type) > 2**31 - 1: raise Review('ape_payload_unrecognized')
+        editor_options = {'visibleConditionsTypes': {'purchaseGoods': int(condition_type)}}
     try:
         decoded = _packed.decode_ape_payload({'formatVersion': int(version), 'packed': packed == 'true',
                                               'block': _packed.unquote_js_string(token)})['json']
@@ -316,8 +341,18 @@ def parse_lesson(html, course_id, lesson_id, course_title, lesson_title):
         if 'children' in node:
             if not isinstance(node['children'], list): raise Review('ape_node_unrecognized')
             for child in node['children']: validate(child)
-    if decoded.get('name') != 'page' or not isinstance(decoded.get('children'), list): raise Review('ape_root_unrecognized')
+    if not isinstance(decoded, dict) or decoded.get('name') != 'page': raise Review('ape_root_unrecognized')
+    # AVO may omit the optional children member on a genuine page leaf. Add
+    # only an empty list, preserving every original field/style; the private
+    # capture still contains the exact packed source. An explicit null or
+    # unknown material is never rewritten into an empty page.
+    children_defaulted = 'children' not in decoded
+    if children_defaulted: decoded['children'] = []
+    if not isinstance(decoded['children'], list): raise Review('ape_root_unrecognized')
     validate(decoded)
-    return {'payload': {'account': ACCOUNT, 'source_origin': ORIGIN, 'course_id': course_id,
+    result = {'payload': {'account': ACCOUNT, 'source_origin': ORIGIN, 'course_id': course_id,
             'lesson_id': lesson_id, 'course_title': course_title, 'lesson_title': lesson_title,
             'format': 'ape', 'ape': decoded}, 'settings': settings}
+    if children_defaulted: result['ape_root_children_defaulted'] = True
+    if editor_options is not None: result['editor_options'] = editor_options
+    return result
