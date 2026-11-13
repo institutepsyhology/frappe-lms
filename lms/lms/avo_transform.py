@@ -186,6 +186,12 @@ REVIEWED_IMAGE_LABELS = {
     ('mv-centr','847','7759'): 'b1d067222208d5059fc9761755d3a355814944c5b49bc2a0d863331391f0ee9d',
     ('mv-centr','847','7760'): 'aac6256c1a69e0d17092fec38fe96ab9ee55324171f6ead42c9a652e0ab7c919',
 }
+# Owner requested a local image plus a link to that same saved file. Bind this
+# exception to the two reviewed source identities, URL and inert layout.
+REVIEWED_SELF_LINKED_IMAGES = {scope: (
+    'f7ca50c355f1de74132ff4f072bed77ae52d7ad2a0bd9500726abc9c8afa757e',
+    'bc41cd4c18cb722ce66eaa375ed43d71f1a9aa3e1990df7684782096934c3858')
+    for scope in (('mastervision','636','7363'),('mastervision','640','7415'))}
 REVIEWED_LEGACY_TEXT_VIDEO = {
     ('mv-centr','397','2146'): 'b2e84c5abce4091a35e8a5e6b7216ff86c14adedb777b6f78b34235652fb9a55',
 }
@@ -623,6 +629,20 @@ def _image_source_valid(value, prepared_url=None):
     return bool(magic and hashlib.sha256(raw).hexdigest() == target.group(1))
 
 
+def _reviewed_self_linked_image(node, payload, account, course, lesson):
+    rule = REVIEWED_SELF_LINKED_IMAGES.get((account, course, lesson))
+    if not rule or payload.get('source_origin') != 'https://shop.mastervision.su': return False
+    fields, style = node.get('fields'), node.get('style')
+    if (not isinstance(fields, dict) or set(fields) != {'anchor','html','imageSrc','linkHref','linkTarget'}
+            or set(node) - {'id','name','fields','children','style'} or node.get('children', [])
+            or fields.get('anchor') != '' or fields.get('html') != 'Изображение'
+            or fields.get('linkTarget') is not True or fields.get('linkHref') != fields.get('imageSrc')
+            or _sha256_text(fields.get('imageSrc')) != rule[0] or not isinstance(style, dict)):
+        return False
+    return _sha256_text(json.dumps(style, ensure_ascii=True, sort_keys=True,
+                                  separators=(',', ':'), allow_nan=False)) == rule[1]
+
+
 def _player_url(value, provider):
     domains = {"youtube": {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "youtube-nocookie.com", "www.youtube-nocookie.com"},
                "rutube": {"rutube.ru", "www.rutube.ru"}}
@@ -965,7 +985,7 @@ def plan_import(payload, image_urls=None):
         data[provider] = value
         blocks.append({'type': 'videoChoice', 'data': data})
 
-    def entry(item):
+    def entry(item, *, self_link=False):
         if not isinstance(item, dict):
             issue("invalid_block")
             return
@@ -1028,6 +1048,14 @@ def plan_import(payload, image_urls=None):
                 return
             blocks.append({"type": "image", "data": {"url": url, "caption": escape(caption),
                            "withBorder": False, "withBackground": False, "stretched": False}})
+            if self_link:
+                # Only the scoped APE guard can request this internal option.
+                # url is the actual prepared File URL, checked immediately
+                # above; do not widen the general source HTML/link validator.
+                blocks.append({'type':'paragraph','data':{'text':'<a href="' + escape(url, quote=True) +
+                    '" target="_blank" rel="noopener noreferrer">Открыть изображение</a>'}})
+                if 'image_self_link_preserved' not in plan['warnings']:
+                    plan['warnings'].append('image_self_link_preserved')
         else:
             issue("unknown_block")
 
@@ -1649,6 +1677,9 @@ def plan_import(payload, image_urls=None):
             elif kind == 'image':
                 allowed = {'anchor', 'imageSrc'}
                 image_label = ''
+                self_link = _reviewed_self_linked_image(node, payload, account, course, lesson)
+                if self_link:
+                    allowed.update({'html','linkHref','linkTarget'})
                 if (REVIEWED_IMAGE_LABELS.get((account,course,lesson)) == _sha256_text(fields.get('imageSrc'))
                         and (account,course,lesson) in REVIEWED_IMAGE_LABELS and fields.get('html') == 'Изображение'):
                     allowed.add('html')
@@ -1658,7 +1689,7 @@ def plan_import(payload, image_urls=None):
                         or any(v not in (None, '', False, [], {}) for k, v in fields.items() if k not in allowed)):
                     issue('unsupported_image_settings')
                 else:
-                    entry({'type': 'image', 'image_key': node.get('id'), 'caption': image_label})
+                    entry({'type': 'image', 'image_key': node.get('id'), 'caption': image_label}, self_link=self_link)
             elif kind == "page":
                 known = {"commonFontName", "commonFontLink", "commonFontFamily", "headingFontName", "headingFontLink", "headingFontFamily", "fontPair", "backgroundOverlayColor"}
                 if any(v not in (None, "", False, [], {}) for k, v in fields.items() if k not in known):

@@ -85,7 +85,7 @@ def validate_context(path, revision):
     if (not isinstance(files, dict) or set(files) != set(context.FILES)
             or not all(isinstance(value, str) and re.fullmatch(r'[0-9a-f]{64}', value) for value in files.values())):
         raise RuntimeError('context_source_allowlist_mismatch')
-    generator_hash = context.sha((HERE / 'create_backend_context.py').read_bytes().replace(b'\r\n', b'\n'))
+    generator_hash = context.sha((HERE / Path(context.GENERATOR).name).read_bytes().replace(b'\r\n', b'\n'))
     if report.get('generator_sha256') != generator_hash:
         raise RuntimeError('context_generator_mismatch')
     recipe, overlay = path.parent / 'Dockerfile', path.parent / 'overlay.tar'
