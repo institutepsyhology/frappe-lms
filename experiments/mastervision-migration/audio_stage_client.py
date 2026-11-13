@@ -1,9 +1,10 @@
 """Validate archived audio references, stage remotely, keep a metadata-only index.
 
-No source archive writes, lesson/File creation, credentials output or retries.
+No source archive writes, lesson/File creation, credentials output or remote retries.
 The caller owns the archive worker lock and invokes stage_audio(store, emit).
 """
 import base64
+import errno
 import hashlib
 import json
 import os
@@ -11,6 +12,7 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
+import time
 import uuid
 
 from importer import ACCOUNT, ORIGIN, SITE, Stop
@@ -137,6 +139,43 @@ def _index(path, records):
     return value
 
 
+def _windows_reader_blocks_replace(path):
+    """Distinguish a WinError 5 sharing collision from genuine access denial."""
+    if os.name != 'nt': return False
+    import ctypes
+    from ctypes import wintypes
+    try:
+        api = ctypes.WinDLL('kernel32', use_last_error=True)
+        api.GetFileAttributesW.argtypes = [wintypes.LPCWSTR]; api.GetFileAttributesW.restype = wintypes.DWORD
+        attributes = api.GetFileAttributesW(str(path))
+        if attributes == 0xffffffff or attributes & 1: return False  # missing/inaccessible/read-only
+        api.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
+                                   wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+        api.CreateFileW.restype = wintypes.HANDLE
+        # DELETE access, all sharing modes, existing file, open reparse point itself.
+        handle = api.CreateFileW(str(path), 0x10000, 7, None, 3, 0x200000, None)
+        if handle == ctypes.c_void_p(-1).value: return ctypes.get_last_error() in (32, 33)
+        api.CloseHandle.argtypes = [wintypes.HANDLE]; api.CloseHandle.restype = wintypes.BOOL
+        api.CloseHandle(handle)
+    except (OSError, AttributeError): return False
+    return False
+
+
+def _replace_index(temp, path):
+    deadline, delay = time.monotonic() + 0.8, 0.02
+    for attempt in range(8):
+        if path.is_symlink(): raise Stop('audio_stage_index_invalid')
+        try:
+            os.replace(temp, path)
+            return
+        except OSError as exc:
+            code = getattr(exc, 'winerror', None)
+            if code not in (32, 33) and not (code == 5 and _windows_reader_blocks_replace(path)): raise
+            remaining = deadline - time.monotonic()
+            if attempt == 7 or remaining <= 0: raise Stop('audio_stage_index_file_busy') from None
+            time.sleep(min(delay, remaining)); delay = min(delay * 2, 0.16)
+
+
 def _save_index(path, value):
     if path.is_symlink(): raise Stop('audio_stage_index_invalid')
     temp = path.with_name('.audio-stage-index-' + uuid.uuid4().hex + '.tmp')
@@ -145,11 +184,17 @@ def _save_index(path, value):
         with os.fdopen(fd, 'w', encoding='utf-8') as stream:
             json.dump(value, stream, sort_keys=True, allow_nan=False)
             stream.flush(); os.fsync(stream.fileno())
-        os.replace(temp, path)
-    except OSError:
-        raise Stop('audio_stage_index_write_failed') from None
+        _replace_index(temp, path)
+    except OSError as exc:
+        code = getattr(exc, 'winerror', None)
+        reason = ('audio_stage_index_disk_full' if exc.errno == errno.ENOSPC or code in (39, 112) else
+                  'audio_stage_index_access_denied' if exc.errno in (errno.EACCES, errno.EPERM) or code == 5 else
+                  'audio_stage_index_write_failed')
+        raise Stop(reason) from None
     finally:
-        if temp.exists() and not temp.is_symlink(): temp.unlink()
+        try:
+            if temp.exists() and not temp.is_symlink(): temp.unlink()
+        except OSError: pass  # Preserve the safe primary error if a scanner also holds the temp file.
 
 
 def _remote(url, size):

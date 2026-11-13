@@ -1,10 +1,15 @@
 """Synthetic manifest/SSH/index checks; no actual transport or source archive."""
 import copy
+import errno
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
+import threading
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -148,6 +153,74 @@ class ClientTests(unittest.TestCase):
         with patch.object(client.os,'replace',side_effect=OSError('synthetic private details')):
             with self.assertRaisesRegex(Stop,'audio_stage_index_write_failed'):self.run_stage()
         self.assertEqual(path.read_bytes(),original);self.assertEqual(list(self.folder.glob('*.tmp')),[])
+
+    @unittest.skipUnless(os.name=='nt','Windows read-sharing regression')
+    def test_real_windows_read_handle_blocks_replace_then_retry_succeeds_after_close(self):
+        path=self.folder/'index.json';path.write_text('{"old":true}');reader=path.open('rb')
+        real_replace=os.replace;timers=[];errors=[];started=time.monotonic()
+        def replace(source,target):
+            try:return real_replace(source,target)
+            except OSError as exc:
+                errors.append(getattr(exc,'winerror',None))
+                if not timers:
+                    timer=threading.Timer(0.06,reader.close);timers.append(timer);timer.start()
+                raise
+        try:
+            self.assertTrue(client._windows_reader_blocks_replace(path))
+            with patch.object(client.os,'replace',side_effect=replace) as rename:
+                client._save_index(path,{'new':True})
+            self.assertGreaterEqual(rename.call_count,2)
+        finally:
+            reader.close()
+            for timer in timers:timer.join(timeout=1)
+        self.assertIn(errors[0],(5,32,33));self.assertEqual(json.loads(path.read_text()),{'new':True})
+        self.assertLess(time.monotonic()-started,1.0);self.assertEqual(list(self.folder.glob('*.tmp')),[])
+
+    @unittest.skipUnless(os.name=='nt','Windows genuine access-denied regression')
+    def test_real_readonly_target_access_denied_is_not_retried(self):
+        path=self.folder/'index.json';original=b'{"old":true}';path.write_bytes(original);os.chmod(path,stat.S_IREAD)
+        real_replace=os.replace
+        try:
+            self.assertFalse(client._windows_reader_blocks_replace(path))
+            with patch.object(client.os,'replace',wraps=real_replace) as rename,patch.object(client.time,'sleep') as sleep:
+                with self.assertRaisesRegex(Stop,'^audio_stage_index_access_denied$'):client._save_index(path,{'new':True})
+            self.assertEqual(rename.call_count,1);sleep.assert_not_called();self.assertEqual(path.read_bytes(),original)
+        finally:os.chmod(path,stat.S_IREAD|stat.S_IWRITE)
+
+    def test_disk_full_and_unproven_access_denied_stop_immediately_with_safe_codes(self):
+        path=self.folder/'index.json';path.write_text('{"old":true}');original=path.read_bytes()
+        for error,code in [(OSError(errno.ENOSPC,'PRIVATE'), 'audio_stage_index_disk_full'),
+                           (PermissionError(errno.EACCES,'PRIVATE'),'audio_stage_index_access_denied')]:
+            with patch.object(client.os,'replace',side_effect=error) as rename,patch.object(client.time,'sleep') as sleep:
+                with self.assertRaisesRegex(Stop,'^'+code+'$') as raised:client._save_index(path,{'new':True})
+            self.assertNotIn('PRIVATE',str(raised.exception));self.assertEqual(rename.call_count,1);sleep.assert_not_called()
+            self.assertEqual(path.read_bytes(),original);self.assertEqual(list(self.folder.glob('*.tmp')),[])
+
+    def test_permanent_windows_busy_is_bounded_and_does_not_retry_remote_staging(self):
+        path=self.folder/'index.json';path.write_text('{"old":true}');original=path.read_bytes()
+        error=PermissionError(errno.EACCES,'PRIVATE');error.winerror=32
+        with patch.object(client.os,'replace',side_effect=error) as rename,patch.object(client.time,'sleep') as sleep:
+            with self.assertRaisesRegex(Stop,'^audio_stage_index_file_busy$'):client._save_index(path,{'new':True})
+        self.assertEqual(rename.call_count,8);self.assertLessEqual(sum(call.args[0] for call in sleep.call_args_list),0.8)
+        self.remote.assert_not_called();self.assertEqual(path.read_bytes(),original);self.assertEqual(list(self.folder.glob('*.tmp')),[])
+
+    def test_symlink_guard_is_rechecked_before_retry(self):
+        path=self.folder/'index.json';path.write_text('{"old":true}');real_symlink=Path.is_symlink;checks=0
+        error=PermissionError(errno.EACCES,'PRIVATE');error.winerror=33
+        def is_symlink(selected):
+            nonlocal checks
+            if selected==path:
+                checks+=1;return checks>=3
+            return real_symlink(selected)
+        with patch.object(Path,'is_symlink',is_symlink),patch.object(client.os,'replace',side_effect=error) as rename,patch.object(client.time,'sleep'):
+            with self.assertRaisesRegex(Stop,'^audio_stage_index_invalid$'):client._save_index(path,{'new':True})
+        self.assertEqual(rename.call_count,1);self.assertGreaterEqual(checks,3)
+
+    def test_fsync_space_failure_is_classified_without_replacing_existing_index(self):
+        path=self.folder/'index.json';path.write_text('{"old":true}');original=path.read_bytes()
+        with patch.object(client.os,'fsync',side_effect=OSError(errno.ENOSPC,'PRIVATE')),patch.object(client.os,'replace') as rename:
+            with self.assertRaisesRegex(Stop,'^audio_stage_index_disk_full$'):client._save_index(path,{'new':True})
+        rename.assert_not_called();self.assertEqual(path.read_bytes(),original);self.assertEqual(list(self.folder.glob('*.tmp')),[])
 
     def test_ssh_uses_pinned_host_key_hidden_window_and_private_url_stdin_only(self):
         with patch.object(client.subprocess,'run',return_value=SimpleNamespace(returncode=0,stdout=json.dumps(receipt()).encode())) as run:
