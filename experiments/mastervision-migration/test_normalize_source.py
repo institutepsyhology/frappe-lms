@@ -27,6 +27,50 @@ def payload(html=None):
 
 
 class NormalizeTests(unittest.TestCase):
+    def approved_image_payload(self):
+        source = payload('<p>Keep material</p>')
+        source.update(course_id=377,lesson_id=3185)
+        image = {'id':'missing-image','name':'image','fields':{'anchor':'',
+                 'imageSrc':'https://f1.autoweboffice.ru/synthetic/missing.jpg'}}
+        source['ape']['children'] = [{'name':'section','children':[{'name':'container',
+                                     'children':[image,*source['ape']['children']]}]}]
+        return source
+
+    def test_approved_missing_image_v8_preserves_all_other_content_and_original(self):
+        import normalize_approved_images as approved
+        source = self.approved_image_payload();before=copy.deepcopy(source)
+        key = hashlib.sha256(source['ape']['children'][0]['children'][0]['children'][0]['fields']['imageSrc'].encode()).hexdigest()
+        with patch.dict(approved.APPROVED,{(377,3185):key},clear=True):
+            normalized,codes=normalize_payload(source)
+            self.assertEqual(source,before)
+            self.assertEqual(normalized['source_original_ape'],before['ape'])
+            self.assertEqual(normalized['ape']['children'][0]['children'][0]['children'],
+                             before['ape']['children'][0]['children'][0]['children'][1:])
+            self.assertEqual(normalized['source_normalization']['version'],8)
+            self.assertIn(approved.CODE,codes)
+            self.assertNotIn('audio_assets',normalized['source_normalization'])
+            self.assertTrue(plan_import(normalized)['ready'])
+            self.assertEqual(normalize_payload(normalized),(normalized,codes))
+
+    def test_approved_missing_image_v8_with_audio_replays_and_rejects_tampering(self):
+        import normalize_approved_images as approved
+        from test_normalize_audio import audio,key,receipt
+        source=self.approved_image_payload()
+        source['ape']['children'][0]['children'][0]['children'].append(audio())
+        image_key=hashlib.sha256(source['ape']['children'][0]['children'][0]['children'][0]['fields']['imageSrc'].encode()).hexdigest()
+        with patch.dict(approved.APPROVED,{(377,3185):image_key},clear=True):
+            normalized,codes=normalize_payload(source,{key():receipt()})
+            self.assertEqual(normalized['source_normalization']['version'],8)
+            self.assertEqual(normalized['source_normalization']['audio_assets'],{key():receipt()})
+            self.assertTrue(plan_import(normalized)['ready'])
+            self.assertEqual(normalize_payload(normalized),(normalized,codes))
+            with self.assertRaisesRegex(Review,'^normalization_metadata_conflict$'):
+                normalize_payload(normalized,{key():receipt(size=1)})
+            changed=copy.deepcopy(normalized)
+            changed['source_normalization']['approved_image_omissions'][0]['url_sha256']='0'*64
+            with self.assertRaisesRegex(Review,'^normalization_metadata_conflict$'):
+                normalize_payload(changed)
+
     def test_audio_v7_retains_original_controls_order_and_only_used_receipts(self):
         from test_normalize_audio import audio, key, receipt
         original = payload('<p>Before</p>')

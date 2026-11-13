@@ -19,6 +19,7 @@ from normalize_inline_images import normalize_inline_images, CODE as IMAGE_CODE
 from normalize_button_labels import normalize_button_labels, CODE as BUTTON_CODE
 from normalize_accordions import normalize_accordions, CODE as ACCORDION_CODE
 from normalize_stage_widgets import normalize_stage_widgets, CODE as STAGE_CODE
+from normalize_approved_images import normalize_approved_images, CODE as OMIT_IMAGE_CODE
 from normalize_audio import normalize_audio, CODE as AUDIO_CODE
 
 
@@ -314,9 +315,9 @@ def normalize_payload(payload, audio_assets=None):
         if not reserved <= set(result):
             raise Review("normalization_metadata_conflict")
         metadata = result['source_normalization']
-        stored_assets = (metadata.get('audio_assets') if isinstance(metadata, dict)
-                         and metadata.get('version') == 7 else None)
-        is_audio = isinstance(metadata, dict) and metadata.get('version') == 7
+        is_audio = isinstance(metadata, dict) and (metadata.get('version') == 7 or
+            metadata.get('version') == 8 and ('audio_assets' in metadata or bool(metadata.get('audio_blocks'))))
+        stored_assets = metadata.get('audio_assets') if is_audio else None
         if is_audio:
             if (not isinstance(stored_assets, dict) or not stored_assets
                     or any(not isinstance(key, str) or not re.fullmatch('[0-9a-f]{64}', key)
@@ -343,6 +344,7 @@ def normalize_payload(payload, audio_assets=None):
     if result.get("format") != "ape" or not isinstance(ape, dict) or ape.get("name") != "page":
         raise Review("normalization_source_invalid")
     original_ape, changed, table_changes = copy.deepcopy(ape), [], []
+    ape, approved_image_omissions = normalize_approved_images(ape, result.get('course_id'), result.get('lesson_id'))
     ape, audio_changes = normalize_audio(ape, audio_assets)
     ape, stage_changes = normalize_stage_widgets(ape, static_validator())
     ape, accordion_changes = normalize_accordions(ape, static_validator())
@@ -404,9 +406,22 @@ def normalize_payload(payload, audio_assets=None):
         codes.append(STAGE_CODE)
     if audio_changes:
         codes.append(AUDIO_CODE)
+    if approved_image_omissions:
+        codes.append(OMIT_IMAGE_CODE)
     if codes:
         result["source_original_ape"] = original_ape
-        if audio_changes:
+        if approved_image_omissions:
+            metadata = {"version": 8, "kind": "mastervision_editor_normalization", "codes": codes,
+                        "blocks": changed, "table_blocks": table_changes, "editor_blocks": editor_changes,
+                        "inline_image_blocks": image_changes, "button_blocks": button_changes,
+                        "accordion_blocks": accordion_changes, "stage_blocks": stage_changes,
+                        "approved_image_omissions": approved_image_omissions}
+            if audio_changes:
+                metadata["audio_blocks"] = audio_changes
+                metadata["audio_assets"] = {key: copy.deepcopy(audio_assets[key])
+                    for key in sorted({change['url_sha256'] for change in audio_changes})}
+            result["source_normalization"] = metadata
+        elif audio_changes:
             used_assets = {key: copy.deepcopy(audio_assets[key])
                            for key in sorted({change['url_sha256'] for change in audio_changes})}
             result["source_normalization"] = {"version": 7, "kind": "mastervision_editor_normalization", "codes": codes,
