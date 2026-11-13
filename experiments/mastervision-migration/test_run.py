@@ -19,6 +19,8 @@ class FakeCursor:
 class FakeDB:
     def __init__(self, store): self.store = store
     def execute(self, sql, parameters=()):
+        if sql == "SELECT id FROM courses WHERE state='review'":
+            return FakeCursor([(cid,) for cid in self.store.review_ids])
         if sql == 'SELECT id,title FROM courses ORDER BY id':
             return FakeCursor(self.store.catalog_rows)
         if sql != 'SELECT stage FROM errors WHERE consecutive>=?':
@@ -32,6 +34,7 @@ class FakeStore:
         self.db = FakeDB(self)
         self.events, self.marks, self.captures, self.completed = [], [], [], []
         self.catalog_rows, self.bound, self.checkpoints = [], [], {}
+        self.review_ids = set()
         self.reports = 0
         self.closed = False
 
@@ -125,8 +128,9 @@ class ControllerTests(unittest.TestCase):
         result = self.invoke(2, importing=lambda cid: error, args=['--apply'])
         self.assertNotIn('PRIVATE', repr(result[5]) + repr(result[1].events))
 
-    def invoke(self, count, *, collect=None, importing=None, args=(), errors=None):
+    def invoke(self, count, *, collect=None, importing=None, args=(), errors=None, review_ids=()):
         store, transport, client = FakeStore(errors), FakeTransport(), FakeClient()
+        store.review_ids = set(review_ids)
         target = FakeImporter(importing or (lambda cid: None))
         output, collected = [], []
 
@@ -160,6 +164,21 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(store.marks, [(cid, 'review') for cid in range(1, 11)])
         self.assertTrue(store.closed and transport.closed)
         self.assertEqual(clients, 0)
+
+    def test_review_only_skips_imported_courses_and_applies_limit_after_filter(self):
+        result = self.invoke(6, review_ids=[2, 4, 6], args=['--review-only', '--collect-only', '--limit', '2'])
+        self.assertEqual(result[0], 0)
+        self.assertEqual(result[6], [2, 4])
+
+    def test_empty_review_selection_never_opens_target_client(self):
+        result = self.invoke(6, args=['--review-only', '--apply'])
+        self.assertEqual(result[0], 0)
+        self.assertEqual(result[7], 0)
+        self.assertEqual(result[5][-1], {'status': 'nothing_to_review'})
+
+    def test_review_selection_cannot_be_mixed_with_cover_only_mode(self):
+        with self.assertRaisesRegex(mod.Stop, '^conflicting_mode$'):
+            self.invoke(6, args=['--review-only', '--covers-only', '--stored'])
 
     def test_success_resets_collection_streak_instead_of_counting_all_historical_reviews(self):
         status, store, _, _, _, output, collected, _ = self.invoke(19,

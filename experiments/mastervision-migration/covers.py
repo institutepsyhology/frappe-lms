@@ -5,6 +5,7 @@ An uncertain mutation is fatal and leaves any created File for inspection.
 """
 import base64
 import hashlib
+import io
 import json
 import re
 from urllib.parse import unquote, urlsplit
@@ -127,9 +128,43 @@ def _files(client, filters):
     return rows
 
 
-def _verify_file(file, cid, course, stem, extension, size, md5):
+def _stripped_jpeg_metadata(raw):
+    """Match installed Frappe strip_exif_data exactly, including orientation.
+
+    A JPEG without EXIF must retain its original bytes. No approximate pixel
+    comparison or arbitrary re-encoding is authorized by this fallback.
+    """
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        raise Review('cover_transform_requires_pillow') from None
+    try:
+        with Image.open(io.BytesIO(raw)) as original:
+            if original.format != 'JPEG' or not original.getexif():
+                return None
+            image = ImageOps.exif_transpose(original)
+            try:
+                if image.mode in ('RGBA', 'P'):
+                    converted = image.convert('RGB')
+                    image.close(); image = converted
+                output = io.BytesIO()
+                image.save(output, format='jpeg', exif=b'')
+                content = output.getvalue()
+            finally:
+                image.close()
+    except Exception:
+        raise Stop('cover_file_readback_invalid') from None
+    return len(content), hashlib.md5(content, usedforsecurity=False).hexdigest()
+
+
+def _verify_file(file, cid, course, stem, extension, size, md5, raw):
     if (not _owned(file, cid, course) or not re.fullmatch(re.escape(stem) + r'(?:_[0-9a-f]{6})?\.' + extension, file['file_name'])
-            or file.get('content_hash') != md5 or type(file.get('file_size')) is not int or file['file_size'] != size):
+            or type(file.get('file_size')) is not int or file['file_size'] <= 0):
+        raise Stop('cover_file_readback_invalid')
+    if file.get('content_hash') == md5 and file['file_size'] == size:
+        return
+    transformed = _stripped_jpeg_metadata(raw) if extension == 'jpg' else None
+    if transformed is None or (file['file_size'], file.get('content_hash')) != transformed:
         raise Stop('cover_file_readback_invalid')
 
 
@@ -157,9 +192,9 @@ def sync_cover(client, course_id, raw: bytes, extension: str, apply=False):
     candidates = _files(client, [*attachment, ['file_name', 'like', stem + '%']])
     file = candidates[0] if candidates else None
     if file is not None:
-        _verify_file(file, cid, name, stem, extension, len(raw), md5)
+        _verify_file(file, cid, name, stem, extension, len(raw), md5, raw)
         file = _read(client, 'get_document', {'doctype': 'File', 'name': file['name']})
-        _verify_file(file, cid, name, stem, extension, len(raw), md5)
+        _verify_file(file, cid, name, stem, extension, len(raw), md5, raw)
     if file is not None and old_image == file['file_url']:
         return {**metadata, 'status': 'already_imported'}
     if not apply:
@@ -170,9 +205,9 @@ def sync_cover(client, course_id, raw: bytes, extension: str, apply=False):
             'is_private': 0, 'attached_to_doctype': 'LMS Course', 'attached_to_name': name,
             'attached_to_field': 'image'}})
         metadata['file_created'] = True
-        _verify_file(file, cid, name, stem, extension, len(raw), md5)
+        _verify_file(file, cid, name, stem, extension, len(raw), md5, raw)
         readback = _read(client, 'get_document', {'doctype': 'File', 'name': file['name']})
-        _verify_file(readback, cid, name, stem, extension, len(raw), md5)
+        _verify_file(readback, cid, name, stem, extension, len(raw), md5, raw)
         if any(readback.get(key) != file.get(key) for key in FILE_FIELDS):
             raise Stop('cover_file_readback_invalid')
         file = readback

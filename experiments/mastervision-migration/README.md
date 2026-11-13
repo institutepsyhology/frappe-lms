@@ -44,6 +44,7 @@ py -3 experiments/mastervision-migration/run.py --catalog-only
 py -3 experiments/mastervision-migration/run.py --collect-only --limit 1
 py -3 experiments/mastervision-migration/run.py --stored --course 1
 py -3 experiments/mastervision-migration/run.py --stored --course 1 --apply
+py -3 experiments/mastervision-migration/run.py --stored --review-only --apply
 py -3 experiments/mastervision-migration/run.py --apply
 py -3 experiments/mastervision-migration/run.py --stored --covers-only --apply
 py -3 experiments/mastervision-migration/run.py --stored --settings-only --apply
@@ -57,6 +58,20 @@ py -3 experiments/mastervision-migration/launch.py --apply
 одноимённый JSON хранит PID, коммит, время начала, завершения и код выхода.
 Состояние архива читается без блокировки командой
 `py -3 experiments/mastervision-migration/status.py`.
+`--review-only` выбирает только оставшиеся проблемные курсы, сохраняя
+порядок каталога и не проверяя заново уже завершённые курсы.
+
+Обложки копируются в локальные файлы Frappe, а не подключаются с АВО.
+Для проверки JPEG с EXIF нужен Pillow: Frappe удаляет метаданные,
+применяет ориентацию и заново сохраняет JPEG. Проверка допускает только
+исходные байты либо точный результат этого известного преобразования;
+произвольные изменения файла остаются ошибкой. Уже созданный подходящий
+файл переиспользуется. Для запуска с Pillow можно использовать Python
+из установленного комплекта Codex:
+
+```powershell
+& "$env:USERPROFILE\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" experiments/mastervision-migration/launch.py --stored --covers-only --apply
+```
 Запись каждого урока отмечается перед отправкой и после подтверждения MCP.
 
 Без `--apply` проверка не создаёт документы во Frappe. `--collect-only` только
