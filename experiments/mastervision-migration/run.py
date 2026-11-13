@@ -236,7 +236,7 @@ def main():
     args.add_argument('--collect-only', action='store_true')
     args.add_argument('--apply', action='store_true')
     args.add_argument('--limit', type=int)
-    args.add_argument('--course', type=int)
+    args.add_argument('--course', type=int, action='append', help='Select source course ID; repeat to select several')
     args.add_argument('--resume', action='store_true')
     args.add_argument('--stored', action='store_true', help='Use verified private snapshots without refreshing AVO')
     args.add_argument('--from-course', type=int, default=1)
@@ -244,7 +244,8 @@ def main():
     args.add_argument('--settings-only', action='store_true')
     args.add_argument('--review-only', action='store_true', help='Process only courses currently awaiting review')
     selected = args.parse_args()
-    if selected.limit is not None and selected.limit < 1 or selected.course is not None and selected.course < 1 or selected.from_course < 1:
+    if (selected.limit is not None and selected.limit < 1 or
+            selected.course is not None and any(cid < 1 for cid in selected.course) or selected.from_course < 1):
         raise Stop('invalid_selection')
     if (selected.apply and (selected.collect_only or selected.catalog_only) or
             (selected.covers_only or selected.settings_only) and
@@ -267,8 +268,9 @@ def main():
                 if selected.catalog_only:
                     emit({'status': 'catalog_complete', 'courses': len(rows)}); return 0
                 if selected.course:
-                    rows = [row for row in rows if row['id'] == selected.course]
-                    if not rows: raise Stop('selected_course_not_in_catalog')
+                    selected_ids = set(selected.course)
+                    rows = [row for row in rows if row['id'] in selected_ids]
+                    if len(rows) != len(selected_ids): raise Stop('selected_course_not_in_catalog')
                 if selected.review_only:
                     review_ids = {row[0] for row in store.db.execute("SELECT id FROM courses WHERE state='review'")}
                     rows = [row for row in rows if row['id'] in review_ids]

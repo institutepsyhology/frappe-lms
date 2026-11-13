@@ -170,6 +170,15 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(result[0], 0)
         self.assertEqual(result[6], [2, 4])
 
+    def test_multiple_course_selection_uses_catalog_order_and_cannot_silently_miss_ids(self):
+        result = self.invoke(6, args=['--collect-only', '--course', '4', '--course', '2'])
+        self.assertEqual(result[0], 0)
+        self.assertEqual(result[6], [2, 4])
+        result = self.invoke(6, args=['--collect-only', '--course', '4', '--course', '7'])
+        self.assertEqual(result[0], 1)
+        self.assertEqual(result[6], [])
+        self.assertEqual(result[5][-1]['code'], 'selected_course_not_in_catalog')
+
     def test_empty_review_selection_never_opens_target_client(self):
         result = self.invoke(6, args=['--review-only', '--apply'])
         self.assertEqual(result[0], 0)

@@ -27,6 +27,13 @@ def heading(markup='<h2><b>Heading</b></h2>',format='h2',**fields):
     return {'id':'heading','name':'header','fields':{'html':markup,'format':format,**fields},'children':[]}
 
 
+def avatar(**fields):
+    return {'id':'personal-avatar','name':'image',
+            'fields':{'imageSrc':'{avatar_url}','anchor':'','linkHref':'',**fields},'children':[],
+            'style':{'lists':{'block':{'display':'block'},'content':{'justifyContent':'center'},
+                              'image':{'width':'100px','height':'auto','marginTop':'0px'}}}}
+
+
 class EditorNodeTests(unittest.TestCase):
     def normalize(self,ape): return normalize_nodes(ape,VALIDATE)
 
@@ -101,6 +108,52 @@ class EditorNodeTests(unittest.TestCase):
                           ('style',{'content':{'value':'meaningful caption'}})]:
             node=video(url='');node[key]=value;ape=page(node)
             out,changes=self.normalize(ape);self.assertEqual(out,ape);self.assertEqual(changes,[])
+
+    def test_personalized_avatar_omitted_while_all_real_image_settings_stay_exact(self):
+        real={'id':'real-image','name':'image','fields':{
+            'imageSrc':'https://f1.autoweboffice.com/example/school/real.png',
+            'anchor':'','linkHref':'','displayDelay':'0','visibleConditions':[]},
+            'style':{'lists':{'image':{'width':'80%','height':'auto'}}},'children':[]}
+        other=copy.deepcopy(real);other['id']='other-image'
+        other['fields']['imageSrc']='https://f1.autoweboffice.com/example/school/other.jpg'
+        ape=page(avatar(),real,video(),{'name':'column','children':[other]});before=copy.deepcopy(ape)
+        out,changes=self.normalize(ape)
+        self.assertEqual(out['children'],[real,video(),{'name':'column','children':[other]}])
+        self.assertEqual(json.dumps(out['children'][0]),json.dumps(real))
+        self.assertEqual(json.dumps(out['children'][2]['children'][0]),json.dumps(other))
+        self.assertEqual(changes,[{'path':[0],'code':'personalized_avatar_placeholder_omitted'}])
+        self.assertEqual(ape,before)
+
+    def test_avatar_minimal_missing_or_null_empty_fields_and_nested_original_paths(self):
+        minimal={'name':'image','fields':{'imageSrc':'{avatar_url}'}}
+        ape=page(avatar(anchor=None,linkHref=None),{'name':'column','children':[video(),minimal]})
+        before=copy.deepcopy(ape);out,changes=self.normalize(ape)
+        self.assertEqual(out['children'],[{'name':'column','children':[video()]}])
+        self.assertEqual(changes,[{'path':[0],'code':'personalized_avatar_placeholder_omitted'},
+                                  {'path':[1,1],'code':'personalized_avatar_placeholder_omitted'}])
+        self.assertEqual(ape,before)
+        second,second_changes=self.normalize(out)
+        self.assertEqual(second,out);self.assertEqual(second_changes,[])
+
+    def test_avatar_unknown_fields_macros_and_actual_missing_images_are_retained(self):
+        nodes=[avatar(anchor='keep-anchor'),avatar(linkHref='https://example.test/material'),
+               avatar(html='<p>Keep text</p>'),avatar(html=None),avatar(unknown=None),
+               avatar(imageSrc='{other_url}'),avatar(imageSrc='{avatar_url} '),
+               avatar(imageSrc=''),avatar(imageSrc=None),avatar(imageSrc='relative.png')]
+        for node in nodes:
+            ape=page(node);before=copy.deepcopy(ape)
+            out,changes=self.normalize(ape)
+            self.assertEqual(out,before);self.assertEqual(changes,[]);self.assertEqual(ape,before)
+
+    def test_avatar_children_extra_node_fields_or_content_style_are_never_discarded(self):
+        changes_to_try=[('children',[{'name':'text','fields':{'html':'<p>Keep</p>'}}]),
+                        ('extra',None),('style',{'caption':'Meaningful text'}),
+                        ('style',{'lists':{'image':{'backgroundImage':'url(https://example.test/background.png)'}}}),
+                        ('style',{'lists':{'content':{'html':'<p>Keep</p>'}}})]
+        for key,value in changes_to_try:
+            node=avatar();node[key]=value;ape=page(node);before=copy.deepcopy(ape)
+            out,changes=self.normalize(ape)
+            self.assertEqual(out,before);self.assertEqual(changes,[]);self.assertEqual(ape,before)
 
     def test_observed_2814_and_3395_mixed_headings_preserve_exact_html(self):
         for markup,format in [('<h2><b>First</b></h2>\n<h2><b>Second</b></h2>','h1'),

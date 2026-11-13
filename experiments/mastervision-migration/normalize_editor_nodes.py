@@ -78,6 +78,16 @@ def _empty_video(node, validate):
     return all(_empty(value) for key, value in node.items() if key not in ('id','name','fields','children','style'))
 
 
+def _personalized_avatar(node):
+    fields = node['fields']
+    return (not set(fields) - {'anchor', 'imageSrc', 'linkHref'}
+            and fields.get('imageSrc') == '{avatar_url}'
+            and fields.get('anchor') in (None, '') and fields.get('linkHref') in (None, '')
+            and not node.get('children', [])
+            and not set(node) - {'id', 'name', 'fields', 'children', 'style'}
+            and not _style_content(node.get('style')))
+
+
 def _header_as_text(node, validate):
     fields = node['fields']; markup = fields.get('html')
     if (set(fields) - {'anchor','format','html'} or fields.get('anchor') not in (None, '')
@@ -113,6 +123,9 @@ def normalize_nodes(ape, static_validator):
         if not isinstance(fields, dict) or not isinstance(children, list): raise Review('editor_nodes_invalid')
         # Missing fields is legitimate on structural nodes; do not insert an
         # empty dictionary because that would change an existing fingerprint.
+        if node['name'] == 'image' and 'fields' in node and _personalized_avatar(node):
+            changes.append({'path': list(path), 'code': 'personalized_avatar_placeholder_omitted'})
+            return None
         if node['name'] == 'video' and 'fields' in node:
             corrected = False
             for suffix in ('', '2'):

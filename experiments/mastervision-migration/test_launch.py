@@ -30,6 +30,14 @@ def archive(extra=None):
 
 
 class ArgumentArchiveTests(unittest.TestCase):
+    def test_multiple_explicit_courses_are_canonical_and_bounded(self):
+        arguments = ['--stored', '--apply'] + [part for cid in range(1, 29) for part in ('--course', str(cid))]
+        self.assertEqual(mod.validate_flags(arguments), arguments)
+        with self.assertRaises(mod.LaunchError):
+            mod.validate_flags(['--course', '2', '--course', '2'])
+        with self.assertRaises(mod.LaunchError):
+            mod.validate_flags(['--apply'] * 257)
+
     def test_whitelisted_flags_preserve_values_and_order(self):
         args = ['--apply', '--stored', '--from-course', '7', '--limit', '10', '--resume']
         self.assertEqual(mod.parse_arguments(['--revision', 'a' * 40, *args]), {'revision': 'a' * 40, 'arguments': args})

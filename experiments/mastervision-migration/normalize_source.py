@@ -16,6 +16,7 @@ from urllib.parse import parse_qsl, urlsplit
 from importer import ACCOUNT, ORIGIN, Review
 from normalize_editor_nodes import normalize_nodes
 from normalize_inline_images import normalize_inline_images, CODE as IMAGE_CODE
+from normalize_button_labels import normalize_button_labels, CODE as BUTTON_CODE
 
 
 CODE = "embedded_video_iframe_normalized"
@@ -319,6 +320,7 @@ def normalize_payload(payload):
     original_ape, changed, table_changes = copy.deepcopy(ape), [], []
     ape, editor_changes = normalize_nodes(ape, static_validator())
     ape, image_changes = normalize_inline_images(ape, static_validator())
+    ape, button_changes = normalize_button_labels(ape, static_validator())
     result['ape'] = ape
 
     def visit(node, path):
@@ -364,9 +366,15 @@ def normalize_payload(payload):
     codes.extend(dict.fromkeys(change['code'] for change in editor_changes))
     if image_changes:
         codes.append(IMAGE_CODE)
+    if button_changes:
+        codes.append(BUTTON_CODE)
     if codes:
         result["source_original_ape"] = original_ape
-        if image_changes:
+        if button_changes:
+            result["source_normalization"] = {"version": 4, "kind": "mastervision_editor_normalization", "codes": codes,
+                                               "blocks": changed, "table_blocks": table_changes, "editor_blocks": editor_changes,
+                                               "inline_image_blocks": image_changes, "button_blocks": button_changes}
+        elif image_changes:
             result["source_normalization"] = {"version": 3, "kind": "mastervision_editor_normalization", "codes": codes,
                                                "blocks": changed, "table_blocks": table_changes, "editor_blocks": editor_changes,
                                                "inline_image_blocks": image_changes}

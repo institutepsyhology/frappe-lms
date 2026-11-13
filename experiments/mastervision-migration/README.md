@@ -45,6 +45,7 @@ py -3 experiments/mastervision-migration/run.py --collect-only --limit 1
 py -3 experiments/mastervision-migration/run.py --stored --course 1
 py -3 experiments/mastervision-migration/run.py --stored --course 1 --apply
 py -3 experiments/mastervision-migration/run.py --stored --review-only --apply
+py -3 experiments/mastervision-migration/run.py --stored --review-only --course 69 --course 135 --apply
 py -3 experiments/mastervision-migration/run.py --apply
 py -3 experiments/mastervision-migration/run.py --stored --covers-only --apply
 py -3 experiments/mastervision-migration/run.py --stored --settings-only --apply
@@ -60,6 +61,8 @@ py -3 experiments/mastervision-migration/launch.py --apply
 `py -3 experiments/mastervision-migration/status.py`.
 `--review-only` выбирает только оставшиеся проблемные курсы, сохраняя
 порядок каталога и не проверяя заново уже завершённые курсы.
+Повторяемый `--course` позволяет выбрать проверенную группу курсов;
+готовые курсы при сочетании с `--review-only` пропускаются.
 
 Обложки копируются в локальные файлы Frappe, а не подключаются с АВО.
 Для проверки JPEG с EXIF нужен Pillow: Frappe удаляет метаданные,

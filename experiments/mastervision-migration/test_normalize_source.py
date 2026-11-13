@@ -25,6 +25,20 @@ def payload(html=None):
 
 
 class NormalizeTests(unittest.TestCase):
+    def test_formatted_button_integration_retains_original_and_old_plain_payload(self):
+        original = payload('<p>Keep text</p>')
+        original['ape']['children'].append({'name':'button','id':'material','fields':{
+            'linkType':'url','url':'https://example.test/material','html':'<span style="font-size:18px">Material</span>','blank':True}})
+        normalized, codes = normalize_payload(original)
+        self.assertTrue(plan_import(normalized)['ready'])
+        self.assertEqual(normalized['source_original_ape'], original['ape'])
+        self.assertIn('button_label_html_preserved', codes)
+        self.assertEqual(normalized['source_normalization']['version'], 4)
+        self.assertEqual(normalize_payload(normalized), (normalized, codes))
+        plain = copy.deepcopy(original)
+        plain['ape']['children'][-1]['fields']['html'] = 'Plain<br>material'
+        self.assertEqual(normalize_payload(plain), (plain, []))
+
     def test_legacy_fullscreen_boolean_attributes_do_not_change_rutube_video(self):
         normalized, _ = normalize_payload(payload(frame(RUTUBE, ' webkitallowfullscreen mozallowfullscreen')))
         self.assertEqual(normalized['ape']['children'][0]['fields']['videoSrc'], RUTUBE)

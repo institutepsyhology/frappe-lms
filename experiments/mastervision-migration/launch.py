@@ -76,18 +76,21 @@ def _directory(path):
 
 
 def validate_flags(arguments):
-    if not isinstance(arguments, list) or len(arguments) > 30:
+    if not isinstance(arguments, list) or len(arguments) > 256:
         raise LaunchError('invalid_run_argument')
-    result, seen, index = [], set(), 0
+    result, seen, courses, index = [], set(), set(), 0
     while index < len(arguments):
         flag = arguments[index]
-        if not isinstance(flag, str) or flag in seen or flag not in BOOL_FLAGS | INT_FLAGS:
+        if not isinstance(flag, str) or flag in seen and flag != '--course' or flag not in BOOL_FLAGS | INT_FLAGS:
             raise LaunchError('invalid_run_argument')
         seen.add(flag); result.append(flag); index += 1
         if flag in INT_FLAGS:
             if index >= len(arguments) or not isinstance(arguments[index], str) or not re.fullmatch('[1-9][0-9]{0,9}', arguments[index]):
                 raise LaunchError('invalid_run_argument')
             if int(arguments[index]) > 2147483647: raise LaunchError('invalid_run_argument')
+            if flag == '--course':
+                if arguments[index] in courses: raise LaunchError('invalid_run_argument')
+                courses.add(arguments[index])
             result.append(arguments[index]); index += 1
     return result
 
