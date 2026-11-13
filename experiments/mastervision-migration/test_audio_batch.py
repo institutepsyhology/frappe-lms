@@ -97,6 +97,16 @@ class AudioBatchTests(unittest.TestCase):
         self.limit.assert_called_once_with(self.client,apply=False)
         self.assertTrue(all(call.kwargs=={'apply':False} for call in self.register.call_args_list))
 
+    def test_resume_revalidates_mcp_without_replacing_an_unchanged_checkpoint(self):
+        expected=self.run_batch()
+        path=self.folder/'audio-files-index.json';before=path.read_bytes()
+        self.register.reset_mock()
+        with patch.object(batch,'_save_index',side_effect=AssertionError('unchanged index must not be replaced')) as save:
+            self.assertEqual(self.run_batch(),expected)
+        self.assertEqual(self.register.call_count,2)
+        save.assert_not_called()
+        self.assertEqual(path.read_bytes(),before)
+
     def test_foreign_or_changed_registration_index_is_rejected_before_mutations(self):
         key,row=next(iter(self.stage['files'].items()))
         original={'version':1,'account':ACCOUNT,'origin':ORIGIN,'site':SITE,'files':{key:mapping(row)}}
@@ -120,7 +130,8 @@ class AudioBatchTests(unittest.TestCase):
         self.register.reset_mock()
         with patch.object(batch,'_save_index',side_effect=Stop('audio_index_write_failed')):
             with self.assertRaises(Stop):self.run_batch()
-        self.assertEqual(self.register.call_count,1)
+        self.assertEqual(self.register.call_count,2)
+        self.assertEqual(len(json.loads((self.folder/'audio-files-index.json').read_text())['files']),1)
 
     def test_invalid_mapping_binding_and_apply_never_create_unverified_index(self):
         self.client.site='my-lk.iomp.ru'

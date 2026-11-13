@@ -51,7 +51,8 @@ def register_staged_audio(store,client,emit,apply=True):
         if not _mapping_matches(mapping,receipts[key]):raise Stop('audio_registration_mapping_invalid')
         result[key]=dict(mapping)
         if apply:
-            index['files'][key]=dict(mapping)
-            _save_index(path,index)
+            if index['files'].get(key)!=mapping:
+                index['files'][key]=dict(mapping)
+                _save_index(path,index)
             progress(len(result))
     return result
