@@ -8,6 +8,7 @@ import re
 import sys
 
 from importer import Review
+from avatar_placeholders import is_known_avatar_url
 
 
 @lru_cache(maxsize=1)
@@ -81,7 +82,7 @@ def _empty_video(node, validate):
 def _personalized_avatar(node):
     fields = node['fields']
     return (not set(fields) - {'anchor', 'imageSrc', 'linkHref'}
-            and fields.get('imageSrc') == '{avatar_url}'
+            and (fields.get('imageSrc') == '{avatar_url}' or is_known_avatar_url(fields.get('imageSrc')))
             and fields.get('anchor') in (None, '') and fields.get('linkHref') in (None, '')
             and not node.get('children', [])
             and not set(node) - {'id', 'name', 'fields', 'children', 'style'}

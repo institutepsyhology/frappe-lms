@@ -263,18 +263,57 @@ class AssetTests(unittest.TestCase):
             self.cache.lesson_images(payload(image(),image('inline','data:image/png;base64,AB==')))
         self.assertEqual(self.opener.calls,[])
 
-    def test_verified_ru_cdn_allows_only_exact_host_school_jpeg_without_query(self):
+    def test_verified_ru_cdn_allows_only_exact_host_safe_raster_paths_without_query(self):
         valid='https://f1.autoweboffice.ru/mastergroup/school/Abc12345-_.jpg'
-        self.assertEqual(assets._url(valid),valid)
+        for url in (valid,'https://f1.autoweboffice.ru/other/test.jpg',
+                    'https://f1.autoweboffice.ru/mastergroup/school/test.png',
+                    'https://f1.autoweboffice.ru/mastergroup/school/dir/test.webp',
+                    'https://f1.autoweboffice.ru/iomp/unnamed.jpeg'):
+            self.assertEqual(assets._url(url),url)
         for url in ('https://f2.autoweboffice.ru/mastergroup/school/test.jpg',
                     'https://f1.autoweboffice.ru.evil.test/mastergroup/school/test.jpg',
-                    'https://f1.autoweboffice.ru/other/test.jpg',
-                    'https://f1.autoweboffice.ru/mastergroup/school/test.png',
-                    'https://f1.autoweboffice.ru/mastergroup/school/dir/test.jpg',
                     'https://f1.autoweboffice.ru/mastergroup/school/%2e%2e.jpg',
                     valid+'?token=private',valid+'#fragment',
                     'https://user:password@f1.autoweboffice.ru/mastergroup/school/test.jpg'):
             with self.subTest(url=url),self.assertRaises(Review):assets._url(url)
+        self.assertEqual(self.opener.calls,[])
+
+    def test_verified_ru_unicode_raster_paths_keep_exact_encoded_request_and_cache_key(self):
+        url='https://f1.autoweboffice.ru/%D1%83%D1%80%D0%BE%D0%BA%D0%B8/course%20one/%D1%84%D0%BE%D1%82%D0%BE.PNG'
+        self.assertEqual(assets._url(url),url)
+        self.opener.response=Response(url)
+        self.assertEqual(self.cache.fetch(url),(png(),'png'))
+        self.assertEqual(self.opener.calls[0][0].full_url,url)
+        request,timeout=self.opener.calls[0]
+        self.assertEqual(timeout,25)
+        self.assertFalse({'cookie','authorization'} & {name.lower() for name in request.headers})
+        row=self.cache.db.execute('SELECT url,url_hash FROM assets').fetchone()
+        self.assertEqual(row['url'],url)
+        self.assertEqual(row['url_hash'],hashlib.sha256(url.encode()).hexdigest())
+
+    def test_verified_ru_rejects_traversal_malformed_encoding_non_rasters_and_other_hosts(self):
+        origin='https://f1.autoweboffice.ru'
+        paths=['/a/../image.jpg','/a/%2e%2e/image.jpg','/a/%252e%252e/image.jpg',
+               '/a/%2Fprivate/image.jpg','/a/%5cimage.jpg','/a/%00image.jpg',
+               '/a/%0aimage.jpg','/a/%7fimage.jpg','/a/%FFimage.jpg','/a/%G0image.jpg',
+               '/a/image%.jpg','/a/image%2.jpg','/a//image.jpg','//a/image.jpg',
+               '/a/.hidden.jpg','/a/image.svg','/a/script.html','/a/image.jpg/extra',
+               '/a/image.jpg?','/a/image.jpg#','/a/%3fsecret/image.jpg']
+        for path in paths:
+            with self.subTest(path=path),self.assertRaises(Review):assets._url(origin+path)
+        for url in ('http://f1.autoweboffice.ru/a/image.jpg','https://f1.autoweboffice.ru:443/a/image.jpg',
+                    'https://u:p@f1.autoweboffice.ru/a/image.jpg','https://f1.autoweboffice.ru.evil.test/a/image.jpg',
+                    'https://f2.autoweboffice.ru/a/image.jpg','https://getcourse.ru/public/img/default_profile_50.png',
+                    'https://vk.com/emoji/e/synthetic.png','https://lh6.googleusercontent.com/image.png'):
+            with self.subTest(url=url),self.assertRaises(Review):assets._url(url)
+        self.assertEqual(self.opener.calls,[])
+
+    def test_verified_ru_route_never_weakens_source_account_binding(self):
+        url='https://f1.autoweboffice.ru/lessons/image.jpg'
+        with patch.object(assets,'ACCOUNT','mv-centr'):
+            with self.assertRaisesRegex(Review,'asset_account_mismatch'):assets._url(url)
+        with patch.object(assets,'ORIGIN','https://shop.mv-centr.ru'):
+            with self.assertRaisesRegex(Review,'asset_account_mismatch'):assets._url(url)
         self.assertEqual(self.opener.calls,[])
 
     def test_verified_getcourse_route_is_exact_and_keeps_anonymous_download_guards(self):

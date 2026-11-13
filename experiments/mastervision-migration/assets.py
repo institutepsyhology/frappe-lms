@@ -21,6 +21,7 @@ import warnings
 import zlib
 
 from importer import ACCOUNT, ORIGIN, Review
+from avatar_placeholders import _decoded_safe_path
 
 MAX_IMAGE = 5 * 1024 * 1024
 MAX_IMAGES = 10
@@ -45,15 +46,18 @@ def _url(value):
                 or url.port is not None or url.fragment):
             raise ValueError()
     except ValueError: raise Review('asset_url_invalid') from None
-    verified_ru = (url.hostname == 'f1.autoweboffice.ru' and not url.query and
-                   re.fullmatch(r'/mastergroup/school/[A-Za-z0-9][A-Za-z0-9_.-]*\.jpg', url.path))
+    decoded_ru = _decoded_safe_path(url.path) if url.hostname == 'f1.autoweboffice.ru' else None
+    verified_ru = bool(decoded_ru and not url.query and '?' not in value and '#' not in value
+                       and re.search(r'\.(?:jpe?g|png|webp)$', decoded_ru, re.I))
     verified_getcourse = (url.hostname == 'fs-thb01.getcourse.ru' and not url.query and
         re.fullmatch(r'/fileservice/file/thumbnail/h/[a-f0-9]{32}\.png/s/f[0-9]{4}x/a/[0-9]{5}/sc/[0-9]{3}', url.path))
     if (url.hostname != 'shop.mastervision.su' and
             not re.fullmatch(r'f[0-9]+\.autoweboffice\.com', url.hostname or '')
             and not verified_ru and not verified_getcourse):
         raise Review('asset_host_requires_review')
-    return url.geturl()
+    # Preserve percent-encoded source paths byte for byte; do not rewrite the
+    # original URL into its decoded form before an anonymous CDN request.
+    return value if verified_ru else url.geturl()
 
 
 def _data_image(value):

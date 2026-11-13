@@ -17,6 +17,7 @@ from importer import ACCOUNT, ORIGIN, Review
 from normalize_editor_nodes import normalize_nodes
 from normalize_inline_images import normalize_inline_images, CODE as IMAGE_CODE
 from normalize_button_labels import normalize_button_labels, CODE as BUTTON_CODE
+from normalize_accordions import normalize_accordions, CODE as ACCORDION_CODE
 
 
 CODE = "embedded_video_iframe_normalized"
@@ -318,8 +319,11 @@ def normalize_payload(payload):
     if result.get("format") != "ape" or not isinstance(ape, dict) or ape.get("name") != "page":
         raise Review("normalization_source_invalid")
     original_ape, changed, table_changes = copy.deepcopy(ape), [], []
+    ape, accordion_changes = normalize_accordions(ape, static_validator())
     ape, editor_changes = normalize_nodes(ape, static_validator())
     ape, image_changes = normalize_inline_images(ape, static_validator())
+    ape, extracted_image_changes = normalize_nodes(ape, static_validator())
+    editor_changes.extend(extracted_image_changes)
     ape, button_changes = normalize_button_labels(ape, static_validator())
     result['ape'] = ape
 
@@ -368,9 +372,16 @@ def normalize_payload(payload):
         codes.append(IMAGE_CODE)
     if button_changes:
         codes.append(BUTTON_CODE)
+    if accordion_changes:
+        codes.append(ACCORDION_CODE)
     if codes:
         result["source_original_ape"] = original_ape
-        if button_changes:
+        if accordion_changes:
+            result["source_normalization"] = {"version": 5, "kind": "mastervision_editor_normalization", "codes": codes,
+                                               "blocks": changed, "table_blocks": table_changes, "editor_blocks": editor_changes,
+                                               "inline_image_blocks": image_changes, "button_blocks": button_changes,
+                                               "accordion_blocks": accordion_changes}
+        elif button_changes:
             result["source_normalization"] = {"version": 4, "kind": "mastervision_editor_normalization", "codes": codes,
                                                "blocks": changed, "table_blocks": table_changes, "editor_blocks": editor_changes,
                                                "inline_image_blocks": image_changes, "button_blocks": button_changes}
