@@ -139,38 +139,65 @@ def _index(path, records):
     return value
 
 
-def _windows_reader_blocks_replace(path):
-    """Distinguish a WinError 5 sharing collision from genuine access denial."""
-    if os.name != 'nt': return False
+def _windows_replace_state(path):
+    """Prove a sharing collision or current DELETE access; otherwise deny retry."""
+    if os.name != 'nt': return 'denied'
     import ctypes
     from ctypes import wintypes
     try:
         api = ctypes.WinDLL('kernel32', use_last_error=True)
         api.GetFileAttributesW.argtypes = [wintypes.LPCWSTR]; api.GetFileAttributesW.restype = wintypes.DWORD
         attributes = api.GetFileAttributesW(str(path))
-        if attributes == 0xffffffff or attributes & 1: return False  # missing/inaccessible/read-only
+        unsafe = 1 | 0x10 | 0x400  # read-only, directory, reparse point
+        if type(attributes) is not int or attributes == 0xffffffff or attributes & unsafe: return 'denied'
         api.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
                                    wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
         api.CreateFileW.restype = wintypes.HANDLE
-        # DELETE access, all sharing modes, existing file, open reparse point itself.
-        handle = api.CreateFileW(str(path), 0x10000, 7, None, 3, 0x200000, None)
-        if handle == ctypes.c_void_p(-1).value: return ctypes.get_last_error() in (32, 33)
+        # DELETE + READ_ATTRIBUTES, all sharing modes, existing file; do not
+        # follow a reparse point if the path changes after the attribute check.
+        handle = api.CreateFileW(str(path), 0x10000 | 0x80, 7, None, 3, 0x200000, None)
+        if handle == ctypes.c_void_p(-1).value:
+            return 'sharing_busy' if ctypes.get_last_error() in (32, 33) else 'denied'
+        if type(handle) is not int or handle <= 0: return 'denied'
         api.CloseHandle.argtypes = [wintypes.HANDLE]; api.CloseHandle.restype = wintypes.BOOL
-        api.CloseHandle(handle)
-    except (OSError, AttributeError): return False
-    return False
+        state = 'denied'
+        try:
+            class Information(ctypes.Structure):
+                _fields_ = [('dwFileAttributes', wintypes.DWORD), ('ftCreationTime', wintypes.FILETIME),
+                            ('ftLastAccessTime', wintypes.FILETIME), ('ftLastWriteTime', wintypes.FILETIME),
+                            ('dwVolumeSerialNumber', wintypes.DWORD), ('nFileSizeHigh', wintypes.DWORD),
+                            ('nFileSizeLow', wintypes.DWORD), ('nNumberOfLinks', wintypes.DWORD),
+                            ('nFileIndexHigh', wintypes.DWORD), ('nFileIndexLow', wintypes.DWORD)]
+            api.GetFileInformationByHandle.argtypes = [wintypes.HANDLE, ctypes.POINTER(Information)]
+            api.GetFileInformationByHandle.restype = wintypes.BOOL
+            information = Information()
+            if api.GetFileInformationByHandle(handle, ctypes.byref(information)) and not information.dwFileAttributes & unsafe:
+                # A reader may close between os.replace's error and this probe.
+                # Successful DELETE access is positive evidence, not a guess.
+                state = 'delete_allowed'
+        finally:
+            if not api.CloseHandle(handle): state = 'denied'
+        return state
+    except (OSError, AttributeError, TypeError): return 'denied'
+
+
+def _windows_reader_blocks_replace(path):
+    """Compatibility predicate: True only while a sharing collision is present."""
+    return _windows_replace_state(path) == 'sharing_busy'
 
 
 def _replace_index(temp, path):
     deadline, delay = time.monotonic() + 0.8, 0.02
     for attempt in range(8):
         if path.is_symlink(): raise Stop('audio_stage_index_invalid')
+        if attempt and time.monotonic() >= deadline: raise Stop('audio_stage_index_file_busy')
         try:
             os.replace(temp, path)
             return
         except OSError as exc:
             code = getattr(exc, 'winerror', None)
-            if code not in (32, 33) and not (code == 5 and _windows_reader_blocks_replace(path)): raise
+            if exc.errno == errno.ENOSPC: raise
+            if code not in (32, 33) and not (code == 5 and _windows_replace_state(path) in ('sharing_busy', 'delete_allowed')): raise
             remaining = deadline - time.monotonic()
             if attempt == 7 or remaining <= 0: raise Stop('audio_stage_index_file_busy') from None
             time.sleep(min(delay, remaining)); delay = min(delay * 2, 0.16)

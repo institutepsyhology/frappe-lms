@@ -20,6 +20,17 @@ SYNTHETIC_PENDING = {'DEFERRED':{557:frozenset({5952}),598:frozenset({7544})}, '
 
 
 class Tests(unittest.TestCase):
+    def test_excluded_courses_are_catalog_counts_without_inflating_frappe_totals(self):
+        with closing(sqlite3.connect(self.path)) as db,db:
+            db.execute("UPDATE courses SET state='excluded',lesson_ids='[2,5]' WHERE id=2")
+            db.execute('INSERT INTO courses VALUES(?,?,?)',(23,'excluded','[30]'))
+            db.execute('INSERT INTO events VALUES(2,?,?,?,?,?)',('2026-11-13T07:01:00+00:00','import',23,None,'excluded'))
+        before=self.path.read_bytes();result=mod.snapshot(self.path,Mock(return_value=False))
+        self.assertEqual(result['catalog_courses'],4);self.assertEqual(result['courses']['excluded'],2)
+        self.assertEqual(result['courses']['imported'],2);self.assertEqual(result['imported_lessons'],2)
+        self.assertEqual(result['last_event']['status'],'excluded')
+        self.assertIn('d.courses.excluded',mod.HTML);self.assertEqual(before,self.path.read_bytes())
+
     def setUp(self):
         self.parent = Path(__file__).resolve().parents[3] / '.tmp-mastervision-progress-tests'
         self.parent.mkdir(exist_ok=True)

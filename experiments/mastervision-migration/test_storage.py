@@ -45,6 +45,46 @@ def uuid_lesson(root_id, block_id, body='original'):
 
 
 class StorageTests(unittest.TestCase):
+    @patch.multiple(lesson_policy,DEFERRED={},EXCLUDED={2:frozenset({2,5}),23:frozenset({30})})
+    def test_excluded_courses_require_verified_full_scope_and_preserve_raw_checkpoints(self):
+        store=self.store();checkpoints={}
+        for cid,ids in ((2,(2,5)),(23,(30,))):checkpoints[cid]=self.deferred_checkpoint(store,cid,ids)
+        captures=[tuple(row) for row in store.db.execute('SELECT * FROM captures ORDER BY kind,course,lesson,digest')]
+        for cid,(digest,pairs) in checkpoints.items():
+            before=store.completed_course(cid);store.mark(cid,'excluded');store.mark(cid,'excluded')
+            self.assertEqual(store.completed_course(cid),before)
+            store.bind_course(cid,digest,pairs)
+            self.assertEqual(store.db.execute('SELECT state FROM courses WHERE id=?',(cid,)).fetchone()[0],'excluded')
+            store.course(cid,[p['lesson_id'] for p in before],digest)
+        self.assertEqual(store.summary(),{'excluded':2})
+        self.assertEqual([tuple(row) for row in store.db.execute('SELECT * FROM captures ORDER BY kind,course,lesson,digest')],captures)
+        report=store.report().read_text(encoding='utf-8')
+        self.assertIn('Курсы, полностью исключённые',report)
+        self.assertIn('Курс 2; исходные уроки: 2, 5',report);self.assertIn('Курс 23; исходные уроки: 30',report)
+
+    def test_excluded_rejects_partial_policy_deferred_or_empty_real_course(self):
+        store=self.store();self.deferred_checkpoint(store,2,(2,5));self.deferred_checkpoint(store,23,())
+        cases=[({2:frozenset({2})},{}),({2:frozenset({2,5})},{2:frozenset({5})}),({},{}),
+               ({2:frozenset({True,5})},{})]
+        for approved,pending in cases:
+            with patch.multiple(lesson_policy,EXCLUDED=approved,DEFERRED=pending),self.assertRaises(storage.StorageError):
+                store.mark(2,'excluded')
+        with patch.multiple(lesson_policy,EXCLUDED={23:frozenset({30})},DEFERRED={}):
+            with self.assertRaisesRegex(storage.StorageError,'invalid_excluded_course'):store.mark(23,'excluded')
+        self.assertNotIn('excluded',store.summary())
+
+    @patch.multiple(lesson_policy,DEFERRED={},EXCLUDED={2:frozenset({2,5})})
+    def test_excluded_rejects_missing_corrupt_or_foreign_completed_source(self):
+        store=self.store();store.catalog([{'id':2,'title':'Course'}])
+        with self.assertRaisesRegex(storage.StorageError,'completed_course_checkpoint_missing'):store.mark(2,'excluded')
+        self.deferred_checkpoint(store,2,(2,5))
+        store.db.execute("UPDATE meta SET account='mv-centr'");store.db.commit()
+        with self.assertRaisesRegex(storage.StorageError,'archive_account_mismatch'):store.mark(2,'excluded')
+        store.db.execute('UPDATE meta SET account=?',(storage.ACCOUNT,))
+        store.db.execute("UPDATE captures SET payload=? WHERE kind='lesson' AND lesson=5",(b'corrupt',));store.db.commit()
+        with self.assertRaises(storage.StorageError):store.mark(2,'excluded')
+        self.assertNotIn('excluded',store.summary())
+
     def deferred_checkpoint(self, store, cid, ids):
         store.catalog([{'id':cid,'title':'Course'}])
         course=verified_course(ids);course['parsed']['course_id']=cid

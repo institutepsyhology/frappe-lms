@@ -10,6 +10,19 @@ def payload(cid, lid):
 
 
 class PolicyTests(unittest.TestCase):
+    def test_bulk_test_and_obsolete_lesson_exclusions_keep_other_source_items(self):
+        approved={1:{1,6},2:{2,5},17:{2558},23:{30},259:{1536},273:{1735},274:{1749},354:{2937},355:{2952}}
+        for cid,lids in approved.items():
+            source=[payload(cid,lid) for lid in (999001,*sorted(lids),999002)]
+            before=copy.deepcopy(source);selected,pending=partition_payloads(source)
+            self.assertEqual([p['lesson_id'] for p in selected],[999001,999002])
+            self.assertEqual(pending,[]);self.assertEqual(source,before)
+            self.assertEqual(excluded_ids(cid),lids)
+            for lid in lids:
+                self.assertEqual(partition_payloads([payload(999999,lid)]),([payload(999999,lid)],[]))
+        self.assertEqual(partition_payloads([payload(2,2),payload(2,5)]),([],[]))
+        self.assertEqual(partition_payloads([payload(23,30)]),([],[]))
+
     def test_permanent_omissions_are_not_temporary_pending_or_cross_course(self):
         for cid,lid in ((207,1976),(445,4089),(557,5952),(598,7544),(618,6870)):
             source=[payload(cid,1),payload(cid,lid),payload(cid,2)];before=copy.deepcopy(source)

@@ -143,5 +143,32 @@ class ButtonLabelTests(unittest.TestCase):
         with self.assertRaisesRegex(Review,'button_labels_validator_invalid'):
             normalize_button_labels(page(),None)
 
+    def test_only_known_null_display_fields_allow_formatted_material_link(self):
+        original=page(button('<span style="font-size: 16px;">Podcast recording</span>',
+                             displayDelay=None,visibleConditions=None))
+        before=copy.deepcopy(original);out,changes=self.normalize(original)
+        expected,_=self.normalize(page(button('<span style="font-size: 16px;">Podcast recording</span>')))
+        self.assertEqual(original,before);self.assertEqual(out,expected)
+        self.assertEqual(changes,[{'path':[0],'code':CODE}])
+        markup=out['children'][0]['fields']['html'];parsed=Contents();parsed.feed(markup)
+        self.assertEqual(parsed.links[0]['href'],URL);self.assertEqual(parsed.text,['Podcast recording'])
+
+    def test_nonnull_condition_and_delay_values_are_never_consumed(self):
+        for key in ('displayDelay','visibleConditions'):
+            for value in (0,False,'',[],{},1,{'purchase':'required'}):
+                source=page(button(**{key:value}));out,changes=self.normalize(source)
+                with self.subTest(key=key,value_type=type(value).__name__):
+                    self.assertEqual((out,changes),(source,[]))
+
+    def test_plain_and_br_only_buttons_with_null_fields_keep_accepted_fingerprints(self):
+        for label in ('Podcast','First<br>second'):
+            original={'account':'mastervision','source_origin':'https://shop.mastervision.su',
+                      'course_id':1,'lesson_id':4,'course_title':'Synthetic course','lesson_title':'Synthetic lesson',
+                      'format':'ape','ape':page(button(label,displayDelay=None,visibleConditions=None))}
+            before=json.dumps(original,sort_keys=True,separators=(',',':'))
+            ape,changes=self.normalize(original['ape']);after=copy.deepcopy(original);after['ape']=ape
+            self.assertEqual(changes,[]);self.assertEqual(json.dumps(after,sort_keys=True,separators=(',',':')),before)
+            self.assertEqual(_core().plan_import(after),_core().plan_import(original))
+
 
 if __name__=='__main__': unittest.main()

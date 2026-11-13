@@ -27,6 +27,21 @@ def payload(html=None):
 
 
 class NormalizeTests(unittest.TestCase):
+    def test_annotated_material_v15_keeps_two_links_original_and_audio_replay(self):
+        from test_normalize_annotated_material_buttons import button, page, FIRST, SECOND
+        from test_normalize_audio import audio, key, receipt
+        source=payload();source.update(course_id=326,lesson_id=5253)
+        source['ape']=page(button(),audio());before=copy.deepcopy(source)
+        normalized,codes=normalize_payload(source,{key():receipt()})
+        self.assertEqual(source,before)
+        self.assertEqual(normalized['source_original_ape'],source['ape'])
+        self.assertEqual(normalized['source_normalization']['version'],15)
+        self.assertEqual(normalized['source_normalization']['annotated_material_blocks'][0]['links'],2)
+        self.assertTrue(plan_import(normalized)['ready'])
+        self.assertIn(FIRST,normalized['ape']['children'][0]['fields']['html'])
+        self.assertIn(SECOND,normalized['ape']['children'][0]['fields']['html'])
+        self.assertEqual(normalize_payload(normalized),(normalized,codes))
+
     def test_empty_discussion_shells_v10_keep_instructions_and_links(self):
         from test_normalize_empty_discussion_widgets import SOURCE,CLEANED
         source=payload(SOURCE);before=copy.deepcopy(source)
@@ -484,6 +499,55 @@ class NormalizeTests(unittest.TestCase):
         self.assertEqual(normalized['source_original_ape'], original['ape'])
         self.assertTrue(plan_import(normalized)['ready'])
         self.assertEqual(normalize_payload(normalized), (normalized, codes))
+
+
+class VersionFourteenTests(unittest.TestCase):
+    def test_image_only_resize_wrapper_preserves_image_and_complete_witness(self):
+        source=payload('<p>First</p><span style="display:inline-block;height:280px;width:280px"><img src="https://f1.autoweboffice.com/synthetic/image.png"></span><p>Last</p>')
+        before=copy.deepcopy(source);normalized,codes=normalize_payload(source)
+        self.assertEqual(source,before);self.assertEqual(normalized['source_original_ape'],source['ape'])
+        self.assertEqual(normalized['source_normalization']['version'],14)
+        self.assertIn('image_wrapper_layout_normalized',codes)
+        images={n['id']:'/private/files/synthetic.png' for n in normalized['ape']['children'] if n['name']=='image'}
+        self.assertEqual(len(images),1);self.assertTrue(plan_import(normalized,images)['ready'])
+        self.assertEqual(normalize_payload(normalized),(normalized,codes))
+
+
+class VersionThirteenTests(unittest.TestCase):
+    def test_approved_anchor_and_caption_omitted_before_other_repairs_and_original_kept(self):
+        import normalize_owner_material_links as links
+        from test_normalize_owner_material_links import page,policy
+        source=payload('<p>Keep</p>');source['course_id'],source['lesson_id']=326,2636
+        source['ape']=page();before=copy.deepcopy(source)
+        with patch.object(links,'APPROVED',{(326,2636):policy()}):
+            normalized,codes=normalize_payload(source)
+            self.assertEqual(source,before)
+            self.assertEqual(normalized['source_original_ape'],source['ape'])
+            self.assertEqual(normalized['source_normalization']['version'],13)
+            self.assertIn('owner_material_link_omitted',codes)
+            self.assertTrue(plan_import(normalized)['ready'])
+            self.assertEqual(normalize_payload(normalized),(normalized,codes))
+
+
+class VersionTwelveTests(unittest.TestCase):
+    def test_owner_media_omission_preserves_complete_original_and_regenerates(self):
+        import normalize_owner_media_omissions as media
+        uri='https://f1.autoweboffice.com/synthetic/loop.gif'
+        source=payload('<p>Keep {name} and every word</p>')
+        source['course_id'],source['lesson_id']=618,6825
+        text=source['ape']['children'][0]
+        source['ape']['children']=[{'name':'section','children':[{'name':'column','children':[
+            {'name':'image','id':'animation','fields':{'anchor':'','imageSrc':uri,'linkHref':''}},text]}]}]
+        original=copy.deepcopy(source)
+        policy={(618,6825):{'path':(0,0,0),'kind':'animated_gif','src_sha256':hashlib.sha256(uri.encode()).hexdigest()}}
+        with patch.object(media,'APPROVED',policy):
+            normalized,codes=normalize_payload(source)
+            self.assertEqual(source,original)
+            self.assertEqual(normalized['source_normalization']['version'],12)
+            self.assertEqual(normalized['source_original_ape'],source['ape'])
+            self.assertEqual(codes,['owner_media_omitted'])
+            self.assertTrue(plan_import(normalized)['ready'])
+            self.assertEqual(normalize_payload(normalized),(normalized,codes))
 
 
 class VersionElevenTests(unittest.TestCase):

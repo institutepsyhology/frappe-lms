@@ -26,6 +26,9 @@ class FakeDB:
             return FakeCursor([(cid,) for cid in self.store.review_ids | self.store.partial_ids])
         if sql == 'SELECT id,title FROM courses ORDER BY id':
             return FakeCursor(self.store.catalog_rows)
+        if sql == "SELECT id FROM courses WHERE state='excluded'":
+            states={cid:'excluded' for cid in self.store.excluded_ids};states.update(dict(self.store.marks))
+            return FakeCursor([(cid,) for cid,state in states.items() if state=='excluded'])
         if sql != 'SELECT stage FROM errors WHERE consecutive>=?':
             raise AssertionError('unexpected controller SQL')
         return FakeCursor([(stage,) for stage, count in self.store.errors.items() if count >= parameters[0]])
@@ -39,6 +42,7 @@ class FakeStore:
         self.catalog_rows, self.bound, self.checkpoints = [], [], {}
         self.review_ids = set()
         self.partial_ids = set()
+        self.excluded_ids = set()
         self.reports = 0
         self.closed = False
 
@@ -164,8 +168,29 @@ class ControllerTests(unittest.TestCase):
                 patch.object(course_metadata,'ensure_empty_course') as empty:
             result=self.invoke(207,args=['--stored','--apply','--course','207'])
         self.assertEqual(result[4].calls,[]);empty.assert_not_called()
-        self.assertEqual(result[1].marks,[(207,'collected')])
+        self.assertEqual(result[1].marks,[(207,'excluded')])
         self.assertIn({'course':207,'status':'excluded','lessons':0,'excluded':[1976]},result[5])
+
+    def test_review_only_never_collects_an_excluded_course_again(self):
+        result=self.invoke(3,review_ids=[3],excluded_ids=[2],args=['--review-only','--collect-only'])
+        self.assertEqual(result[6],[3]);self.assertEqual(result[7],0)
+
+    def test_excluded_courses_never_request_target_cover_or_settings_writes(self):
+        store=FakeStore();store.marks=[(2,'excluded')]
+        with patch.object(mod,'target_course_ids',side_effect=AssertionError('excluded course has no target actions')):
+            mod.transfer_covers(store,[{'id':2}],FakeClient(),FakeAssets(),True)
+            mod.transfer_settings(store,[{'id':2}],FakeClient(),True)
+
+    def test_real_empty_course_keeps_existing_empty_course_import_flow(self):
+        import course_metadata
+        with patch.object(mod,'stored_course',return_value=[]), \
+                patch.object(FakeStore,'completed_snapshot',return_value={'verified':True},create=True), \
+                patch.object(course_metadata,'ensure_empty_course',return_value={'status':'created'}) as empty:
+            result=self.invoke(1,args=['--stored','--apply','--course','1'])
+        self.assertEqual(result[0],0);empty.assert_called_once()
+        self.assertTrue(empty.call_args.kwargs['apply'])
+        self.assertEqual(result[1].marks,[(1,'imported')]);self.assertEqual(result[4].calls,[])
+        self.assertIn({'course':1,'status':'empty_created','lessons':0},result[5])
 
     def deferred_source(self):
         ids=list(range(1,128));ids[94]=7544
@@ -282,10 +307,11 @@ class ControllerTests(unittest.TestCase):
         result = self.invoke(2, importing=lambda cid: error, args=['--apply'])
         self.assertNotIn('PRIVATE', repr(result[5]) + repr(result[1].events))
 
-    def invoke(self, count, *, collect=None, importing=None, args=(), errors=None, review_ids=(), partial_ids=()):
+    def invoke(self, count, *, collect=None, importing=None, args=(), errors=None, review_ids=(), partial_ids=(), excluded_ids=()):
         store, transport, client = FakeStore(errors), FakeTransport(), FakeClient()
         store.review_ids = set(review_ids)
         store.partial_ids = set(partial_ids)
+        store.excluded_ids = set(excluded_ids)
         target = FakeImporter(importing or (lambda cid: None))
         output, collected = [], []
 

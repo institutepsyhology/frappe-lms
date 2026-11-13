@@ -164,7 +164,12 @@ def prepare_payloads(payloads, audio_assets=None):
         except ImportReview as exc:
             if str(exc) in ('normalization_account_mismatch', 'normalization_metadata_conflict', 'normalization_source_invalid',
                             'static_presentation_material_mismatch', 'keyboard_markup_material_mismatch',
-                            'redundant_link_material_mismatch', 'legacy_html_decoration_material_mismatch'):
+                            'redundant_link_material_mismatch', 'legacy_html_decoration_material_mismatch',
+                            'owner_media_account_mismatch', 'inline_image_content_mismatch',
+                            'owner_material_account_mismatch', 'owner_material_signature_mismatch',
+                            'image_wrapper_material_mismatch', 'image_wrapper_source_invalid',
+                            'annotated_material_button_material_mismatch',
+                            'reviewed_static_material_mismatch', 'reviewed_static_source_invalid'):
                 raise Stop(str(exc)) from None
             # The unchanged source still goes through the stricter server parser.
             # Unknown embeds are never silently dropped or locally authorized.
@@ -203,6 +208,9 @@ def target_course_ids(client):
 def transfer_covers(store, rows, client, assets, apply):
     from covers import sync_cover
     from importer import Review as ImportReview
+    omitted = {row[0] for row in store.db.execute("SELECT id FROM courses WHERE state='excluded'").fetchall()}
+    rows = [row for row in rows if row['id'] not in omitted]
+    if not rows: return
     target_ids = target_course_ids(client)
     for row in rows:
         cid = row['id']
@@ -226,6 +234,9 @@ def transfer_covers(store, rows, client, assets, apply):
 
 def transfer_settings(store, rows, client, apply):
     from settings import ensure_private_course
+    omitted = {row[0] for row in store.db.execute("SELECT id FROM courses WHERE state='excluded'").fetchall()}
+    rows = [row for row in rows if row['id'] not in omitted]
+    if not rows: return
     target_ids = target_course_ids(client)
     for row in rows:
         cid = row['id']
@@ -366,7 +377,10 @@ def main():
                         excluded = [p['lesson_id'] for p in source_payloads if p['lesson_id'] in excluded_ids(cid)]
                         for lid in excluded: store.event('import', cid, lid, 'warning', [EXCLUDED_CODE])
                         if not payloads:
-                            store.mark(cid, 'review' if deferred else 'collected')
+                            store.mark(cid, 'review' if deferred else 'excluded')
+                            if not deferred:
+                                store.error('import', False)
+                                store.event('import', cid, None, 'excluded', [EXCLUDED_CODE])
                             for lid in deferred: store.event('import', cid, lid, 'review', [DEFERRED_CODE])
                             event = {'course': cid, 'status': 'deferred' if deferred else 'excluded', 'lessons': 0}
                             if deferred: event['deferred'] = deferred

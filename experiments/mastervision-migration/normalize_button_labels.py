@@ -10,6 +10,7 @@ from normalize_editor_nodes import _core
 
 CODE = 'button_label_html_preserved'
 FIELDS = {'anchor','html','icon','linkType','url','blank','toAnchor','event'}
+NULL_PRESENTATION_FIELDS = {'displayDelay','visibleConditions'}
 INLINE = {'span','b','strong','i','em','u','s','sub','sup','mark','br'}
 
 
@@ -28,7 +29,8 @@ class _Label(HTMLParser):
 
 def _linked_label(node, validate):
     fields=node.get('fields',{}); label=fields.get('html'); url=fields.get('url')
-    if (node.get('children') or set(fields)-FIELDS or fields.get('linkType')!='url'
+    if (node.get('children') or set(fields)-FIELDS-NULL_PRESENTATION_FIELDS or fields.get('linkType')!='url'
+            or any(fields.get(key) is not None for key in NULL_PRESENTATION_FIELDS)
             or any(fields.get(key) not in (None,'',False) for key in ('anchor','icon','toAnchor','event'))
             or not isinstance(label,str) or not label.strip() or ('<' not in label and '>' not in label)
             or not isinstance(url,str) or not _core()._url(url.strip())): return None

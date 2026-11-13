@@ -21,7 +21,12 @@ from lesson_policy import CODE as DEFERRED_CODE, EXCLUDED_CODE, deferred_ids, ex
 DEFAULT = Path(__file__).resolve().parents[3] / 'exports/lesson-content/mastervision-migration'
 FATAL = {'normalization_account_mismatch', 'normalization_metadata_conflict', 'normalization_source_invalid',
          'static_presentation_material_mismatch', 'keyboard_markup_material_mismatch',
-         'redundant_link_material_mismatch', 'legacy_html_decoration_material_mismatch'}
+         'redundant_link_material_mismatch', 'legacy_html_decoration_material_mismatch',
+         'owner_media_account_mismatch', 'inline_image_content_mismatch',
+         'owner_material_account_mismatch', 'owner_material_signature_mismatch',
+         'image_wrapper_material_mismatch', 'image_wrapper_source_invalid',
+         'annotated_material_button_material_mismatch',
+         'reviewed_static_material_mismatch', 'reviewed_static_source_invalid'}
 # Historical evidence, not a claim of a fresh HTTP check. Never silently retry.
 KNOWN_404 = {(280, 1802): 'fc93e347a1ef59ba7b9b32601c74cb670ee69f34403eea8f854f11768224aab8',
              (286, 1857): 'fc93e347a1ef59ba7b9b32601c74cb670ee69f34403eea8f854f11768224aab8'}
@@ -44,7 +49,7 @@ def _inventory(directory):
         db.row_factory = sqlite3.Row
         if [tuple(r) for r in db.execute('SELECT account,origin,site FROM meta').fetchall()] != [(ACCOUNT, ORIGIN, SITE)]:
             raise AuditError('audit_account_mismatch')
-        rows = db.execute("SELECT c.id,c.state,c.lesson_ids,c.source_digest,p.course_digest,p.lesson_digests FROM courses c LEFT JOIN course_checkpoints p ON p.course=c.id WHERE c.state!='imported' ORDER BY c.id").fetchall()
+        rows = db.execute("SELECT c.id,c.state,c.lesson_ids,c.source_digest,p.course_digest,p.lesson_digests FROM courses c LEFT JOIN course_checkpoints p ON p.course=c.id WHERE c.state NOT IN ('imported','excluded') ORDER BY c.id").fetchall()
         if any(r['state'] not in {'pending','review','partial','collected','empty'} for r in rows):
             raise AuditError('audit_state_invalid')
         courses = [{'id':r['id'],'state':r['state'],'lesson_ids':r['lesson_ids'],'source_digest':r['source_digest']} for r in rows]

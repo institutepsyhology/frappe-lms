@@ -16,7 +16,7 @@ SITE = 'my-lk.mastervision.su'
 MAX_CAPTURE_BYTES = 128 * 1024 * 1024
 TABLES = {'meta', 'captures', 'courses', 'events', 'errors', 'course_checkpoints'}
 STAGES = {'collect', 'import', 'catalog', 'cover', 'settings', 'audio'}
-STATES = {'pending', 'review', 'partial', 'imported', 'collected', 'empty'}
+STATES = {'pending', 'review', 'partial', 'imported', 'collected', 'empty', 'excluded'}
 
 
 class StorageError(RuntimeError):
@@ -46,6 +46,16 @@ def _codes(codes):
 
 def _digest(value):
     return isinstance(value, str) and re.fullmatch('[0-9a-f]{64}', value)
+
+
+def _fully_excluded(course_id, ids):
+    from lesson_policy import excluded_ids, deferred_ids
+    approved, pending = excluded_ids(course_id), deferred_ids(course_id)
+    if (not isinstance(approved, (set, frozenset)) or not isinstance(pending, (set, frozenset))
+            or any(not _id(lid) for lid in approved | pending)):
+        raise StorageError('excluded_policy_invalid')
+    return (isinstance(ids, list) and bool(ids) and all(_id(lid) for lid in ids)
+            and len(ids) == len(set(ids)) and not pending and set(ids) <= approved)
 
 
 def _unpack(row):
@@ -261,8 +271,10 @@ class Store:
             course = self.db.execute('SELECT state,source_digest FROM courses WHERE id=?', (course_id,)).fetchone()
             if course is None: raise StorageError('course_not_in_catalog')
             previous = self.db.execute('SELECT course_digest,lesson_digests FROM course_checkpoints WHERE course=?', (course_id,)).fetchone()
-            unchanged = (course['state'] in ('imported', 'partial') and course['source_digest'] == course_digest and previous is not None
+            unchanged = (course['state'] in ('imported', 'partial', 'excluded') and course['source_digest'] == course_digest and previous is not None
                          and previous['course_digest'] == course_digest and previous['lesson_digests'] == pairs_json)
+            if unchanged and course['state'] == 'excluded':
+                unchanged = _fully_excluded(course_id, record['lesson_ids'])
             self.db.execute('UPDATE courses SET lesson_ids=?,source_digest=?,state=? WHERE id=?',
                 (json.dumps(record['lesson_ids']), course_digest, course['state'] if unchanged else 'collected', course_id))
             self.db.execute('INSERT INTO course_checkpoints VALUES(?,?,?) ON CONFLICT(course) DO UPDATE SET '
@@ -319,14 +331,25 @@ class Store:
             raise StorageError('invalid_course_capture')
         if not self.db.execute("SELECT 1 FROM captures WHERE kind='course' AND course=? AND lesson=0 AND digest=?", (course_id, digest)).fetchone():
             raise StorageError('unknown_course_capture')
+        current = self.db.execute('SELECT state FROM courses WHERE id=?', (course_id,)).fetchone()
+        keep_excluded = False
+        if current is not None and current['state'] == 'excluded':
+            verified_ids = [payload['lesson_id'] for payload in self.completed_course(course_id)]
+            keep_excluded = lesson_ids == verified_ids and _fully_excluded(course_id, lesson_ids)
         with self.db:
-            changed = self.db.execute("UPDATE courses SET lesson_ids=?,source_digest=?,state=CASE WHEN source_digest=? AND state IN ('imported','partial') THEN state ELSE 'collected' END WHERE id=?",
-                        (json.dumps(lesson_ids), digest, digest, course_id))
+            changed = self.db.execute("UPDATE courses SET lesson_ids=?,source_digest=?,state=CASE WHEN source_digest=? AND (state IN ('imported','partial') OR (state='excluded' AND ?)) THEN state ELSE 'collected' END WHERE id=?",
+                        (json.dumps(lesson_ids), digest, digest, keep_excluded, course_id))
             if changed.rowcount != 1: raise StorageError('course_not_in_catalog')
 
     def mark(self, course_id, state):
         if not _id(course_id) or not isinstance(state, str) or state not in STATES - {'pending'}:
             raise StorageError('invalid_course_state')
+        if state == 'excluded':
+            identity = [tuple(row) for row in self.db.execute('SELECT account,origin,site FROM meta').fetchall()]
+            if identity != [(ACCOUNT, ORIGIN, SITE)]: raise StorageError('archive_account_mismatch')
+            payloads = self.completed_course(course_id)
+            if not _fully_excluded(course_id, [payload['lesson_id'] for payload in payloads]):
+                raise StorageError('invalid_excluded_course')
         if state == 'partial':
             from lesson_policy import deferred_ids
             row = self.db.execute('SELECT lesson_ids FROM courses WHERE id=?', (course_id,)).fetchone()
@@ -407,7 +430,7 @@ class Store:
           WHERE e.status='review' AND e.id=(SELECT MAX(x.id) FROM events x WHERE
           x.course=e.course AND x.stage=e.stage AND x.lesson IS e.lesson)
           AND EXISTS(SELECT 1 FROM courses c WHERE c.id=e.course AND
-            (c.state IN ('review','partial') OR (e.stage='cover' AND e.lesson IS NULL)))
+            c.state!='excluded' AND (c.state IN ('review','partial') OR (e.stage='cover' AND e.lesson IS NULL)))
           ORDER BY e.course,e.lesson''').fetchall()
         for row in rows:
             lesson = row['lesson']
@@ -432,6 +455,13 @@ class Store:
         if excluded:
             lines += ['', '## Исключены из переноса по решению владельца', '']
             lines += [f'- Курс {cid}, урок {lid}: {EXCLUDED_CODE}. Исходник АВО сохранён.' for cid, lid in excluded]
+        excluded_courses = self.db.execute("SELECT id,lesson_ids FROM courses WHERE state='excluded' ORDER BY id").fetchall()
+        if excluded_courses:
+            lines += ['', '## Курсы, полностью исключённые из переноса', '']
+            for row in excluded_courses:
+                ids = json.loads(row['lesson_ids'])
+                if not _fully_excluded(row['id'], ids): raise StorageError('invalid_excluded_course')
+                lines.append(f"- Курс {row['id']}; исходные уроки: {', '.join(map(str, ids))}. Полный проверенный исходный снимок сохранён.")
         reminders = self.deferred_reminders()
         if reminders:
             lines += ['', '## Вернуться после основного переноса', '']

@@ -12,8 +12,8 @@ import status as archive_status
 from lesson_policy import deferred_ids, excluded_ids
 
 MSK = timezone(timedelta(hours=3))
-STATES = {'pending', 'review', 'imported', 'collected', 'empty', 'partial'}
-EVENTS = {'complete', 'captured', 'equivalent_source_reused', 'review', 'created', 'already_present', 'audio_staged', 'audio_registered',
+STATES = {'pending', 'review', 'imported', 'collected', 'empty', 'partial', 'excluded'}
+EVENTS = {'complete', 'captured', 'equivalent_source_reused', 'review', 'excluded', 'created', 'already_present', 'audio_staged', 'audio_registered',
           'ready', 'empty_created', 'empty_already_present', 'lesson_created', 'lesson_write_started',
           'warning', 'stopped', 'cover_created', 'cover_already_imported', 'private_updated', 'private_already_private'}
 
@@ -161,16 +161,17 @@ body{font:17px system-ui,sans-serif;background:#f4f6fa;color:#172332;margin:0;pa
 </style><h1>Перенос Master Vision</h1><div class="hint">Обновляется каждые 5 секунд. Эта страница показывает состояние и не запускает перенос.</div>
 <div id="worker">Проверяю состояние процесса…</div><div class="grid">
 <div class="card"><div class="number" id="imported">—</div>Подтверждено курсов во Frappe</div><div class="card"><div class="number" id="lessons">—</div>Перенесено уроков</div><div class="card"><div class="number" id="review">—</div>Курсов на разборе</div><div class="card"><div class="number" id="total">—</div>Курсов в исходной базе</div></div>
-<div class="details"><p id="source"></p><p id="partial"></p><p id="audio"></p><p id="event"></p><p id="job"></p><p id="updated" class="hint"></p></div>
+<div class="details"><p id="source"></p><p id="partial"></p><p id="excluded"></p><p id="audio"></p><p id="event"></p><p id="job"></p><p id="updated" class="hint"></p></div>
 <script>
 const put=(id,v)=>document.getElementById(id).textContent=v;
 const states={none:'Сборщик сейчас не запущен',stopped:'Сборщик сейчас не работает: прежний процесс не подтверждён',completed:'Сборщик сейчас не запущен. Предыдущий запуск завершён',failed:'Сборщик сейчас не запущен. Предыдущий запуск остановился с ошибкой',starting:'Запуск готовится; работа процесса пока не подтверждена',running:'Сборщик работает — процесс подтверждён'};
 const stages={collect:'сбор исходников',import:'перенос',catalog:'список курсов',cover:'обложки',settings:'настройки доступа',audio:'перенос аудиофайлов'};
-const actions={complete:'завершено',captured:'урок сохранён',equivalent_source_reused:'снимок проверен',review:'требуется разбор',created:'курс перенесён',already_present:'курс уже перенесён',ready:'готово к переносу',empty_created:'курс без уроков перенесён',empty_already_present:'курс без уроков уже есть',lesson_created:'урок перенесён',lesson_write_started:'переносится урок',warning:'замечание сохранено',stopped:'остановлено',cover_created:'обложка перенесена',cover_already_imported:'обложка уже есть',private_updated:'доступ настроен',private_already_private:'доступ проверен',audio_staged:'аудиофайл сохранён на сервере'};
+const actions={complete:'завершено',captured:'урок сохранён',equivalent_source_reused:'снимок проверен',review:'требуется разбор',excluded:'курс исключён из переноса',created:'курс перенесён',already_present:'курс уже перенесён',ready:'готово к переносу',empty_created:'курс без уроков перенесён',empty_already_present:'курс без уроков уже есть',lesson_created:'урок перенесён',lesson_write_started:'переносится урок',warning:'замечание сохранено',stopped:'остановлено',cover_created:'обложка перенесена',cover_already_imported:'обложка уже есть',private_updated:'доступ настроен',private_already_private:'доступ проверен',audio_staged:'аудиофайл сохранён на сервере'};
 async function refresh(){try{const response=await fetch('/status.json',{cache:'no-store'});if(!response.ok)throw Error();const d=await response.json();if(d.status!=='ok')throw Error();
 put('worker',states[d.worker.state]||'Состояние процесса не подтверждено');document.getElementById('worker').style.borderLeftColor=d.worker.running?'#2f8757':'#8b97a8';
 put('imported',(d.courses.imported||0)+(d.courses.partial||0));put('lessons',d.imported_lessons);put('review',d.courses.review||0);put('total',d.catalog_courses);
 put('partial',d.courses.partial?`Полностью перенесено: ${d.courses.imported||0} курсов. Курсов с временно отложенными уроками: ${d.courses.partial}; в них сохранено ${d.partial_lessons} уроков.`:'');
+put('excluded',d.courses.excluded?`Полностью исключено по решению владельца: ${d.courses.excluded} курсов. Исходные снимки сохранены.`:'');
 put('audio',d.audio?`Аудиофайлы сохранены на сервере: ${d.audio.staged} из ${d.audio.total}; ${Math.round(d.audio.bytes_staged/1048576)} из ${Math.round(d.audio.bytes_total/1048576)} МБ. Подключены к базе: ${d.audio.registered||0} из ${d.audio.total}.`:'');
 put('source',`Сохранено исходников: ${d.source_courses} курсов, ${d.source_lessons} уроков.`);const e=d.last_event;put('event',e?`Последнее действие: ${e.at_msk}; ${stages[e.stage]||'проверка'}; ${actions[e.status]||'проверка'}${e.course?' · курс '+e.course:''}${e.lesson?' · урок '+e.lesson:''}`:'Действий пока нет.');
 put('job',d.worker.created_at_msk?`Последний запуск создан: ${d.worker.created_at_msk}${d.worker.finished_at_msk?'; завершён: '+d.worker.finished_at_msk:''}`:'Запусков пока нет.');put('updated','Проверено: '+d.updated_at_msk);

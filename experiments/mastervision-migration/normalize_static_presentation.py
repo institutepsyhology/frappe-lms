@@ -16,7 +16,8 @@ FORBIDDEN = {'script', 'style', 'form', 'input', 'select', 'textarea', 'object',
 ELIGIBLE = {'text', 'code', 'header', 'button'}
 PROTECTED = {'visibleConditions', 'displayDelay'}
 BASE_FIELDS = {'html', 'anchor'} | PROTECTED
-CANDIDATE = re.compile(r'<\s*(?:button|pre|hr)\b|\s(?:align|data-pm-slice)\s*=|tab-stops\s*:', re.I)
+CANDIDATE = re.compile(r'<\s*(?:button|pre|hr)\b|\s(?:align|data-pm-slice|bis_skin_checked)\s*='
+                       r'|tab-stops\s*:|list-style-type\s*:\s*(?:circle|square)\b', re.I)
 VISUAL_TEXT_STYLE = {
     '#__backgroundColor__after', '#__maskImage__after', '#__maskPosition__after',
     '#__maskRepeat__after', '#__maskSize__after', 'backgroundAttachment', 'backgroundColor',
@@ -81,6 +82,11 @@ class _Material(HTMLParser):
         if tag in STRUCTURE:
             semantic = tuple((k, v) for k, v in attrs if k in {'colspan', 'rowspan', 'span', 'start', 'type', 'value', 'reversed'})
             self.events.append(('structure_start', tag, semantic))
+            if tag in {'ul', 'ol', 'li'}:
+                markers = [piece.split(':', 1)[1].strip().lower()
+                           for piece in values.get('style', '').split(';')
+                           if ':' in piece and piece.split(':', 1)[0].strip().lower() in {'list-style', 'list-style-type'}]
+                if markers: self.events.append(('list_marker', tag, markers[-1]))
     def handle_endtag(self, tag):
         if tag == 'a': self.events.append(('a_end',))
         if tag in STRUCTURE and tag not in VOID: self.events.append(('structure_end', tag))
@@ -99,7 +105,8 @@ class _Cleaner(HTMLParser):
         super().__init__(convert_charrefs=False)
         self.output, self.stack, self.count = [], [], 0
         self.changes = {'alignment': 0, 'hr_attributes': 0, 'clipboard': 0,
-                        'tab_stops': 0, 'buttons': 0, 'pre': 0}
+                        'tab_stops': 0, 'buttons': 0, 'pre': 0,
+                        'list_markers': 0, 'browser_metadata': 0}
 
     def _style(self, value):
         if not isinstance(value, str): _review()
@@ -108,6 +115,13 @@ class _Cleaner(HTMLParser):
             if not piece.strip(): continue
             if ':' not in piece: _review()
             name, content = (part.strip() for part in piece.split(':', 1))
+            if name.lower() == 'list-style-type' and content.lower() in {'circle', 'square'}:
+                # Both marker shapes are supported by the existing safe CSS
+                # shorthand. Keep the effective marker, never substitute a
+                # numbered list or change start/type/value attributes.
+                pieces.append('list-style:' + content.lower())
+                self.changes['list_markers'] += 1; removed = True
+                continue
             if name.lower() != 'tab-stops':
                 pieces.append(piece); continue
             measure = r'(?:[0-9]{1,4}(?:\.[0-9]{1,4})?|\.[0-9]{1,4})(?:pt|px|in|cm|mm|pc)'
@@ -141,6 +155,9 @@ class _Cleaner(HTMLParser):
             match = re.fullmatch(r'([0-9]{1,3})\s+([0-9]{1,3})\s+\[\s*\]', values['data-pm-slice'] or '')
             if not match or any(int(value) > 128 for value in match.groups()): _review()
             values.pop('data-pm-slice'); self.changes['clipboard'] += 1
+        if 'bis_skin_checked' in values:
+            if tag != 'div' or values['bis_skin_checked'] != '1': _review()
+            values.pop('bis_skin_checked'); self.changes['browser_metadata'] += 1
         if tag in {'div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'} and 'align' in values:
             alignment = values.pop('align')
             if not isinstance(alignment, str): _review()

@@ -67,6 +67,24 @@ class InlineImageTests(unittest.TestCase):
         self.assert_conserved(markup,out['children']);self.assertEqual(changes[0]['sized_images'],1)
         self.assertEqual(out['children'][0]['fields'],{'anchor':'','imageSrc':'https://example.test/image.png'})
 
+    def test_observed_float_margin_layout_keeps_image_text_links_and_order(self):
+        for css in ('float: left; width: 250px; height: 250px; margin: 5px 15px;',
+                    'margin: 5px 20px; float: left; width: 250px; height: 375px;'):
+            markup='<p>Before<img src="https://example.test/image.png" style="'+css+'">After <a href="https://example.test/file">File</a></p>'
+            source=page(markup);before=copy.deepcopy(source);out,changes=self.normalize(source)
+            self.assertEqual(source,before);self.assert_conserved(markup,out['children'])
+            self.assertEqual([n['name'] for n in out['children']],['text','image','text'])
+            self.assertEqual(changes[0]['layout_images'],1)
+            self.assertEqual(self.normalize(out),(out,[]))
+
+    def test_layout_repair_does_not_admit_hidden_content_or_unknown_css(self):
+        base='float:left;width:250px;height:250px;margin:5px 15px;'
+        for css in (base+'display:none',base+'background:url(https://example.test/x.png)',
+                    base+'content:educational',base+'position:absolute',base.replace('5px 15px','-5px 15px'),
+                    base.replace('float:left','float:right'),base.replace('5px 15px','calc(5px) 15px')):
+            with self.assertRaisesRegex(Review,'dimensions_require_review'):
+                self.normalize(page('<img src="https://example.test/image.png" style="'+css+'">'))
+
     def test_whitespace_entities_empty_links_and_other_static_content_preserved(self):
         markup='<p>\n<a href="https://example.test/empty"></a> &nbsp;'+TAG+' \n</p><hr>'
         out,_=self.normalize(page(markup));self.assert_conserved(markup,out['children'])

@@ -157,6 +157,62 @@ class PresentationTests(unittest.TestCase):
             with self.assertRaisesRegex(Review,'static_presentation_source_invalid'):self.normalize(ape)
         with self.assertRaises(Review):module.normalize_static_presentation(page('Text'),None)
 
+    def test_circle_square_markers_keep_nested_list_text_order_and_numbering(self):
+        markup=('<ol start="7" style="list-style-type:circle"><li>First '
+                '<ul style="list-style-type:square"><li><a href="https://example.test/notes">Nested</a></li></ul>'
+                '</li><li>Second</li></ol>')
+        original=copy.deepcopy(page(markup));out,changes=self.normalize(original)
+        cleaned=out['children'][0]['fields']['html']
+        self.assertIn('list-style:circle',cleaned);self.assertIn('list-style:square',cleaned)
+        self.assertIn('start="7"',cleaned)
+        self.assertEqual(module._material(markup),module._material(cleaned));VALIDATE(cleaned)
+        self.assertEqual(changes[0]['presentation'],{'list_markers':2})
+        self.assertEqual(original,page(markup))
+
+    def test_unsupported_numbering_type_is_not_discarded_to_pass_validation(self):
+        source='<ol start="7" type="A" style="list-style-type:circle"><li>Keep numbering</li></ol>'
+        original=page(source);before=copy.deepcopy(original)
+        with self.assertRaises(Review):self.normalize(original)
+        self.assertEqual(original,before)
+        finish=module._Cleaner.finish
+        def drop_type(parser):return finish(parser).replace(' type="A"','')
+        with patch.object(module._Cleaner,'finish',drop_type):
+            with self.assertRaisesRegex(Review,'static_presentation_material_mismatch'):
+                self.normalize(original)
+
+    def test_marker_corruption_is_rejected_even_when_text_and_links_are_unchanged(self):
+        finish=module._Cleaner.finish
+        def wrong(parser):return finish(parser).replace('list-style:circle','list-style:square')
+        with patch.object(module._Cleaner,'finish',wrong):
+            with self.assertRaisesRegex(Review,'static_presentation_material_mismatch'):
+                self.normalize(page('<ul style="list-style-type:circle"><li>Keep</li></ul>'))
+
+    def test_exact_browser_annotation_is_removed_without_other_attribute_expansion(self):
+        source='<div bis_skin_checked="1"><strong data-pm-slice="0 0 []">Keep</strong></div>'
+        out,changes=self.normalize(page(source));cleaned=out['children'][0]['fields']['html']
+        self.assertEqual(cleaned,'<div><strong>Keep</strong></div>')
+        self.assertEqual(module._material(source),module._material(cleaned));VALIDATE(cleaned)
+        self.assertEqual(changes[0]['presentation'],{'clipboard':1,'browser_metadata':1})
+        for wrong in ('<div bis_skin_checked="0">Keep</div>','<span bis_skin_checked="1">Keep</span>',
+                      '<div bis_skin_checked="1" data-unknown="value">Keep</div>'):
+            with self.subTest(source=wrong),self.assertRaises(Review):self.normalize(page(wrong))
+
+    def test_unknown_list_counters_hidden_css_and_marker_content_stay_for_review(self):
+        unknown=page('<ul style="list-style-type:upper-roman"><li>Keep</li></ul>')
+        self.assertEqual(self.normalize(unknown),(unknown,[]))
+        sources=['<ul style="list-style-type:circle;counter-reset:lesson"><li>Keep</li></ul>',
+                 '<ul style="list-style-type:circle;display:none"><li>Keep</li></ul>',
+                 '<ul style="list-style-type:circle;list-style-image:url(https://example.test/marker.png)"><li>Keep</li></ul>',
+                 '<ul style="list-style-type:circle;content:secret"><li>Keep</li></ul>']
+        for source in sources:
+            with self.subTest(source=source),self.assertRaises(Review):self.normalize(page(source))
+
+    def test_accepted_marker_payload_keeps_exact_bytes_and_second_pass_is_stable(self):
+        source='<ul style="list-style:circle"><li>Keep</li></ul>'
+        ape=page(source);out,changes=self.normalize(ape);self.assertEqual((out,changes),(ape,[]))
+        out,_=self.normalize(page('<ul style="list-style-type:square"><li>Keep</li></ul>'))
+        again,changes=self.normalize(out);self.assertEqual((again,changes),(out,[]))
+
 
 if __name__=='__main__':
     unittest.main()

@@ -1,5 +1,6 @@
 """Synthetic manifest/SSH/index checks; no actual transport or source archive."""
 import copy
+import ctypes
 import errno
 import hashlib
 import json
@@ -12,7 +13,7 @@ import threading
 import time
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import uuid
 
 import audio_stage_client as client
@@ -72,6 +73,92 @@ class ClientTests(unittest.TestCase):
         (self.folder/'audio-inventory.json').write_text(json.dumps(self.manifest),encoding='utf-8')
 
     def run_stage(self): return client.stage_audio(self.store,self.events.append)
+
+    def windows_probe(self, *, attributes=0x80, handle=123, error=0, info_attributes=0x80,
+                      info_result=True, close_result=True):
+        def information(opened, pointer):
+            pointer._obj.dwFileAttributes=info_attributes
+            return info_result
+        api=SimpleNamespace(GetFileAttributesW=Mock(return_value=attributes),
+                            CreateFileW=Mock(return_value=handle),
+                            GetFileInformationByHandle=Mock(side_effect=information),
+                            CloseHandle=Mock(return_value=close_result))
+        path=self.folder/'probe.json'
+        with patch.object(client.os,'name','nt'), \
+                patch.object(ctypes,'WinDLL',return_value=api,create=True), \
+                patch.object(ctypes,'get_last_error',return_value=error,create=True):
+            result=client._windows_replace_state(path)
+        return result,api
+
+    def test_windows_probe_requires_positive_delete_access_and_regular_writable_handle(self):
+        state,api=self.windows_probe()
+        self.assertEqual(state,'delete_allowed')
+        self.assertTrue(api.CreateFileW.call_args.args[1]&0x10000)
+        self.assertEqual(api.CreateFileW.call_args.args[2],7)
+        self.assertTrue(api.CreateFileW.call_args.args[5]&0x200000)
+        api.GetFileInformationByHandle.assert_called_once();api.CloseHandle.assert_called_once_with(123)
+        for attr in (1,0x10,0x400,0xffffffff):
+            state,api=self.windows_probe(attributes=attr)
+            self.assertEqual(state,'denied');api.CreateFileW.assert_not_called();api.CloseHandle.assert_not_called()
+        for attr in (1,0x10,0x400):
+            state,api=self.windows_probe(info_attributes=attr)
+            self.assertEqual(state,'denied');api.CloseHandle.assert_called_once_with(123)
+        for options in ({'info_result':False},{'close_result':False}):
+            state,api=self.windows_probe(**options)
+            self.assertEqual(state,'denied');api.CloseHandle.assert_called_once_with(123)
+
+    def test_windows_probe_distinguishes_sharing_error_from_real_delete_denial(self):
+        invalid=ctypes.c_void_p(-1).value
+        for code in (32,33,5,2,112):
+            state,api=self.windows_probe(handle=invalid,error=code)
+            self.assertEqual(state,'sharing_busy' if code in (32,33) else 'denied')
+            api.GetFileInformationByHandle.assert_not_called();api.CloseHandle.assert_not_called()
+
+    def test_win5_after_reader_has_closed_retries_only_the_local_replace(self):
+        self.run_stage();self.remote.reset_mock()
+        real_replace=client.os.replace;attempts=[]
+        error=PermissionError(errno.EACCES,'PRIVATE');error.winerror=5
+        def rename(source,target):
+            attempts.append(1)
+            if len(attempts)==1:raise error
+            return real_replace(source,target)
+        with patch.object(client.os,'replace',side_effect=rename), \
+                patch.object(client,'_windows_replace_state',return_value='delete_allowed') as probe, \
+                patch.object(client.time,'sleep') as sleep:
+            self.run_stage()
+        self.assertEqual(len(attempts),2);self.remote.assert_called_once_with(URL,100)
+        probe.assert_called_once_with(self.folder/'audio-stage-index.json');sleep.assert_called_once_with(0.02)
+        self.assertEqual(list(self.folder.glob('*.tmp')),[])
+
+    def test_unproven_win5_never_retries_local_or_remote_write(self):
+        self.run_stage();self.remote.reset_mock()
+        error=PermissionError(errno.EACCES,'PRIVATE');error.winerror=5
+        with patch.object(client.os,'replace',side_effect=error) as rename, \
+                patch.object(client,'_windows_replace_state',return_value='denied'), \
+                patch.object(client.time,'sleep') as sleep:
+            with self.assertRaisesRegex(Stop,'^audio_stage_index_access_denied$'):self.run_stage()
+        rename.assert_called_once();sleep.assert_not_called();self.remote.assert_called_once_with(URL,100)
+
+    @unittest.skipUnless(os.name=='nt','Windows close-before-probe regression')
+    def test_real_windows_reader_closing_between_rename_error_and_probe_is_retryable(self):
+        path=self.folder/'index.json';path.write_text('{"old":true}');reader=path.open('rb')
+        real_replace=os.replace;errors=[]
+        def rename(source,target):
+            try:return real_replace(source,target)
+            except OSError as exc:
+                errors.append(getattr(exc,'winerror',None));reader.close()
+                # Exercise WinError5 even on Windows variants reporting32/33.
+                error=PermissionError(errno.EACCES,'synthetic sharing collision');error.winerror=5
+                raise error from None
+        try:
+            self.assertTrue(client._windows_reader_blocks_replace(path))
+            with patch.object(client.os,'replace',side_effect=rename) as replace:
+                client._save_index(path,{'new':True})
+            self.assertEqual(replace.call_count,2)
+            self.assertEqual(client._windows_replace_state(path),'delete_allowed')
+        finally:reader.close()
+        self.assertIn(errors[0],(5,32,33));self.assertEqual(json.loads(path.read_text()),{'new':True})
+        self.assertEqual(list(self.folder.glob('*.tmp')),[])
 
     def test_only_completed_source_reads_remote_staging_and_metadata_index(self):
         before = copy.deepcopy(self.store.payload); result = self.run_stage()

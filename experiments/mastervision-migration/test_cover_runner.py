@@ -21,10 +21,30 @@ def target(cid):
             'custom_avo_id': str(cid), 'custom_lms_id': str(cid), 'published': 0}
 
 
+class Cursor:
+    def __init__(self, rows): self.rows = rows
+    def fetchall(self): return self.rows
+    def __iter__(self): return iter(self.rows)
+
+
+class ArchiveDB:
+    def __init__(self, store): self.store = store
+    def execute(self, sql, parameters=()):
+        if sql == "SELECT id FROM courses WHERE state='excluded'":
+            return Cursor([(cid,) for cid in sorted(self.store.excluded)])
+        if sql == 'SELECT id,title FROM courses ORDER BY id':
+            return Cursor(self.store.catalog_rows)
+        if sql == 'SELECT stage FROM errors WHERE consecutive>=?':
+            return Cursor([])
+        raise AssertionError('unexpected cover archive query')
+
+
 class Store:
     def __init__(self):
         self.count = 0
         self.events = []
+        self.excluded, self.catalog_rows = set(), []
+        self.db = ArchiveDB(self)
         self.completed_metadata = Mock(side_effect=lambda cid: {'cover_url': f'https://f1.autoweboffice.com/private/{cid}.png'})
         self.report = Mock()
     def error(self, stage, failed):
@@ -41,7 +61,26 @@ class CoverRunnerTests(unittest.TestCase):
         client.call.return_value = {'documents': [target(cid) for cid in (target_ids or range(1, count + 1))], 'has_next_page': False}
         cache = SimpleNamespace(fetch=Mock(return_value=(b'PRIVATE SYNTHETIC IMAGE', 'png')), close=Mock())
         rows = [{'id': cid, 'title': 'PRIVATE COURSE TITLE'} for cid in range(1, count + 1)]
+        store.catalog_rows = rows
         return store, rows, client, cache
+
+    def test_all_excluded_courses_never_read_target_metadata_or_download(self):
+        store, rows, client, cache = self.fixture(2)
+        store.excluded = {1, 2}
+        with patch.object(covers, 'sync_cover') as sync, patch.object(mod, 'emit') as emit:
+            mod.transfer_covers(store, rows, client, cache, True)
+        client.call.assert_not_called(); store.completed_metadata.assert_not_called()
+        cache.fetch.assert_not_called(); sync.assert_not_called(); emit.assert_not_called()
+        self.assertEqual(store.events, [])
+
+    def test_excluded_course_is_skipped_even_when_its_target_document_exists(self):
+        store, rows, client, cache = self.fixture(4, target_ids=[1, 2, 4])
+        store.excluded = {2}
+        with patch.object(covers, 'sync_cover', return_value={'status':'created'}) as sync, patch.object(mod, 'emit'):
+            mod.transfer_covers(store, rows, client, cache, True)
+        self.assertEqual([call.args[0] for call in store.completed_metadata.call_args_list], [1, 4])
+        self.assertEqual([call.args[1] for call in sync.call_args_list], [1, 4])
+        self.assertEqual(cache.fetch.call_count, 2)
 
     def test_only_created_target_courses_use_completed_metadata_and_anonymous_assets(self):
         store, rows, client, cache = self.fixture(4, target_ids=[2, 4])
@@ -118,8 +157,6 @@ class CoverRunnerTests(unittest.TestCase):
 
     def test_covers_only_main_uses_stored_metadata_and_never_starts_source_browser_or_lesson_import(self):
         store, rows, client, cache = self.fixture(1)
-        store.db = Mock()
-        store.db.execute.side_effect = [SimpleNamespace(fetchall=lambda: []), rows]
         output = []
         with patch.object(mod, 'Store') as constructor, patch.object(mod, 'Transport') as transport, \
              patch.object(mod, 'catalog') as catalog, patch.object(importer, 'MCPClient', return_value=client), \

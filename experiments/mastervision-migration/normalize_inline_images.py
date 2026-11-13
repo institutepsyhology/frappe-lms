@@ -53,11 +53,21 @@ def _style(value):
         if not piece.strip(): continue
         if ':' not in piece: return False
         key, dimension = (part.strip().lower() for part in piece.split(':',1))
-        if key not in ('width','height') or key in seen: return False
+        if key not in ('width','height','float','margin') or key in seen: return False
         seen.add(key)
+        if key == 'float':
+            if dimension != 'left': return False
+            continue
+        if key == 'margin':
+            parts = dimension.split()
+            if not 1 <= len(parts) <= 4: return False
+            if any(not re.fullmatch(r'(?:0|[0-9]+(?:\.[0-9]{1,3})?px)', part)
+                   or float(part.removesuffix('px')) > 4096 for part in parts): return False
+            continue
         if dimension == 'auto': continue
         match = re.fullmatch(r'([0-9]+(?:\.[0-9]{1,3})?)(px|%)', dimension)
         if not match or not 0 < float(match[1]) <= (4096 if match[2] == 'px' else 100): return False
+    if seen & {'float','margin'} and seen != {'float','margin','width','height'}: return False
     return True
 
 
@@ -218,6 +228,9 @@ def normalize_inline_images(ape, validate_static):
             raise Review('inline_image_content_mismatch')
         metadata = {'path':list(path),'code':CODE,'images':len(document.images),
                     'sized_images':sum(any(key in image.attrs for key in ('width','height','style')) for image in document.images)}
+        layout_images = sum(bool(re.search(r'(?:^|;)\s*(?:float|margin)\s*:', image.attrs.get('style',''), re.I))
+                            for image in document.images)
+        if layout_images: metadata['layout_images'] = layout_images
         editor_images = sum(EDITOR_ATTRS.issubset(image.attrs) for image in document.images)
         if editor_images: metadata['editor_metadata_images'] = editor_images
         changes.append(metadata)

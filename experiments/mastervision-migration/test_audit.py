@@ -28,6 +28,15 @@ def record(parsed):
 
 
 class AuditTests(unittest.TestCase):
+    @patch.multiple(lesson_policy,DEFERRED={},EXCLUDED={2:frozenset({2,5}),23:frozenset({30})})
+    def test_fully_excluded_courses_are_not_returned_as_unfinished_or_pure_ready(self):
+        self.course(2,(2,5),state='excluded');self.course(23,(30,),state='excluded');self.course(7,(11,))
+        before=self.path.read_bytes();report=mod.audit_remaining(self.folder)
+        self.assertEqual([course['course_id'] for course in report['courses']],[7])
+        self.assertEqual(report['summary']['remaining_courses'],1)
+        self.assertEqual(report['summary']['state_counts'],{'review':1})
+        self.assertEqual(before,self.path.read_bytes())
+
     def test_permanent_exclusions_are_known_metadata_and_do_not_block_course(self):
         self.course(207,(11,1976,12));self.course(445,(21,4089,22))
         before=self.path.read_bytes()
