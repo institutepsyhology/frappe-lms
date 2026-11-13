@@ -1,4 +1,4 @@
-"""Omit only the owner's 22 explicitly approved missing-image references."""
+"""Omit scoped references to the owner's two approved missing-image files."""
 import copy
 import hashlib
 
@@ -12,6 +12,8 @@ A='b818cf308e8653fb70263908a40f410f5680d9a3ace670884fe45f4bd2f38a25'
 B='656420023fc55b84b2fe8c69ca647b3f3305e9e414cba50dfcab6a5fa5946c14'
 APPROVED={(377,lid):(B if lid==3189 else A) for lid in range(3185,3196)}
 APPROVED.update({(486,lid):(B if lid==4662 else A) for lid in range(4658,4669)})
+APPROVED.update({(331,lid):(B if lid==2779 else A)
+                 for lid in (2775,2776,2777,2778,2779,2780,2782,2783,2784,2785,2786)})
 
 
 def _children(node,index):

@@ -148,12 +148,23 @@ class ControllerTests(unittest.TestCase):
         register.assert_called_once()
         self.assertIs(register.call_args.kwargs['apply'],True)
 
-    def test_audio_import_requires_explicit_bound_audio_course(self):
+    def test_audio_import_requires_stored_apply_and_explicit_course(self):
         for arguments in (['--stored','--apply','--audio-import-only'],
-                          ['--stored','--apply','--audio-import-only','--course','1'],
+                          ['--apply','--audio-import-only','--course','331'],
                           ['--stored','--audio-import-only','--course','336']):
             with self.subTest(arguments=arguments), self.assertRaises(mod.Stop):
                 self.invoke(1,args=arguments)
+
+    def test_registered_audio_is_reusable_in_another_explicit_mv_course(self):
+        import audio_batch
+        from test_normalize_audio import audio,key,receipt
+        def stored(store,cid):
+            source=payload(cid);source['ape']['children']=[audio()];return [source]
+        with patch.object(audio_batch,'register_staged_audio',return_value={key():receipt()}), \
+                patch.object(mod,'stored_course',side_effect=stored):
+            result=self.invoke(331,args=['--stored','--apply','--audio-import-only','--course','331'])
+        self.assertEqual(result[0],0)
+        self.assertEqual(result[4].calls,[(331,True)])
 
     def test_unknown_write_cause_is_fixed_metadata_in_status_and_journal(self):
         error = importer.Stop('write_result_uncertain')

@@ -261,9 +261,8 @@ def main():
             or selected.course or selected.limit or selected.from_course != 1):
         raise Stop('conflicting_mode')
     if selected.audio_import_only:
-        from audio_stage_client import COURSES
         if (not selected.stored or not selected.apply or not selected.course
-                or not set(selected.course) <= set(COURSES) or selected.audio_stage_only
+                or selected.audio_stage_only
                 or selected.collect_only or selected.catalog_only or selected.covers_only or selected.settings_only):
             raise Stop('conflicting_mode')
     with Store(DATA) as store:

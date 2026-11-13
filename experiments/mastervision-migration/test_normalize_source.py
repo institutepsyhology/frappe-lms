@@ -27,6 +27,36 @@ def payload(html=None):
 
 
 class NormalizeTests(unittest.TestCase):
+    def test_image_editor_label_v9_keeps_the_image_and_replays_with_audio(self):
+        from test_normalize_audio import audio,key,receipt
+        source=payload('<p>Body</p>')
+        image={'name':'image','id':'label-image','fields':{'anchor':'','html':'Изображение',
+               'imageSrc':'https://f1.autoweboffice.ru/synthetic/picture.jpg'}}
+        source['ape']['children'].extend([image,audio()]);before=copy.deepcopy(source)
+        normalized,codes=normalize_payload(source,{key():receipt()})
+        self.assertEqual(source,before)
+        self.assertEqual(normalized['source_original_ape'],before['ape'])
+        self.assertEqual(normalized['source_normalization']['version'],9)
+        self.assertIn('image_label_preserved',codes)
+        expected=copy.deepcopy(image);del expected['fields']['html']
+        self.assertEqual(normalized['ape']['children'][1],expected)
+        self.assertTrue(plan_import(normalized,{'label-image':'/private/files/prepared.jpg'})['ready'])
+        self.assertEqual(normalize_payload(normalized),(normalized,codes))
+        changed=copy.deepcopy(normalized)
+        changed['source_normalization']['image_label_blocks'][0]['path']=[0]
+        with self.assertRaisesRegex(Review,'normalization_metadata_conflict'):
+            normalize_payload(changed)
+
+    def test_image_editor_label_v9_replays_without_audio_and_does_not_consume_other_captions(self):
+        source=payload('<p>Body</p>')
+        source['ape']['children'].append({'name':'image','id':'label-image','fields':{
+            'html':'Изображение','imageSrc':'https://f1.autoweboffice.ru/synthetic/picture.jpg'}})
+        normalized,codes=normalize_payload(source)
+        self.assertEqual(normalized['source_normalization']['version'],9)
+        self.assertEqual(normalize_payload(normalized),(normalized,codes))
+        source['ape']['children'][-1]['fields']['html']='A meaningful caption'
+        self.assertEqual(normalize_payload(source),(source,[]))
+
     def approved_image_payload(self):
         source = payload('<p>Keep material</p>')
         source.update(course_id=377,lesson_id=3185)
