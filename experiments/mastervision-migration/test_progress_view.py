@@ -14,6 +14,9 @@ from unittest.mock import Mock, patch
 import uuid
 
 import progress_view as mod
+import lesson_policy
+
+SYNTHETIC_PENDING = {'DEFERRED':{557:frozenset({5952}),598:frozenset({7544})}, 'EXCLUDED':{}}
 
 
 class Tests(unittest.TestCase):
@@ -88,6 +91,7 @@ class Tests(unittest.TestCase):
         (directory/'audio-stage-index.json').write_text(json.dumps(index),encoding='utf-8')
         with self.assertRaises(ValueError): mod.audio_progress(directory)
 
+    @patch.multiple(lesson_policy, **SYNTHETIC_PENDING)
     def test_partial_course_counts_only_transferred_lessons_and_is_not_complete(self):
         with closing(sqlite3.connect(self.path)) as db, db:
             db.execute('INSERT INTO courses VALUES(?,?,?)',(598,'partial','[7543,7544,7545]'))
@@ -104,6 +108,16 @@ class Tests(unittest.TestCase):
         result=mod.snapshot(self.path,Mock(return_value=False))
         self.assertEqual(result['courses']['imported'],3)
         self.assertEqual(result['imported_lessons'],4)
+
+    def test_final_owner_exclusions_count_complete_courses_but_only_existing_target_lessons(self):
+        with closing(sqlite3.connect(self.path)) as db, db:
+            db.executemany('INSERT INTO courses VALUES(?,?,?)',[
+                (557,'imported','[5941,5952,5942]'),(598,'imported','[7543,7544,7545]')])
+        result=mod.snapshot(self.path,Mock(return_value=False))
+        self.assertEqual(result['courses']['imported'],4)
+        self.assertEqual(result['imported_lessons'],6)
+        self.assertEqual(result['complete_course_lessons'],6)
+        self.assertEqual(result['partial_lessons'],0)
 
     def test_invalid_ports_do_not_open_sockets(self):
         for value in (-1,65536,True,'61929'):

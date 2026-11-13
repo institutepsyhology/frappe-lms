@@ -15,8 +15,11 @@ import uuid
 
 import audit as mod
 import storage
+import lesson_policy
 from importer import Review
 from test_normalize_audio import audio, key, receipt
+
+SYNTHETIC_PENDING = {'DEFERRED':{557:frozenset({5952}),598:frozenset({7544})}, 'EXCLUDED':{}}
 
 
 def record(parsed):
@@ -40,6 +43,7 @@ class AuditTests(unittest.TestCase):
             self.assertEqual(course['planned_lesson_ids'],planned);self.assertEqual(course['deferred_lesson_ids'],[])
         self.assertEqual(before,self.path.read_bytes())
 
+    @patch.multiple(lesson_policy, **SYNTHETIC_PENDING)
     def test_partial_keeps_deferred_source_and_audits_only_selected_lessons(self):
         self.course(598,(1,7544,2),state='partial')
         before=self.path.read_bytes()
@@ -53,6 +57,20 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(course['issues'],[{'lesson_id':7544,'codes':['owner_deferred_lesson']}])
         self.assertEqual(report['summary']['partial_courses'],1)
         self.assertEqual(report['summary']['deferred_lessons'],1)
+        self.assertEqual(before,self.path.read_bytes())
+
+    def test_final_owner_exclusions_are_ready_without_pending_or_false_lesson_counts(self):
+        self.course(557,(5941,5952,5942));self.course(598,(7543,7544,7545))
+        before=self.path.read_bytes()
+        report=mod.audit_remaining(self.folder)
+        self.assertEqual(report['summary']['known_excluded_lessons'],2)
+        self.assertEqual(report['summary']['planned_lessons'],4)
+        self.assertEqual(report['summary']['deferred_lessons'],0)
+        for course,lid in zip(report['courses'],(5952,7544)):
+            self.assertTrue(course['pure_ready']);self.assertEqual(course['ready_lessons'],2)
+            self.assertEqual(course['deferred_lesson_ids'],[])
+            self.assertEqual(course['known_excluded'],[{'lesson_id':lid,'code':'owner_excluded_obsolete_lesson'}])
+            self.assertNotIn(lid,course['planned_lesson_ids'])
         self.assertEqual(before,self.path.read_bytes())
 
     def setUp(self):

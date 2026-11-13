@@ -8,6 +8,9 @@ import assets
 import settings
 import run as mod
 import source
+import lesson_policy
+
+SYNTHETIC_PENDING = {'DEFERRED':{557:frozenset({5952}),598:frozenset({7544})}, 'EXCLUDED':{}}
 
 
 class FakeCursor:
@@ -121,6 +124,7 @@ def course_snapshot(ids=(10,), title='Synthetic course'):
 
 
 class ControllerTests(unittest.TestCase):
+    @patch.multiple(lesson_policy, **SYNTHETIC_PENDING)
     def test_finished_result_keeps_pending_owner_decisions_with_original_positions(self):
         reminders=[{'course_id':557,'lesson_id':5952,'source_position':23,'code':'owner_deferred_lesson'},
                    {'course_id':598,'lesson_id':7544,'source_position':95,'code':'owner_deferred_lesson'}]
@@ -129,7 +133,8 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(result[0],0)
         self.assertEqual(result[5][-1],{'status':'finished','courses':{'review':0},'deferred_lessons':reminders})
 
-    def test_new_owner_deferral_imports_23_without_5952_and_marks_partial(self):
+    @patch.multiple(lesson_policy, **SYNTHETIC_PENDING)
+    def test_synthetic_deferral_imports_23_without_pending_lesson_and_marks_partial(self):
         ids=list(range(1,25));ids[22]=5952
         source=[{**payload(557),'lesson_id':lid} for lid in ids];before=copy.deepcopy(source)
         with patch.object(mod,'stored_course',return_value=source):
@@ -140,7 +145,7 @@ class ControllerTests(unittest.TestCase):
         self.assertIn(('import',557,5952,'review',['owner_deferred_lesson']),result[1].events)
 
     def test_permanent_owner_omissions_allow_complete_import_without_source_changes(self):
-        for cid,lid in ((207,1976),(445,4089)):
+        for cid,lid in ((207,1976),(445,4089),(557,5952),(598,7544)):
             source=[{**payload(cid),'lesson_id':x} for x in (11,lid,12)];before=copy.deepcopy(source)
             source[1]['ape']={'name':'unsupported-owner-excluded-block'}
             before=copy.deepcopy(source)
@@ -166,7 +171,8 @@ class ControllerTests(unittest.TestCase):
         ids=list(range(1,128));ids[94]=7544
         return [{**payload(598),'lesson_id':lid} for lid in ids]
 
-    def test_owner_deferral_imports_126_in_source_order_and_reports_partial(self):
+    @patch.multiple(lesson_policy, **SYNTHETIC_PENDING)
+    def test_synthetic_deferral_imports_126_in_source_order_and_reports_partial(self):
         source=self.deferred_source();before=copy.deepcopy(source)
         with patch.object(mod,'stored_course',return_value=source):
             result=self.invoke(598,args=['--stored','--apply','--course','598'])
@@ -179,6 +185,7 @@ class ControllerTests(unittest.TestCase):
         event=next(e for e in result[5] if e.get('status')=='partial')
         self.assertEqual(event['lessons'],126);self.assertEqual(event['deferred'],[7544])
 
+    @patch.multiple(lesson_policy, **SYNTHETIC_PENDING)
     def test_already_present_partial_rerun_stays_partial_and_dry_run_is_not_complete(self):
         with patch.object(mod,'stored_course',return_value=self.deferred_source()):
             result=self.invoke(598,args=['--stored','--course','598'])
@@ -189,6 +196,7 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(result[1].marks,[(598,'partial')])
         self.assertEqual(next(e for e in result[5] if e.get('status')=='partial')['deferred'],[7544])
 
+    @patch.multiple(lesson_policy, **SYNTHETIC_PENDING)
     def test_all_deferred_never_creates_fake_empty_course_or_lesson(self):
         import course_metadata
         with patch.object(mod,'stored_course',return_value=[{**payload(598),'lesson_id':7544}]), \
@@ -198,6 +206,7 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(result[1].marks,[(598,'review')])
         self.assertIn({'course':598,'status':'deferred','lessons':0,'deferred':[7544]},result[5])
 
+    @patch.multiple(lesson_policy, **SYNTHETIC_PENDING)
     def test_review_selection_includes_partial_and_cover_settings_accept_partial(self):
         result=self.invoke(6,review_ids=[2],partial_ids=[4],args=['--review-only','--collect-only'])
         self.assertEqual(result[6],[2,4])

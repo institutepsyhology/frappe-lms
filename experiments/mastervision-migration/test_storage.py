@@ -13,7 +13,10 @@ import uuid
 import zlib
 
 import storage
+import lesson_policy
 from importer import Stop as ImportStop
+
+SYNTHETIC_PENDING = {'DEFERRED':{557:frozenset({5952}),598:frozenset({7544})}, 'EXCLUDED':{}}
 
 
 def value(text='synthetic private lesson text'):
@@ -52,6 +55,7 @@ class StorageTests(unittest.TestCase):
         store.bind_course(cid,digest,pairs)
         return digest,pairs
 
+    @patch.multiple(lesson_policy, **SYNTHETIC_PENDING)
     def test_deferred_reminders_keep_positions_in_review_without_reading_or_changing_raw_sources(self):
         store=self.store()
         self.deferred_checkpoint(store,557,(5941,5952,5942))
@@ -74,6 +78,7 @@ class StorageTests(unittest.TestCase):
         self.assertEqual([tuple(r) for r in store.db.execute('SELECT kind,course,lesson,digest,payload FROM captures ORDER BY kind,course,lesson,digest')],before)
         self.assertEqual([tuple(r) for r in store.db.execute('SELECT * FROM course_checkpoints ORDER BY course')],checkpoints)
 
+    @patch.multiple(lesson_policy, **SYNTHETIC_PENDING)
     def test_deferred_reminders_do_not_guess_positions_from_unbound_or_missing_sources(self):
         store=self.store();store.catalog([{'id':557,'title':'Course'}])
         course=verified_course((5941,5952,5942));course['parsed']['course_id']=557
@@ -85,16 +90,19 @@ class StorageTests(unittest.TestCase):
         report=store.report().read_text(encoding='utf-8')
         self.assertIn('Курс 557, урок 5952',report);self.assertIn('позиция пока не подтверждена',report)
 
+    @patch.multiple(lesson_policy, **SYNTHETIC_PENDING)
     def test_deferred_reminders_use_bound_order_not_a_newer_unbound_capture(self):
         store=self.store();self.deferred_checkpoint(store,557,(5941,5952,5942))
         newer=verified_course((5952,5941,5942));newer['parsed']['course_id']=557
         store.capture('course',557,0,newer)
         self.assertEqual(store.deferred_reminders()[0]['source_position'],2)
 
+    @patch.multiple(lesson_policy, **SYNTHETIC_PENDING)
     def test_deferred_reminders_never_invent_position_for_missing_lesson_in_checkpoint(self):
         store=self.store();self.deferred_checkpoint(store,557,(5941,5942))
         self.assertIsNone(store.deferred_reminders()[0]['source_position'])
 
+    @patch.multiple(lesson_policy, **SYNTHETIC_PENDING)
     def test_deferred_reminders_reject_foreign_archive_and_invalid_policy_identity(self):
         import lesson_policy
         store=self.store();store.db.execute("UPDATE meta SET account='mv-centr'");store.db.commit()
@@ -104,6 +112,7 @@ class StorageTests(unittest.TestCase):
             with patch.object(lesson_policy,'DEFERRED',policy):
                 with self.assertRaisesRegex(storage.StorageError,'deferred_policy_invalid'):store.deferred_reminders()
 
+    @patch.multiple(lesson_policy, **SYNTHETIC_PENDING)
     def test_deferred_reminders_reject_corrupt_checkpoint_or_ledger_metadata(self):
         store=self.store();digest,pairs=self.deferred_checkpoint(store,557,(5941,5952,5942))
         cases=[('bad',json.dumps(pairs)),(digest,'not json'),
@@ -131,6 +140,20 @@ class StorageTests(unittest.TestCase):
         self.assertIn('207',report);self.assertIn('1976',report);self.assertIn('owner_excluded_obsolete_lesson',report)
         with self.assertRaisesRegex(storage.StorageError,'invalid_partial_course'):store.mark(cid,'partial')
 
+    def test_final_owner_exclusions_have_no_reminders_and_keep_full_source_checkpoints(self):
+        store=self.store()
+        self.deferred_checkpoint(store,557,(5941,5952,5942))
+        self.deferred_checkpoint(store,598,(7543,7544,7545))
+        before={cid:store.completed_course(cid) for cid in (557,598)}
+        for cid in (557,598):store.mark(cid,'imported')
+        self.assertEqual(store.deferred_reminders(),[])
+        report=store.report().read_text(encoding='utf-8')
+        self.assertNotIn('owner_deferred_lesson',report)
+        self.assertIn('Курс 557, урок 5952',report);self.assertIn('Курс 598, урок 7544',report)
+        self.assertIn('owner_excluded_obsolete_lesson',report)
+        self.assertEqual({cid:store.completed_course(cid) for cid in (557,598)},before)
+
+    @patch.multiple(lesson_policy, **SYNTHETIC_PENDING)
     def test_partial_is_scoped_preserves_checkpoint_and_reports_pending(self):
         store=self.store();cid=598;ids=(11,7544,12)
         store.catalog([{'id':cid,'title':'Course'}])
