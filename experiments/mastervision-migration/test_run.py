@@ -138,6 +138,23 @@ class ControllerTests(unittest.TestCase):
             with self.subTest(arguments=arguments), self.assertRaises(mod.Stop):
                 self.invoke(1,args=arguments)
 
+    def test_audio_import_registers_before_selected_course_and_passes_mapping(self):
+        import audio_batch
+        with patch.object(audio_batch,'register_staged_audio',return_value={}) as register, \
+                patch.object(mod,'stored_course',side_effect=lambda store,cid:[payload(cid)]):
+            result = self.invoke(336,args=['--stored','--apply','--audio-import-only','--course','336'])
+        self.assertEqual(result[0],0)
+        self.assertEqual(result[4].calls,[(336,True)])
+        register.assert_called_once()
+        self.assertIs(register.call_args.kwargs['apply'],True)
+
+    def test_audio_import_requires_explicit_bound_audio_course(self):
+        for arguments in (['--stored','--apply','--audio-import-only'],
+                          ['--stored','--apply','--audio-import-only','--course','1'],
+                          ['--stored','--audio-import-only','--course','336']):
+            with self.subTest(arguments=arguments), self.assertRaises(mod.Stop):
+                self.invoke(1,args=arguments)
+
     def test_unknown_write_cause_is_fixed_metadata_in_status_and_journal(self):
         error = importer.Stop('write_result_uncertain')
         error.reason = 'mcp_connection_failed'

@@ -4,10 +4,12 @@ import hashlib
 from html.parser import HTMLParser
 import json
 import unittest
+from unittest.mock import patch
 
 from importer import Review
 from lms.lms.avo_transform import plan_import
 from normalize_source import normalize_payload
+from normalize_audio import CODE as AUDIO_CODE
 
 
 YOUTUBE = "https://www.youtube.com/embed/abcdefghijk"
@@ -25,6 +27,108 @@ def payload(html=None):
 
 
 class NormalizeTests(unittest.TestCase):
+    def test_audio_v7_retains_original_controls_order_and_only_used_receipts(self):
+        from test_normalize_audio import audio, key, receipt
+        original = payload('<p>Before</p>')
+        original['ape']['children'].extend([audio(), {'name':'text','fields':{'html':'After'}}])
+        before = copy.deepcopy(original)
+        assets = {key():receipt(), 'c'*64:receipt()}
+        assets_before = copy.deepcopy(assets)
+        normalized, codes = normalize_payload(original, assets)
+        self.assertEqual(original, before)
+        self.assertEqual(assets, assets_before)
+        self.assertEqual(normalized['source_original_ape'], before['ape'])
+        self.assertEqual(normalized['ape']['children'][0], original['ape']['children'][0])
+        self.assertEqual(normalized['ape']['children'][2], original['ape']['children'][2])
+        self.assertEqual(normalized['ape']['children'][1]['id'], original['ape']['children'][1]['id'])
+        metadata = normalized['source_normalization']
+        self.assertEqual(metadata['version'], 7)
+        self.assertEqual(metadata['audio_assets'], {key():receipt()})
+        self.assertEqual(metadata['audio_blocks'], [{'path':[1], 'code':AUDIO_CODE, 'url_sha256':key()}])
+        self.assertIn(AUDIO_CODE, codes)
+        self.assertTrue(plan_import(normalized)['ready'])
+        self.assertNotIn('autoweboffice', json.dumps(normalized['ape']))
+
+    def test_audio_v7_reproduces_its_full_fingerprint_without_external_mapping(self):
+        from test_normalize_audio import audio, key, receipt
+        source = payload('<p>Body</p>'); source['ape']['children'].append(audio())
+        normalized, codes = normalize_payload(source, {key():receipt()})
+        before = copy.deepcopy(normalized)
+        for mapping in (None, {key():receipt()}, {key():receipt(), 'c'*64:receipt()}):
+            self.assertEqual(normalize_payload(normalized, mapping), (before, codes))
+        self.assertEqual(normalized, before)
+        encode = lambda value: json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(',',':')).encode()
+        self.assertEqual(hashlib.sha256(encode(normalize_payload(normalized)[0])).digest(),
+                         hashlib.sha256(encode(normalized)).digest())
+
+    def test_audio_v7_rejects_changed_missing_or_untrusted_used_receipts(self):
+        from test_normalize_audio import audio, key, receipt
+        source = payload('<p>Body</p>'); source['ape']['children'].append(audio())
+        normalized, _ = normalize_payload(source, {key():receipt()})
+        for external in ({}, [], {key():receipt(size=2)}, {key():receipt(file_url='https://other.example/file.mp3')}):
+            with self.subTest(external=external), self.assertRaisesRegex(Review, '^normalization_metadata_conflict$'):
+                normalize_payload(normalized, external)
+        mutations = [lambda m:m.pop('audio_assets'), lambda m:m.update(audio_assets={}),
+            lambda m:m['audio_assets'][key()].update(size=True),
+            lambda m:m['audio_assets'][key()].update(md5='bad'),
+            lambda m:m['audio_assets'][key()].update(file_url='/files/untrusted.mp3'),
+            lambda m:m['audio_assets'][key()].update(account='mv-centr'),
+            lambda m:m['audio_assets'].update({'c'*64:receipt()}),
+            lambda m:m['audio_blocks'][0].update(url_sha256='c'*64)]
+        for mutate in mutations:
+            changed = copy.deepcopy(normalized); mutate(changed['source_normalization'])
+            with self.assertRaisesRegex(Review, '^normalization_metadata_conflict$'):
+                normalize_payload(changed)
+
+    def test_fresh_audio_missing_assets_is_a_review_without_mutating_source(self):
+        from test_normalize_audio import audio
+        source = payload('<p>Body</p>'); source['ape']['children'].append(audio())
+        before = copy.deepcopy(source)
+        with self.assertRaisesRegex(Review, '^audio_asset_not_prepared$'): normalize_payload(source)
+        self.assertEqual(source, before)
+
+    def test_audio_v7_combines_stage_and_other_normalization_with_exact_original_witness(self):
+        from test_normalize_audio import audio, key, receipt
+        import normalize_stage_widgets as widgets
+        from test_normalize_stage_widgets import widget, sha, canonical, EXPECTED_DOM, SCRIPT, CSS
+        source = payload(); source['ape']['children'].extend([widget(), audio()])
+        with patch.multiple(widgets, DOM_SHA256=sha(canonical(EXPECTED_DOM)), SCRIPT_SHA256=sha(SCRIPT), STYLESHEET_SHA256=sha(CSS)):
+            normalized, codes = normalize_payload(source, {key():receipt()})
+            self.assertEqual(normalized['source_original_ape'], source['ape'])
+            self.assertEqual(normalized['source_normalization']['version'], 7)
+            self.assertEqual(len(normalized['source_normalization']['stage_blocks']), 1)
+            self.assertEqual(len(normalized['source_normalization']['audio_blocks']), 1)
+            self.assertIn('embedded_video_iframe_normalized', codes)
+            self.assertIn('static_course_stage_preserved', codes)
+            self.assertIn(AUDIO_CODE, codes)
+            self.assertEqual(normalize_payload(normalized), (normalized, codes))
+            self.assertTrue(plan_import(normalized)['ready'])
+
+    def test_no_audio_keeps_all_six_prior_metadata_fingerprints_even_with_extra_receipts(self):
+        from test_normalize_audio import key, receipt
+        import normalize_stage_widgets as widgets
+        from test_normalize_stage_widgets import widget, sha, canonical, EXPECTED_DOM, SCRIPT, CSS
+        fixtures = [payload()]
+        source = payload('<p>Body</p>'); source['ape']['children'].insert(0, {'name':'video','fields':{'videoProvider':'youtube','videoSrc':'','videoSrc2':''}}); fixtures.append(source)
+        fixtures.append(payload('<p>Before<img alt="" src="https://f1.autoweboffice.ru/synthetic.jpg">After</p>'))
+        source = payload('<p>Body</p>'); source['ape']['children'].append({'name':'button','fields':{'linkType':'url','url':'https://example.test/material','html':'<strong>Material</strong>'}}); fixtures.append(source)
+        source = payload('<p>Body</p>'); source['ape']['children'] = [{'name':'unfolding','fields':{'initialState':'all-folded','expandedSpeedRate':1,'onlyOneExpanded':True},'children':[{'name':'unfolding-item','fields':{'headerHtml':'Header'},'children':source['ape']['children']}]}]; fixtures.append(source)
+        source = payload('<p>Body</p>'); source['ape']['children'].insert(0, widget()); fixtures.append(source)
+        expected = ['652e8d763e5ddda04178bf1ddcb4424fbf926f576519b041d5cdaddeb332acbc',
+            '681ee12fea9add30f3f84736a1ae8c5e590e6a8cb818d75deed5354840c9a99a',
+            '536b26b16623e9d0b12ad6b657e0208b9005b04da9a7a32e51c5fbdb5340cd9e',
+            'a61060edfdbea191d0a0c8f82dc5d2142e9cbb001003c1e410a0ba589690a77c',
+            '012e2d2da5701afccec7153bde84f8828cd857f8cd36b8c5ee42ec37c7c1629c',
+            '2c465d8a906694e0f55b718f6a77aeb24dc91449496bae7103f9dfcc5889d9b6']
+        with patch.multiple(widgets, DOM_SHA256=sha(canonical(EXPECTED_DOM)), SCRIPT_SHA256=sha(SCRIPT), STYLESHEET_SHA256=sha(CSS)):
+            for version, (source, digest) in enumerate(zip(fixtures, expected), 1):
+                normalized, codes = normalize_payload(source, {key():receipt()})
+                self.assertEqual(normalized['source_normalization']['version'], version)
+                self.assertNotIn('audio_assets', normalized['source_normalization'])
+                encoded = json.dumps(normalized, ensure_ascii=True, sort_keys=True, separators=(',',':'), allow_nan=False).encode()
+                self.assertEqual(hashlib.sha256(encoded).hexdigest(), digest)
+                self.assertEqual(normalize_payload(normalized), (normalized, codes))
+
     def test_verified_accordion_integration_retains_header_body_and_original(self):
         original = payload('<p>Body</p>')
         body = original['ape']['children']

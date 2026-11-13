@@ -19,6 +19,7 @@ from normalize_inline_images import normalize_inline_images, CODE as IMAGE_CODE
 from normalize_button_labels import normalize_button_labels, CODE as BUTTON_CODE
 from normalize_accordions import normalize_accordions, CODE as ACCORDION_CODE
 from normalize_stage_widgets import normalize_stage_widgets, CODE as STAGE_CODE
+from normalize_audio import normalize_audio, CODE as AUDIO_CODE
 
 
 CODE = "embedded_video_iframe_normalized"
@@ -292,12 +293,15 @@ def clean_table(markup):
     return cleaned, parser.stats
 
 
-def normalize_payload(payload):
+def normalize_payload(payload, audio_assets=None):
     """Return (private payload copy, diagnostic codes), without changing input.
 
     Every converted node contains precisely one supported iframe and inert empty
     wrappers. Adjacent videos are never paired here. Existing typed pairs remain
     unchanged. Metadata is added only when at least one node was converted.
+    Audio receipts are injected by the caller; only used, validated entries are
+    retained. Existing v7 snapshots can reproduce their private links without
+    requiring an external mapping on every read.
     """
     if not isinstance(payload, dict) or (payload.get("account"), payload.get("source_origin")) != (ACCOUNT, ORIGIN):
         raise Review("normalization_account_mismatch")
@@ -309,10 +313,29 @@ def normalize_payload(payload):
     if reserved & set(result):
         if not reserved <= set(result):
             raise Review("normalization_metadata_conflict")
+        metadata = result['source_normalization']
+        stored_assets = (metadata.get('audio_assets') if isinstance(metadata, dict)
+                         and metadata.get('version') == 7 else None)
+        is_audio = isinstance(metadata, dict) and metadata.get('version') == 7
+        if is_audio:
+            if (not isinstance(stored_assets, dict) or not stored_assets
+                    or any(not isinstance(key, str) or not re.fullmatch('[0-9a-f]{64}', key)
+                           for key in stored_assets)):
+                raise Review('normalization_metadata_conflict')
+            if audio_assets is not None and (not isinstance(audio_assets, dict)
+                    or any(key not in audio_assets or audio_assets[key] != receipt
+                           for key, receipt in stored_assets.items())):
+                raise Review('normalization_metadata_conflict')
         original = copy.deepcopy(result)
         original["ape"] = original.pop("source_original_ape")
         original.pop("source_normalization")
-        regenerated, codes = normalize_payload(original)
+        if is_audio:
+            try:
+                regenerated, codes = normalize_payload(original, stored_assets if audio_assets is None else audio_assets)
+            except Review:
+                raise Review('normalization_metadata_conflict') from None
+        else:
+            regenerated, codes = normalize_payload(original, audio_assets)
         if not codes or regenerated != result:
             raise Review("normalization_metadata_conflict")
         return regenerated, codes
@@ -320,6 +343,7 @@ def normalize_payload(payload):
     if result.get("format") != "ape" or not isinstance(ape, dict) or ape.get("name") != "page":
         raise Review("normalization_source_invalid")
     original_ape, changed, table_changes = copy.deepcopy(ape), [], []
+    ape, audio_changes = normalize_audio(ape, audio_assets)
     ape, stage_changes = normalize_stage_widgets(ape, static_validator())
     ape, accordion_changes = normalize_accordions(ape, static_validator())
     ape, editor_changes = normalize_nodes(ape, static_validator())
@@ -378,9 +402,19 @@ def normalize_payload(payload):
         codes.append(ACCORDION_CODE)
     if stage_changes:
         codes.append(STAGE_CODE)
+    if audio_changes:
+        codes.append(AUDIO_CODE)
     if codes:
         result["source_original_ape"] = original_ape
-        if stage_changes:
+        if audio_changes:
+            used_assets = {key: copy.deepcopy(audio_assets[key])
+                           for key in sorted({change['url_sha256'] for change in audio_changes})}
+            result["source_normalization"] = {"version": 7, "kind": "mastervision_editor_normalization", "codes": codes,
+                                               "blocks": changed, "table_blocks": table_changes, "editor_blocks": editor_changes,
+                                               "inline_image_blocks": image_changes, "button_blocks": button_changes,
+                                               "accordion_blocks": accordion_changes, "stage_blocks": stage_changes,
+                                               "audio_blocks": audio_changes, "audio_assets": used_assets}
+        elif stage_changes:
             result["source_normalization"] = {"version": 6, "kind": "mastervision_editor_normalization", "codes": codes,
                                                "blocks": changed, "table_blocks": table_changes, "editor_blocks": editor_changes,
                                                "inline_image_blocks": image_changes, "button_blocks": button_changes,

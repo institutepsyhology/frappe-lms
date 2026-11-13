@@ -79,7 +79,10 @@ class Tests(unittest.TestCase):
                  'files':{'a'*64:{'url_sha256':'a'*64,'size':100,'basename':'PRIVATE'}}}
         for name, data in (('audio-inventory.json',inventory),('audio-stage-index.json',index)):
             (directory/name).write_text(json.dumps(data),encoding='utf-8')
-        self.assertEqual(mod.audio_progress(directory), {'staged':1,'total':1,'bytes_staged':100,'bytes_total':100})
+        self.assertEqual(mod.audio_progress(directory), {'staged':1,'registered':0,'total':1,'bytes_staged':100,'bytes_total':100})
+        registered = {**index, 'files':{'a'*64:{'size':100}}}
+        (directory/'audio-files-index.json').write_text(json.dumps(registered),encoding='utf-8')
+        self.assertEqual(mod.audio_progress(directory)['registered'],1)
         index['account'] = 'mv-centr'
         (directory/'audio-stage-index.json').write_text(json.dumps(index),encoding='utf-8')
         with self.assertRaises(ValueError): mod.audio_progress(directory)

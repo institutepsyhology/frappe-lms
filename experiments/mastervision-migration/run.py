@@ -152,13 +152,14 @@ def stored_course(store, cid):
         raise Stop(str(exc)) from None
 
 
-def prepare_payloads(payloads):
+def prepare_payloads(payloads, audio_assets=None):
     from importer import Review as ImportReview
     from normalize_source import normalize_payload
     prepared, warnings = [], []
     for payload in payloads:
         try:
-            normalized, codes = normalize_payload(payload)
+            normalized, codes = (normalize_payload(payload) if audio_assets is None else
+                                 normalize_payload(payload, audio_assets=audio_assets))
         except ImportReview as exc:
             if str(exc) in ('normalization_account_mismatch', 'normalization_metadata_conflict', 'normalization_source_invalid'):
                 raise Stop(str(exc)) from None
@@ -244,6 +245,7 @@ def main():
     args.add_argument('--settings-only', action='store_true')
     args.add_argument('--review-only', action='store_true', help='Process only courses currently awaiting review')
     args.add_argument('--audio-stage-only', action='store_true', help='Stage verified MP3 files directly on the MV server')
+    args.add_argument('--audio-import-only', action='store_true', help='Register staged MP3 files and import selected audio courses')
     selected = args.parse_args()
     if (selected.limit is not None and selected.limit < 1 or
             selected.course is not None and any(cid < 1 for cid in selected.course) or selected.from_course < 1):
@@ -258,8 +260,14 @@ def main():
             or selected.catalog_only or selected.covers_only or selected.settings_only or selected.review_only
             or selected.course or selected.limit or selected.from_course != 1):
         raise Stop('conflicting_mode')
+    if selected.audio_import_only:
+        from audio_stage_client import COURSES
+        if (not selected.stored or not selected.apply or not selected.course
+                or not set(selected.course) <= set(COURSES) or selected.audio_stage_only
+                or selected.collect_only or selected.catalog_only or selected.covers_only or selected.settings_only):
+            raise Stop('conflicting_mode')
     with Store(DATA) as store:
-        client, assets = None, None
+        client, assets, audio_assets = None, None, None
         try:
             if selected.resume:
                 for stage in sorted(STAGES): store.error(stage, False)
@@ -286,7 +294,7 @@ def main():
                 if selected.audio_stage_only:
                     from audio_stage_client import stage_audio
                     def audio_progress(event):
-                        store.event('audio', None, None, 'audio_staged')
+                        store.event('audio', None, None, 'audio_staged' if event.get('completed',0) else 'ready')
                         emit(event)
                     stage_audio(store, audio_progress)
                     store.error('audio', False)
@@ -298,6 +306,12 @@ def main():
                     target = importer.Importer(client)
                     from assets import AssetCache
                     assets = AssetCache(DATA / 'assets')
+                if selected.audio_import_only:
+                    from audio_batch import register_staged_audio
+                    def audio_registration_progress(event):
+                        store.event('audio', None, None, 'audio_registered')
+                        emit(event)
+                    audio_assets = register_staged_audio(store, client, audio_registration_progress, apply=True)
                 def record_target_event(event):
                     if (not isinstance(event, dict) or set(event) != {'course_id', 'lesson_id', 'status'} or
                             event['status'] not in ('write_started', 'created')):
@@ -343,7 +357,7 @@ def main():
                     if selected.collect_only:
                         emit({'course': cid, 'status': 'collected', 'lessons': len(payloads)}); continue
                     try:
-                        payloads, normalization_warnings = prepare_payloads(payloads)
+                        payloads, normalization_warnings = prepare_payloads(payloads, audio_assets=audio_assets)
                         result = target.import_course(payloads, apply=selected.apply, images_for_lesson=assets.lesson_images,
                                                       progress_callback=record_target_event)
                         if selected.apply:

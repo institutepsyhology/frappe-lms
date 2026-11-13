@@ -12,7 +12,7 @@ import status as archive_status
 
 MSK = timezone(timedelta(hours=3))
 STATES = {'pending', 'review', 'imported', 'collected', 'empty'}
-EVENTS = {'complete', 'captured', 'equivalent_source_reused', 'review', 'created', 'already_present', 'audio_staged',
+EVENTS = {'complete', 'captured', 'equivalent_source_reused', 'review', 'created', 'already_present', 'audio_staged', 'audio_registered',
           'ready', 'empty_created', 'empty_already_present', 'lesson_created', 'lesson_write_started',
           'warning', 'stopped', 'cover_created', 'cover_already_imported', 'private_updated', 'private_already_private'}
 
@@ -105,7 +105,20 @@ def audio_progress(directory):
         if (key not in expected or not isinstance(receipt, dict) or receipt.get('url_sha256') != key
                 or type(receipt.get('size')) is not int or receipt['size'] != expected[key]):
             raise ValueError('audio_progress_invalid')
-    return {'staged': len(index['files']), 'total': len(expected),
+    registered = 0
+    registered_path = Path(directory) / 'audio-files-index.json'
+    if registered_path.exists():
+        if registered_path.is_symlink() or registered_path.stat().st_size > 2 * 1024 * 1024:
+            raise ValueError('audio_progress_invalid')
+        data = json.loads(registered_path.read_bytes())
+        if (not isinstance(data, dict) or data.get('version') != 1 or data.get('account') != 'mastervision'
+                or data.get('origin') != 'https://shop.mastervision.su' or data.get('site') != 'my-lk.mastervision.su'
+                or not isinstance(data.get('files'), dict) or set(data['files']) - set(index['files'])):
+            raise ValueError('audio_progress_identity_invalid')
+        if any(not isinstance(row,dict) or row.get('size') != expected[key] for key,row in data['files'].items()):
+            raise ValueError('audio_progress_invalid')
+        registered = len(data['files'])
+    return {'staged': len(index['files']), 'registered': registered, 'total': len(expected),
             'bytes_staged': sum(receipt['size'] for receipt in index['files'].values()),
             'bytes_total': sum(expected.values())}
 
@@ -150,7 +163,7 @@ const actions={complete:'завершено',captured:'урок сохранён
 async function refresh(){try{const response=await fetch('/status.json',{cache:'no-store'});if(!response.ok)throw Error();const d=await response.json();if(d.status!=='ok')throw Error();
 put('worker',states[d.worker.state]||'Состояние процесса не подтверждено');document.getElementById('worker').style.borderLeftColor=d.worker.running?'#2f8757':'#8b97a8';
 put('imported',d.courses.imported||0);put('lessons',d.imported_lessons);put('review',d.courses.review||0);put('total',d.catalog_courses);
-put('audio',d.audio?`Аудиофайлы сохранены на сервере: ${d.audio.staged} из ${d.audio.total}; ${Math.round(d.audio.bytes_staged/1048576)} из ${Math.round(d.audio.bytes_total/1048576)} МБ.`:'');
+put('audio',d.audio?`Аудиофайлы сохранены на сервере: ${d.audio.staged} из ${d.audio.total}; ${Math.round(d.audio.bytes_staged/1048576)} из ${Math.round(d.audio.bytes_total/1048576)} МБ. Подключены к базе: ${d.audio.registered||0} из ${d.audio.total}.`:'');
 put('source',`Сохранено исходников: ${d.source_courses} курсов, ${d.source_lessons} уроков.`);const e=d.last_event;put('event',e?`Последнее действие: ${e.at_msk}; ${stages[e.stage]||'проверка'}; ${actions[e.status]||'проверка'}${e.course?' · курс '+e.course:''}${e.lesson?' · урок '+e.lesson:''}`:'Действий пока нет.');
 put('job',d.worker.created_at_msk?`Последний запуск создан: ${d.worker.created_at_msk}${d.worker.finished_at_msk?'; завершён: '+d.worker.finished_at_msk:''}`:'Запусков пока нет.');put('updated','Проверено: '+d.updated_at_msk);
 }catch(error){put('worker','Текущее состояние недоступно. Показанные ниже числа могут быть устаревшими.');document.getElementById('worker').style.borderLeftColor='#b15a35';}}
