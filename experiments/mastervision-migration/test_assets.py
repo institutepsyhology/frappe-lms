@@ -90,6 +90,32 @@ class AssetTests(unittest.TestCase):
             self.cache.lesson_images(payload(image(),image('other','https://example.test/image.png')))
         self.assertEqual(self.opener.calls,[])
 
+    def test_reviewed_direct_google_images_are_bounded_anonymous_and_fully_verified(self):
+        for number in (3,4,5,6):
+            url='https://lh'+str(number)+'.googleusercontent.com/'+'S'*190
+            self.assertEqual(assets._url(url),url)
+            self.assertEqual(self.cache.fetch(url),(png(),'png'))
+        for request,timeout in self.opener.calls:
+            self.assertEqual(request.get_method(),'GET');self.assertIsNone(request.data)
+            self.assertNotIn('cookie',{key.lower() for key in request.headers})
+            self.assertNotIn('authorization',{key.lower() for key in request.headers})
+        url='https://lh5.googleusercontent.com/'+'F'*188
+        self.opener.response=Response(url,b'<html>Not an image</html>')
+        with self.assertRaises(Review):self.cache.fetch(url)
+
+    def test_google_image_rule_does_not_authorize_other_hosts_paths_queries_or_redirects(self):
+        base='https://lh5.googleusercontent.com/'+'S'*190
+        for url in (base+'?',base+'?size=large',base+'#x',base+'/',base+'/extra',
+                    base.replace('lh5.','lh2.'),base.replace('lh5.','lh7.'),
+                    base.replace('.com/','.com.evil.test/'),base.replace('https:','http:'),
+                    base.replace('.com/','.com:443/'),base.replace('//lh5','//u@lh5'),
+                    base[:-3],base+'A',base[:-1]+'%41'):
+            with self.assertRaises(Review):self.cache.fetch(url)
+        self.assertEqual(self.opener.calls,[])
+        self.opener.error=urllib.error.HTTPError(base,302,'redirect',{'Location':base[:-1]+'T'},None)
+        with self.assertRaisesRegex(Review,'asset_redirect_forbidden'):self.cache.fetch(base)
+        self.assertEqual(len(self.opener.calls),1)
+
     def test_source_and_cdn_requests_are_anonymous_with_no_proxy_or_redirect(self):
         data=self.cache.lesson_images(payload(image()))
         self.assertEqual(base64.b64decode(data['picture']),png())
@@ -124,10 +150,24 @@ class AssetTests(unittest.TestCase):
 
     def test_nonimage_wrong_mime_crc_and_dimensions_are_rejected(self):
         for response in [Response(URL,b'<html>Login</html>'),Response(URL,headers={'Content-Type':'text/html'}),
-                         Response(URL,png()[:-1]+b'!'),Response(URL,png(width=4097))]:
+                         Response(URL,png()[:-1]+b'!'),Response(URL,png(width=8193))]:
             self.opener.response=response
             with self.assertRaises(Review):self.cache.fetch(URL)
         self.assertEqual(self.cache.db.execute('SELECT COUNT(*) FROM assets').fetchone()[0],0)
+
+    def test_long_images_keep_bytes_with_original_area_and_byte_caps(self):
+        import io
+        from PIL import Image
+        for size in ((2,6099),(6099,2)):
+            stream=io.BytesIO();Image.new('RGB',size,(10,20,30)).save(stream,format='PNG')
+            raw=stream.getvalue();self.assertEqual(assets._inspect(raw,'image/png'),'png')
+            url=URL+'&long='+str(size[0]);self.opener.response=Response(url,raw)
+            self.assertEqual(self.cache.fetch(url),(raw,'png'))
+        for size in ((8193,1),(1,8193),(8192,2049),(4097,4096)):
+            with self.assertRaisesRegex(Review,'asset_image_dimensions_invalid'):
+                assets._inspect(png(*size),'image/png')
+        with self.assertRaisesRegex(Review,'asset_image_size_invalid'):
+            assets._inspect(b'A'*(assets.MAX_IMAGE+1))
 
     def test_url_and_content_dedup_and_persistent_private_cache(self):
         result=self.cache.lesson_images(payload(image('one'),image('two')))

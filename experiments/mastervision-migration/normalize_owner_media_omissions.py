@@ -11,8 +11,23 @@ CODE = 'owner_media_omitted'
 GIF_SHA256 = '9d2b67e589360c6d8956b6ed18990bb99099b95925d4a232664ad96986ab1bfc'
 MISSING_SHA256 = '20e470bd0c3f6cd94a7e69f47bd8389f10d98bedff8ea1681e3803794969ed86'
 MISSING_TAG_SHA256 = '07c531238cd97d0808a28e3a4fa760f8a76845320793dc225359ae4713c56d38'
+# Exact completed source checkpoint: one identical GIF at this original path in
+# these 84 lessons. Anonymous MIME/magic/Pillow proof: GIF, 72 frames, 1024x1024.
+# Lesson 6870 is separately excluded by lesson_policy; this list never schedules
+# a lesson or broadens the image matcher to other course IDs or source paths.
+GIF_LESSON_IDS = (
+    6825, 6847, 6848, 6849, 6850, 6852, 6864, 6866, 6867, 6868,
+    6870, 6872, 6873, 6874, 6875, 6876, 6877, 6884, 6885, 6887,
+    6889, 6890, 6891, 6892, 6893, 6894, 6906, 6907, 6908, 6909,
+    6910, 6911, 6912, 6913, 6914, 6915, 6918, 6919, 6921, 6922,
+    6923, 6924, 6925, 6926, 6927, 6928, 6929, 6930, 6931, 6932,
+    6933, 6934, 6935, 6936, 6937, 6938, 6939, 6940, 6941, 6942,
+    6943, 6944, 6945, 7304, 7305, 7312, 7313, 7314, 7315, 7316,
+    7317, 7318, 7319, 7320, 7321, 7322, 7323, 7324, 7325, 7423,
+    7424, 7425, 7426, 7427,
+)
 APPROVED = {(618, lid): {'path': (0, 0, 0), 'kind': 'animated_gif', 'src_sha256': GIF_SHA256}
-            for lid in (6825, 6848, 6849, 6852)}
+            for lid in GIF_LESSON_IDS}
 APPROVED[(520, 5223)] = {'path': (2,), 'kind': 'missing_404_image',
                         'src_sha256': MISSING_SHA256, 'tag_sha256': MISSING_TAG_SHA256}
 NODE_KEYS = {'id', 'name', 'fields', 'children', 'style'}
@@ -129,7 +144,7 @@ def _inline(node, ancestors, policy):
 
 
 def normalize_owner_media_omissions(ape, course_id, lesson_id):
-    """Return a copy and exact-path witnesses for five approved source bindings.
+    """Return a copy and exact-path witnesses for the approved source bindings.
 
     GIF omissions never include the nearby PNGs. The single HTML image is
     removed by exact original tag range; text, captions, links and other images

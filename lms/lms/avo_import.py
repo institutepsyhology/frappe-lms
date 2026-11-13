@@ -21,6 +21,8 @@ SITE_ACCOUNTS = {
 }
 MAX_IMAGE = 5 * 1024 * 1024
 MAX_IMAGES = 10
+MAX_IMAGE_DIMENSION = 8192
+MAX_IMAGE_PIXELS = 16 * 1024 * 1024
 EXTENSIONS = {'PNG': 'png', 'JPEG': 'jpg', 'WEBP': 'webp'}
 
 
@@ -47,7 +49,9 @@ def _images(images):
                 with Image.open(io.BytesIO(raw)) as img:
                     fmt = img.format
                     width, height = img.size
-                    if fmt not in EXTENSIONS or width < 1 or height < 1 or width > 4096 or height > 4096:
+                    if (fmt not in EXTENSIONS or width < 1 or height < 1
+                            or width > MAX_IMAGE_DIMENSION or height > MAX_IMAGE_DIMENSION
+                            or width * height > MAX_IMAGE_PIXELS):
                         raise ValueError('image_format_invalid')
                     img.verify()
         except Exception as exc:

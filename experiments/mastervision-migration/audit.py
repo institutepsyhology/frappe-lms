@@ -26,7 +26,10 @@ FATAL = {'normalization_account_mismatch', 'normalization_metadata_conflict', 'n
          'owner_material_account_mismatch', 'owner_material_signature_mismatch',
          'image_wrapper_material_mismatch', 'image_wrapper_source_invalid',
          'annotated_material_button_material_mismatch',
-         'reviewed_static_material_mismatch', 'reviewed_static_source_invalid'}
+         'reviewed_static_material_mismatch', 'reviewed_static_source_invalid',
+         'missing_course_image_material_mismatch', 'missing_course_image_source_invalid',
+         'reviewed_rotation_material_mismatch', 'reviewed_rotation_source_invalid',
+         'reviewed_rotation_account_mismatch'}
 # Historical evidence, not a claim of a fresh HTTP check. Never silently retry.
 KNOWN_404 = {(280, 1802): 'fc93e347a1ef59ba7b9b32601c74cb670ee69f34403eea8f854f11768224aab8',
              (286, 1857): 'fc93e347a1ef59ba7b9b32601c74cb670ee69f34403eea8f854f11768224aab8'}

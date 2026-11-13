@@ -34,6 +34,8 @@ from normalize_owner_material_links import normalize_owner_material_links, CODE 
 from normalize_image_wrapper_layout import normalize_image_wrapper_layout, CODE as IMAGE_WRAPPER_CODE
 from normalize_annotated_material_buttons import normalize_annotated_material_buttons, CODE as ANNOTATED_MATERIAL_CODE
 from normalize_reviewed_static_material import normalize_reviewed_static_material
+from normalize_missing_course_images import normalize_missing_course_images, CODE as MISSING_IMAGE_CODE
+from normalize_reviewed_image_rotation import normalize_reviewed_image_rotation, CODE as REVIEWED_ROTATION_CODE
 from normalize_audio import normalize_audio, CODE as AUDIO_CODE
 
 
@@ -330,7 +332,7 @@ def normalize_payload(payload, audio_assets=None):
             raise Review("normalization_metadata_conflict")
         metadata = result['source_normalization']
         is_audio = isinstance(metadata, dict) and (metadata.get('version') == 7 or
-            metadata.get('version') in (8,9,10,11,12,13,14,15,16) and ('audio_assets' in metadata or bool(metadata.get('audio_blocks'))))
+            metadata.get('version') in (8,9,10,11,12,13,14,15,16,17,18) and ('audio_assets' in metadata or bool(metadata.get('audio_blocks'))))
         stored_assets = metadata.get('audio_assets') if is_audio else None
         if is_audio:
             if (not isinstance(stored_assets, dict) or not stored_assets
@@ -358,6 +360,10 @@ def normalize_payload(payload, audio_assets=None):
     if result.get("format") != "ape" or not isinstance(ape, dict) or ape.get("name") != "page":
         raise Review("normalization_source_invalid")
     original_ape, changed, table_changes = copy.deepcopy(ape), [], []
+    ape, reviewed_image_rotations = normalize_reviewed_image_rotation(
+        ape, result.get('course_id'), result.get('lesson_id'), static_validator())
+    ape, missing_course_images = normalize_missing_course_images(
+        ape, result.get('course_id'), result.get('lesson_id'), static_validator())
     ape, reviewed_material_changes = normalize_reviewed_static_material(
         ape, result.get('course_id'), result.get('lesson_id'), static_validator())
     ape, annotated_material_changes = normalize_annotated_material_buttons(
@@ -493,11 +499,16 @@ def normalize_payload(payload, audio_assets=None):
     if annotated_material_changes:
         codes.append(ANNOTATED_MATERIAL_CODE)
     codes.extend(dict.fromkeys(change['code'] for change in reviewed_material_changes))
+    if missing_course_images:
+        codes.append(MISSING_IMAGE_CODE)
+    if reviewed_image_rotations:
+        codes.append(REVIEWED_ROTATION_CODE)
     if codes:
         result["source_original_ape"] = original_ape
         if (presentation_changes or empty_button_changes or video_value_changes or empty_widget_changes or keyboard_changes
                 or link_metadata_changes or legacy_decoration_changes or video_source_changes or owner_media_omissions
-                or owner_material_links or image_wrapper_changes or annotated_material_changes or reviewed_material_changes):
+                or owner_material_links or image_wrapper_changes or annotated_material_changes or reviewed_material_changes
+                or missing_course_images or reviewed_image_rotations):
             metadata = {"version": 10, "kind": "mastervision_editor_normalization", "codes": codes,
                         "blocks": changed, "table_blocks": table_changes, "editor_blocks": editor_changes,
                         "inline_image_blocks": image_changes, "button_blocks": button_changes,
@@ -520,6 +531,10 @@ def normalize_payload(payload, audio_assets=None):
                 metadata.update(version=15, annotated_material_blocks=annotated_material_changes)
             if reviewed_material_changes:
                 metadata.update(version=16, reviewed_material_blocks=reviewed_material_changes)
+            if missing_course_images:
+                metadata.update(version=17, missing_course_images=missing_course_images)
+            if reviewed_image_rotations:
+                metadata.update(version=18, reviewed_image_rotations=reviewed_image_rotations)
             if audio_changes:
                 metadata["audio_blocks"] = audio_changes
                 metadata["audio_assets"] = {key: copy.deepcopy(audio_assets[key])

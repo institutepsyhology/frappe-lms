@@ -25,6 +25,8 @@ from avatar_placeholders import _decoded_safe_path
 
 MAX_IMAGE = 5 * 1024 * 1024
 MAX_IMAGES = 10
+MAX_IMAGE_DIMENSION = 8192
+MAX_IMAGE_PIXELS = 16 * 1024 * 1024
 PLACEHOLDER_IMAGE_SHA256 = '44c98968db4973a119db3bbc00ca36392c1466e1b631596e1fff0ac4a2474ea2'
 IMAGE_KEY = re.compile(r'[A-Za-z0-9_-]{1,80}')
 DATA_MIMES = {'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/webp': 'webp'}
@@ -51,9 +53,15 @@ def _url(value):
                        and re.search(r'\.(?:jpe?g|png|webp)$', decoded_ru, re.I))
     verified_getcourse = (url.hostname == 'fs-thb01.getcourse.ru' and not url.query and
         re.fullmatch(r'/fileservice/file/thumbnail/h/[a-f0-9]{32}\.png/s/f[0-9]{4}x/a/[0-9]{5}/sc/[0-9]{3}', url.path))
+    # These four direct image hosts and this opaque-token path were separately
+    # verified against authored lesson IMG sources. No arbitrary Google URLs,
+    # query parameters or redirects are authorized by this image-only rule.
+    verified_google_image = (url.hostname in {'lh3.googleusercontent.com', 'lh4.googleusercontent.com',
+        'lh5.googleusercontent.com', 'lh6.googleusercontent.com'} and not url.query
+        and '?' not in value and '#' not in value and re.fullmatch(r'/[A-Za-z0-9_-]{188,190}', url.path))
     if (url.hostname != 'shop.mastervision.su' and
             not re.fullmatch(r'f[0-9]+\.autoweboffice\.com', url.hostname or '')
-            and not verified_ru and not verified_getcourse):
+            and not verified_ru and not verified_getcourse and not verified_google_image):
         raise Review('asset_host_requires_review')
     # Preserve percent-encoded source paths byte for byte; do not rewrite the
     # original URL into its decoded form before an anonymous CDN request.
@@ -141,7 +149,8 @@ def _magic(raw):
 def _inspect(raw, content_type=''):
     if not isinstance(raw, bytes) or not raw or len(raw) > MAX_IMAGE: raise Review('asset_image_size_invalid')
     extension, size = _magic(raw)
-    if any(not 1 <= dimension <= 4096 for dimension in size): raise Review('asset_image_dimensions_invalid')
+    if (any(not 1 <= dimension <= MAX_IMAGE_DIMENSION for dimension in size)
+            or size[0] * size[1] > MAX_IMAGE_PIXELS): raise Review('asset_image_dimensions_invalid')
     expected = {'png':'image/png', 'jpg':'image/jpeg', 'webp':'image/webp'}[extension]
     content_type = content_type.split(';', 1)[0].strip().lower()
     if content_type not in ('', 'application/octet-stream', 'binary/octet-stream', expected,

@@ -33,8 +33,8 @@ class OwnerMediaTests(unittest.TestCase):
         self.policy = patch.object(mod, 'APPROVED', policies)
         self.policy.start(); self.addCleanup(self.policy.stop)
 
-    def test_four_exact_gif_bindings_remove_only_original_leaf(self):
-        for lesson in (6825, 6848, 6849, 6852):
+    def test_all_exact_gif_bindings_remove_only_original_leaf_and_keep_pngs(self):
+        for lesson in mod.GIF_LESSON_IDS:
             source = gif_page(); before = copy.deepcopy(source)
             out, changes = mod.normalize_owner_media_omissions(source, 618, lesson)
             expected = copy.deepcopy(source); expected['children'][0]['children'][0]['children'] = []
@@ -109,9 +109,29 @@ class OwnerMediaTests(unittest.TestCase):
             again, changes = mod.normalize_owner_media_omissions(out, course, lesson)
             self.assertEqual((again, changes), (out, []))
 
-    def test_scope_has_only_five_approved_bindings_and_does_not_include_inline_pngs(self):
-        self.assertEqual(set(mod.APPROVED), {(520, 5223), (618, 6825), (618, 6848), (618, 6849), (618, 6852)})
+    def test_scope_has_only_84_source_proven_gifs_and_single_404_binding(self):
+        expected = {
+            7423,7424,7425,7426,7427,6825,6847,6848,6849,6850,6852,6875,6884,6873,6874,6876,6877,
+            6864,6872,6885,6887,6868,6925,7315,7316,7317,7318,7319,7320,7312,7321,7313,7322,7314,
+            7323,7324,7325,6926,6927,6939,6940,6941,6942,6943,6944,6945,6866,7304,7305,6890,6891,
+            6889,6892,6893,6894,6906,6907,6908,6909,6910,6911,6867,6928,6929,6930,6931,6932,6933,
+            6934,6935,6936,6937,6938,6912,6913,6923,6914,6915,6918,6924,6919,6921,6922,6870,
+        }
+        self.assertEqual(len(expected), 84)
+        self.assertEqual(len(mod.GIF_LESSON_IDS), 84)
+        self.assertEqual(set(mod.GIF_LESSON_IDS), expected)
+        self.assertEqual(set(mod.APPROVED), {(520, 5223)} | {(618, lid) for lid in expected})
         self.assertTrue(all(p['path'] == (0, 0, 0) for p in mod.APPROVED.values() if p['kind'] == 'animated_gif'))
+
+    def test_new_scopes_preserve_changed_sources_and_metadata_guards(self):
+        for lesson in (6922, 7304, 7427):
+            for node in (image(PNG), image(linkHref='https://example.test/material'), image(html='Keep caption'),
+                         image(visibleConditions={'paid':True}), image(displayDelay=5)):
+                source = gif_page(node)
+                self.assertEqual(mod.normalize_owner_media_omissions(source, 618, lesson), (source, []))
+        for course, lesson in ((617, 6922), (619, 6922), (618, 6920), (618, 7428)):
+            source = gif_page()
+            self.assertEqual(mod.normalize_owner_media_omissions(source, course, lesson), (source, []))
 
     def test_invalid_tree_raises_fixed_code_without_partial_result(self):
         for source in (None, [], {'name': 'text'}, {'name': 'page', 'children': ['bad']}, {'name': 'page', 'children': [{'name': 'text', 'fields': []}]}):
