@@ -25,6 +25,27 @@ def payload(ape):
 
 
 class EmptyMaterialButtonTests(unittest.TestCase):
+    def test_owner_scoped_labels_omit_only_empty_inert_buttons_and_keep_all_material(self):
+        source = page(text('First'), button('ПРЕЗЕНТАЦИЯ'),
+                      button('ГАЙД', url='https://example.test/guide.pdf'), text('Last'))
+        before = copy.deepcopy(source)
+        out, changes = mod.normalize_empty_material_buttons(source, static_validator(), course_id=435, lesson_id=4083)
+        self.assertEqual(source, before)
+        self.assertEqual(out, page(source['children'][0], source['children'][2], source['children'][3]))
+        self.assertEqual(changes, [{'path': [1], 'code': mod.CODE}])
+        for cid, lid in ((434,4083),(435,4084),(557,5941),(557,5952),(618,6870),('435',4083),(435,True)):
+            self.assertEqual(mod.normalize_empty_material_buttons(source, static_validator(), course_id=cid, lesson_id=lid), (source, []))
+
+    def test_owner_approval_does_not_remove_actions_unsafe_labels_or_nonempty_destinations(self):
+        for node in (button('ПРЕЗЕНТАЦИЯ', url='https://example.test/notes.pdf'),
+                     button('ПРЕЗЕНТАЦИЯ', url='{goods_ordering_1}'),
+                     button('ПРЕЗЕНТАЦИЯ', url=' '), button('ПРЕЗЕНТАЦИЯ', url=False),
+                     button('ПРЕЗЕНТАЦИЯ', event='checkout'), button('ПРЕЗЕНТАЦИЯ', linkType='anchor'),
+                     button('<a href="https://example.test">Keep</a>'),
+                     button('<span onclick="go()">Keep</span>')):
+            source = page(node, text())
+            self.assertEqual(mod.normalize_empty_material_buttons(source, static_validator(), course_id=435, lesson_id=4083), (source, []))
+
     def normalize(self, ape): return mod.normalize_empty_material_buttons(ape, static_validator())
 
     def test_observed_plain_and_formatted_audio_and_material_labels(self):

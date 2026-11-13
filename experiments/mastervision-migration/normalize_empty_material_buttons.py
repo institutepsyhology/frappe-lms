@@ -1,4 +1,4 @@
-"""Omit only nonfunctional audio/material buttons; caller retains original APE."""
+"""Omit approved nonfunctional material buttons; caller retains original APE."""
 import copy
 from html.parser import HTMLParser
 
@@ -9,6 +9,8 @@ from normalize_editor_nodes import _style_content
 CODE = 'empty_material_button_omitted'
 FIELDS = {'anchor', 'html', 'icon', 'linkType', 'url', 'blank', 'toAnchor', 'event'}
 LABELS = {'АУДИОЗАПИСЬ', 'МАТЕРИАЛЫ'}
+OWNER_APPROVED = {(329,4112), (435,4083), (446,4099), (485,4654), (487,4677),
+                  (494,4716), (577,6192), (584,6310)} | {(618,lid) for lid in range(6929,6939)}
 INLINE = {'span', 'b', 'strong', 'i', 'em', 'u', 's', 'sub', 'sup', 'mark', 'br'}
 
 
@@ -30,7 +32,7 @@ class _Label(HTMLParser):
     def unknown_decl(self, data): self.ok = False
 
 
-def _empty_material(node, validate):
+def _empty_material(node, validate, owner_approved=False):
     fields = node.get('fields', {})
     if (set(node) - {'id', 'name', 'fields', 'children', 'style'}
             or node.get('children') or set(fields) - FIELDS
@@ -46,7 +48,8 @@ def _empty_material(node, validate):
         parsed = _Label()
         parsed.feed(label)
         parsed.close()
-        if not parsed.ok or ' '.join(''.join(parsed.parts).split()).upper() not in LABELS:
+        label_text = ' '.join(''.join(parsed.parts).split()).upper()
+        if not parsed.ok or not label_text or not owner_approved and label_text not in LABELS:
             return False
         validate('<p>' + label + '</p>')
     except (ValueError, UnicodeError, RecursionError):
@@ -54,17 +57,19 @@ def _empty_material(node, validate):
     return True
 
 
-def normalize_empty_material_buttons(ape, validate_static):
+def normalize_empty_material_buttons(ape, validate_static, *, course_id=None, lesson_id=None):
     """Return a copied tree and original-path diagnostics, never inventing URLs.
 
-    Only the owner's known audio/material action labels with truly absent URLs
-    qualify. Other labels, meaningful settings and missing educational content
-    stay with the stricter converter for review. An empty lesson stays empty.
+    Known audio/material labels and the owner's exact additional lesson bindings
+    qualify only with truly absent URLs and no other actions. Other lessons,
+    meaningful settings and missing educational content remain for review.
     """
     if not callable(validate_static): raise Review('empty_material_buttons_validator_invalid')
     if not isinstance(ape, dict) or ape.get('name') != 'page' or not isinstance(ape.get('children'), list):
         raise Review('empty_material_buttons_invalid')
     copied, changes, visited = copy.deepcopy(ape), [], 0
+    owner_approved = (type(course_id) is int and type(lesson_id) is int
+                      and (course_id,lesson_id) in OWNER_APPROVED)
 
     def walk(node, path):
         nonlocal visited
@@ -74,7 +79,7 @@ def normalize_empty_material_buttons(ape, validate_static):
         fields, children = node.get('fields', {}), node.get('children', [])
         if not isinstance(fields, dict) or not isinstance(children, list):
             raise Review('empty_material_buttons_invalid')
-        if node['name'] == 'button' and _empty_material(node, validate_static):
+        if node['name'] == 'button' and _empty_material(node, validate_static, owner_approved):
             changes.append({'path': list(path), 'code': CODE})
             return None
         if 'children' in node:

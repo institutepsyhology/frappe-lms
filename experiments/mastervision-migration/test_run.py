@@ -60,6 +60,7 @@ class FakeStore:
     def latest(self, *_): raise AssertionError('stored import must use a completed checkpoint, never latest')
     def stable_lesson(self, course_id, lesson_id, parsed): return parsed
     def summary(self): return {'review': len([mark for mark in self.marks if mark[1] == 'review'])}
+    def deferred_reminders(self): return []
     def report(self): self.reports += 1
 
 
@@ -120,6 +121,24 @@ def course_snapshot(ids=(10,), title='Synthetic course'):
 
 
 class ControllerTests(unittest.TestCase):
+    def test_finished_result_keeps_pending_owner_decisions_with_original_positions(self):
+        reminders=[{'course_id':557,'lesson_id':5952,'source_position':23,'code':'owner_deferred_lesson'},
+                   {'course_id':598,'lesson_id':7544,'source_position':95,'code':'owner_deferred_lesson'}]
+        with patch.object(FakeStore,'deferred_reminders',return_value=reminders):
+            result=self.invoke(1,args=['--apply'])
+        self.assertEqual(result[0],0)
+        self.assertEqual(result[5][-1],{'status':'finished','courses':{'review':0},'deferred_lessons':reminders})
+
+    def test_new_owner_deferral_imports_23_without_5952_and_marks_partial(self):
+        ids=list(range(1,25));ids[22]=5952
+        source=[{**payload(557),'lesson_id':lid} for lid in ids];before=copy.deepcopy(source)
+        with patch.object(mod,'stored_course',return_value=source):
+            result=self.invoke(557,args=['--stored','--apply','--course','557'])
+        self.assertEqual(result[0],0);self.assertEqual(source,before)
+        self.assertEqual([p['lesson_id'] for p in result[4].payloads[0]],[lid for lid in ids if lid!=5952])
+        self.assertEqual(result[1].marks,[(557,'partial')])
+        self.assertIn(('import',557,5952,'review',['owner_deferred_lesson']),result[1].events)
+
     def test_permanent_owner_omissions_allow_complete_import_without_source_changes(self):
         for cid,lid in ((207,1976),(445,4089)):
             source=[{**payload(cid),'lesson_id':x} for x in (11,lid,12)];before=copy.deepcopy(source)

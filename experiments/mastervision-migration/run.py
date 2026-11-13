@@ -401,7 +401,8 @@ def main():
                     store.report()
             if selected.apply and not selected.collect_only:
                 transfer_covers(store, rows, client, assets, True)
-            emit({'status': 'finished', 'courses': store.summary()})
+            emit({'status': 'finished', 'courses': store.summary(),
+                  'deferred_lessons': store.deferred_reminders()})
             return 0
         except (source.Review, Stop, StorageError) as exc:
             code = str(exc)

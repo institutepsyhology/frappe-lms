@@ -487,6 +487,22 @@ class NormalizeTests(unittest.TestCase):
 
 
 class VersionElevenTests(unittest.TestCase):
+    def test_owner_scoped_empty_button_uses_payload_identity_and_keeps_original(self):
+        source = payload('<p>Keep authored material</p>')
+        source['course_id'],source['lesson_id']=435,4083
+        source['ape']['children'].append({'name':'button','fields':{
+            'html':'ПРЕЗЕНТАЦИЯ','url':'','linkType':'url','blank':True}})
+        normalized,codes=normalize_payload(source)
+        self.assertIn('empty_material_button_omitted',codes)
+        self.assertEqual(normalized['source_original_ape'],source['ape'])
+        self.assertEqual(len(normalized['ape']['children']),1)
+        self.assertTrue(plan_import(normalized)['ready'])
+        self.assertEqual(normalize_payload(normalized),(normalized,codes))
+        source['lesson_id']=4084
+        unchanged,codes=normalize_payload(source)
+        self.assertEqual(unchanged,source);self.assertEqual(codes,[])
+        self.assertIn('unsupported_button',plan_import(unchanged)['issues'])
+
     def test_non_native_bare_video_id_becomes_same_video_and_round_trips(self):
         source = payload('<p>Keep all material</p>')
         source['ape']['children'].append({'name': 'video', 'fields': {

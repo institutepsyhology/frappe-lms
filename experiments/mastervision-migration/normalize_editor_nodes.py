@@ -1,6 +1,7 @@
 """Conservative native editor metadata repairs; original APE stays with caller."""
 import copy
 from functools import lru_cache
+from html import unescape
 from html.parser import HTMLParser
 import importlib.util
 from pathlib import Path
@@ -105,6 +106,47 @@ def _header_as_text(node, validate):
     return True
 
 
+class _InlineBreaks(HTMLParser):
+    def __init__(self, markup):
+        super().__init__(convert_charrefs=False)
+        self.lines = [0] + [i + 1 for i, char in enumerate(markup) if char == '\n']
+        self.ranges, self.parts, self.ok = [], [], True
+        self.feed(markup); self.close()
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'br':
+            if attrs: self.ok = False
+            line, column = self.getpos(); start = self.lines[line - 1] + column
+            self.ranges.append((start, start + len(self.get_starttag_text())))
+
+    def handle_startendtag(self, tag, attrs): self.handle_starttag(tag, attrs)
+    def handle_endtag(self, tag):
+        if tag == 'br': self.ok = False
+    def handle_data(self, data): self.parts.append(data)
+    def handle_entityref(self, name): self.parts.append(unescape('&' + name + ';'))
+    def handle_charref(self, name): self.parts.append(unescape('&#' + name + ';'))
+
+
+def _simple_header_markup(node, validate):
+    fields = node['fields']; markup, level = fields.get('html'), fields.get('level')
+    if (set(fields) != {'anchor', 'html', 'level'} or fields['anchor'] not in (None, '')
+            or level not in ('h1', 'h2', 'h3', 'h4', 'h5', 'h6') or node.get('children', [])
+            or set(node) - {'id', 'name', 'fields', 'children', 'style'}
+            or _style_content(node.get('style')) or not isinstance(markup, str)
+            or not markup.strip() or len(markup) > 200000): return None
+    try:
+        validate(markup)
+        probe = _InlineBreaks(markup)
+        if not probe.ok or not probe.ranges or not ''.join(probe.parts).strip(): return None
+        inline = markup
+        for start, end in reversed(probe.ranges): inline = inline[:start] + inline[end:]
+        if not _core()._safe_heading_inline(inline): return None
+        wrapped = '<' + level + '>' + markup + '</' + level + '>'
+        validate(wrapped)
+    except (ValueError, UnicodeError, RecursionError): return None
+    return wrapped
+
+
 def normalize_nodes(ape, static_validator):
     """Return copied APE and ordered {path,code} repairs, with original paths.
 
@@ -115,13 +157,15 @@ def normalize_nodes(ape, static_validator):
     if not isinstance(ape, dict) or ape.get('name') != 'page' or not isinstance(ape.get('children'), list):
         raise Review('editor_nodes_invalid')
     copied = copy.deepcopy(ape); changes = []; visited = 0
-    def walk(node, path):
+    def walk(node, path, protected=False):
         nonlocal visited
         visited += 1
         if visited > 150000 or len(path) > 100 or not isinstance(node, dict) or not isinstance(node.get('name'), str):
             raise Review('editor_nodes_invalid')
         fields, children = node.get('fields', {}), node.get('children', [])
         if not isinstance(fields, dict) or not isinstance(children, list): raise Review('editor_nodes_invalid')
+        protected = protected or any(fields.get(key) not in (None, '', False, [], {})
+                                     for key in ('visibleConditions', 'displayDelay'))
         # Missing fields is legitimate on structural nodes; do not insert an
         # empty dictionary because that would change an existing fingerprint.
         if node['name'] == 'image' and 'fields' in node and _personalized_avatar(node):
@@ -142,10 +186,15 @@ def normalize_nodes(ape, static_validator):
             node['name'] = 'text'
             if 'format' in fields: del fields['format']
             changes.append({'path': list(path), 'code': 'header_markup_preserved_as_text'})
+        if node['name'] == 'header-simple' and 'fields' in node and not protected:
+            wrapped = _simple_header_markup(node, static_validator)
+            if wrapped is not None:
+                node['name'] = 'text'; fields['html'] = wrapped; del fields['level']
+                changes.append({'path': list(path), 'code': 'simple_header_linebreak_html_preserved'})
         if 'children' in node:
             kept = []
             for index, child in enumerate(children):
-                result = walk(child, path + [index])
+                result = walk(child, path + [index], protected)
                 if result is not None: kept.append(result)
             node['children'] = kept
         return node

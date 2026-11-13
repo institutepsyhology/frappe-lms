@@ -42,6 +42,80 @@ def uuid_lesson(root_id, block_id, body='original'):
 
 
 class StorageTests(unittest.TestCase):
+    def deferred_checkpoint(self, store, cid, ids):
+        store.catalog([{'id':cid,'title':'Course'}])
+        course=verified_course(ids);course['parsed']['course_id']=cid
+        digest=store.capture('course',cid,0,course);pairs=[]
+        for lid in ids:
+            lesson=verified_lesson(lid);lesson['parsed']['payload']['course_id']=cid
+            pairs.append((lid,store.capture('lesson',cid,lid,lesson)))
+        store.bind_course(cid,digest,pairs)
+        return digest,pairs
+
+    def test_deferred_reminders_keep_positions_in_review_without_reading_or_changing_raw_sources(self):
+        store=self.store()
+        self.deferred_checkpoint(store,557,(5941,5952,5942))
+        self.deferred_checkpoint(store,598,(7543,7544,7545))
+        store.mark(557,'review');store.mark(598,'partial')
+        before=[tuple(r) for r in store.db.execute('SELECT kind,course,lesson,digest,payload FROM captures ORDER BY kind,course,lesson,digest')]
+        checkpoints=[tuple(r) for r in store.db.execute('SELECT * FROM course_checkpoints ORDER BY course')]
+        changes=store.db.total_changes
+        expected=[{'course_id':557,'lesson_id':5952,'source_position':2,'code':'owner_deferred_lesson'},
+                  {'course_id':598,'lesson_id':7544,'source_position':2,'code':'owner_deferred_lesson'}]
+        with patch.object(store,'completed_course',side_effect=AssertionError('no payload reads')), \
+                patch.object(storage,'_unpack',side_effect=AssertionError('no raw decompression')):
+            self.assertEqual(store.deferred_reminders(),expected)
+            self.assertEqual(store.deferred_reminders(),expected)
+            report=store.report().read_text(encoding='utf-8')
+        section=report.split('## Вернуться после основного переноса',1)[1]
+        self.assertIn('Курс 557, урок 5952',section);self.assertIn('исходная позиция 2',section)
+        self.assertIn('Курс 598, урок 7544',section)
+        self.assertEqual(store.db.total_changes,changes)
+        self.assertEqual([tuple(r) for r in store.db.execute('SELECT kind,course,lesson,digest,payload FROM captures ORDER BY kind,course,lesson,digest')],before)
+        self.assertEqual([tuple(r) for r in store.db.execute('SELECT * FROM course_checkpoints ORDER BY course')],checkpoints)
+
+    def test_deferred_reminders_do_not_guess_positions_from_unbound_or_missing_sources(self):
+        store=self.store();store.catalog([{'id':557,'title':'Course'}])
+        course=verified_course((5941,5952,5942));course['parsed']['course_id']=557
+        digest=store.capture('course',557,0,course)
+        store.course(557,[5941,5952,5942],digest)
+        reminders=store.deferred_reminders()
+        self.assertEqual([(r['course_id'],r['lesson_id'],r['source_position']) for r in reminders],
+                         [(557,5952,None),(598,7544,None)])
+        report=store.report().read_text(encoding='utf-8')
+        self.assertIn('Курс 557, урок 5952',report);self.assertIn('позиция пока не подтверждена',report)
+
+    def test_deferred_reminders_use_bound_order_not_a_newer_unbound_capture(self):
+        store=self.store();self.deferred_checkpoint(store,557,(5941,5952,5942))
+        newer=verified_course((5952,5941,5942));newer['parsed']['course_id']=557
+        store.capture('course',557,0,newer)
+        self.assertEqual(store.deferred_reminders()[0]['source_position'],2)
+
+    def test_deferred_reminders_never_invent_position_for_missing_lesson_in_checkpoint(self):
+        store=self.store();self.deferred_checkpoint(store,557,(5941,5942))
+        self.assertIsNone(store.deferred_reminders()[0]['source_position'])
+
+    def test_deferred_reminders_reject_foreign_archive_and_invalid_policy_identity(self):
+        import lesson_policy
+        store=self.store();store.db.execute("UPDATE meta SET account='mv-centr'");store.db.commit()
+        with self.assertRaisesRegex(storage.StorageError,'archive_account_mismatch'):store.deferred_reminders()
+        store.db.execute('UPDATE meta SET account=?',(storage.ACCOUNT,));store.db.commit()
+        for policy in ({True:frozenset({5952})},{557:frozenset({False})}):
+            with patch.object(lesson_policy,'DEFERRED',policy):
+                with self.assertRaisesRegex(storage.StorageError,'deferred_policy_invalid'):store.deferred_reminders()
+
+    def test_deferred_reminders_reject_corrupt_checkpoint_or_ledger_metadata(self):
+        store=self.store();digest,pairs=self.deferred_checkpoint(store,557,(5941,5952,5942))
+        cases=[('bad',json.dumps(pairs)),(digest,'not json'),
+               (digest,json.dumps([pairs[0],pairs[0],pairs[2]])),
+               (digest,json.dumps(list(reversed(pairs)))),
+               (digest,json.dumps([[5941,'invalid'],*pairs[1:]]))]
+        for course_digest,lesson_digests in cases:
+            store.db.execute('UPDATE course_checkpoints SET course_digest=?,lesson_digests=? WHERE course=557',
+                             (course_digest,lesson_digests));store.db.commit()
+            with self.subTest(course_digest=course_digest,lesson_digests=lesson_digests):
+                with self.assertRaisesRegex(storage.StorageError,'deferred_checkpoint_invalid'):store.deferred_reminders()
+
     def test_permanent_exclusions_are_reported_without_rewriting_source_ids(self):
         store=self.store();cid=207;ids=(11,1976,12)
         store.catalog([{'id':cid,'title':'Course'}])

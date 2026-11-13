@@ -11,7 +11,7 @@ def payload(cid, lid):
 
 class PolicyTests(unittest.TestCase):
     def test_permanent_omissions_are_not_temporary_pending_or_cross_course(self):
-        for cid,lid in ((207,1976),(445,4089)):
+        for cid,lid in ((207,1976),(445,4089),(618,6870)):
             source=[payload(cid,1),payload(cid,lid),payload(cid,2)];before=copy.deepcopy(source)
             selected,pending=partition_payloads(source)
             self.assertEqual([p['lesson_id'] for p in selected],[1,2]);self.assertEqual(pending,[])
@@ -33,6 +33,14 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(partition_payloads([]),([],[]))
         self.assertEqual(partition_payloads([payload(598,7544)]),([],[7544]))
         self.assertEqual(deferred_ids(598),{7544});self.assertEqual(deferred_ids(1),set())
+
+    def test_new_temporary_deferral_keeps_source_and_order_and_is_not_permanent(self):
+        source=[payload(557,lid) for lid in (5941,5952,5942)];before=copy.deepcopy(source)
+        selected,pending=partition_payloads(source)
+        self.assertEqual([p['lesson_id'] for p in selected],[5941,5942])
+        self.assertEqual(pending,[5952]);self.assertEqual(source,before)
+        self.assertEqual(deferred_ids(557),{5952});self.assertEqual(excluded_ids(557),set())
+        self.assertEqual(partition_payloads([payload(999,5952)]),([payload(999,5952)],[]))
 
     def test_foreign_mixed_duplicate_or_invalid_identity_fails(self):
         foreign=payload(598,7544);foreign['account']='mv-centr'

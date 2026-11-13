@@ -2,9 +2,9 @@
 from importer import ACCOUNT, ORIGIN, Stop
 
 CODE = 'owner_deferred_lesson'
-DEFERRED = {598: frozenset({7544})}
+DEFERRED = {557: frozenset({5952}), 598: frozenset({7544})}
 EXCLUDED_CODE = 'owner_excluded_obsolete_lesson'
-EXCLUDED = {207: frozenset({1976}), 445: frozenset({4089})}
+EXCLUDED = {207: frozenset({1976}), 445: frozenset({4089}), 618: frozenset({6870})}
 
 
 def deferred_ids(course_id):

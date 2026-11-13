@@ -364,7 +364,8 @@ def normalize_payload(payload, audio_assets=None):
     ape, image_changes = normalize_inline_images(ape, static_validator())
     ape, extracted_image_changes = normalize_nodes(ape, static_validator())
     editor_changes.extend(extracted_image_changes)
-    ape, empty_button_changes = normalize_empty_material_buttons(ape, static_validator())
+    ape, empty_button_changes = normalize_empty_material_buttons(
+        ape, static_validator(), course_id=result.get('course_id'), lesson_id=result.get('lesson_id'))
     ape, button_changes = normalize_button_labels(ape, static_validator())
     ape, empty_widget_changes = normalize_empty_discussion_widgets(ape, static_validator())
     try:

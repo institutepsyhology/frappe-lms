@@ -6,7 +6,7 @@ from pathlib import Path
 import unittest
 
 from importer import Review
-from normalize_editor_nodes import normalize_nodes
+from normalize_editor_nodes import normalize_nodes, _core
 
 spec = importlib.util.spec_from_file_location('editor_test_static', Path(__file__).resolve().parents[2] / 'lms/lms/avo_html_fragment.py')
 static = importlib.util.module_from_spec(spec); spec.loader.exec_module(static)
@@ -27,6 +27,12 @@ def heading(markup='<h2><b>Heading</b></h2>',format='h2',**fields):
     return {'id':'heading','name':'header','fields':{'html':markup,'format':format,**fields},'children':[]}
 
 
+def simple_heading(markup='First<br>Second',level='h2',**fields):
+    return {'id':'simple-heading','name':'header-simple',
+            'fields':{'anchor':'','html':markup,'level':level,**fields},'children':[],
+            'style':{'marginTop':{'value':'12px'}}}
+
+
 def avatar(**fields):
     return {'id':'personal-avatar','name':'image',
             'fields':{'imageSrc':'{avatar_url}','anchor':'','linkHref':'',**fields},'children':[],
@@ -36,6 +42,69 @@ def avatar(**fields):
 
 class EditorNodeTests(unittest.TestCase):
     def normalize(self,ape): return normalize_nodes(ape,VALIDATE)
+
+    def test_simple_header_linebreak_keeps_exact_html_level_id_style_and_order(self):
+        markup='First &amp; <strong>bold&nbsp;text</strong><br />\n<a href="https://example.test/file?x=1&amp;y=2">Notes</a><BR>Last'
+        for level in ('h1','h2','h3','h4','h5','h6'):
+            ape=page(video(),simple_heading(markup,level),{'name':'text','fields':{'html':'After'}})
+            before=copy.deepcopy(ape);out,changes=self.normalize(ape)
+            expected=copy.deepcopy(ape);node=expected['children'][1]
+            node['name']='text';node['fields']['html']='<'+level+'>'+markup+'</'+level+'>';del node['fields']['level']
+            self.assertEqual(out,expected);self.assertEqual(ape,before)
+            self.assertEqual(changes,[{'path':[1],'code':'simple_header_linebreak_html_preserved'}])
+            self.assertEqual(self.normalize(out),(out,[]));VALIDATE(out['children'][1]['fields']['html'])
+
+    def test_simple_header_without_break_is_byte_identical(self):
+        for markup in ('Native heading','<strong>Native</strong> &amp; text','<span style="color:red">Title</span>'):
+            ape=page(simple_heading(markup));self.assertEqual(self.normalize(ape),(ape,[]))
+
+    def test_simple_header_unsafe_attributes_block_tags_and_bad_breaks_are_retained(self):
+        for markup in ('First<br class="text-left">Second','First<br style="color:red">Second',
+                       'First<br onclick="private()">Second','First<br></br>Second',
+                       '<p>First</p><br>Second','<h3>First</h3><br>Second',
+                       '<ul><li>First</li></ul><br>Second','First<br><img src="https://example.test/a.png">',
+                       'First<br><script>private()</script>','First<br><span onclick="private()">Second</span>',
+                       '<strong>First<br>Second','First<!-- comment --><br>Second',
+                       'First<br><a href="#local">Local</a>','<br>','&nbsp;<br>'):
+            ape=page(simple_heading(markup));before=copy.deepcopy(ape)
+            self.assertEqual(self.normalize(ape),(ape,[]));self.assertEqual(ape,before)
+
+    def test_simple_header_strict_fields_children_style_and_conditions_are_protected(self):
+        for fields in ({'anchor':'keep'},{'visibleConditions':None},{'visibleConditions':{'active':True}},
+                       {'displayDelay':0},{'unknown':None}):
+            ape=page(simple_heading(**fields));self.assertEqual(self.normalize(ape),(ape,[]))
+        for level in ('h7','h2 ',None,2):
+            ape=page(simple_heading(level=level));self.assertEqual(self.normalize(ape),(ape,[]))
+        for key,value in (('children',[{'name':'text','fields':{'html':'Keep'}}]),
+                          ('extra',None),('style',{'caption':'Keep'}),
+                          ('style',{'backgroundImage':'https://example.test/image.png'})):
+            node=simple_heading();node[key]=value;ape=page(node)
+            self.assertEqual(self.normalize(ape),(ape,[]))
+        for key in ('anchor','level'):
+            node=simple_heading();del node['fields'][key];ape=page(node)
+            self.assertEqual(self.normalize(ape),(ape,[]))
+        ape={'name':'page','fields':{'visibleConditions':{'active':True}},'children':[simple_heading()]}
+        self.assertEqual(self.normalize(ape),(ape,[]))
+
+    def test_simple_header_source_and_wrapped_markup_must_both_validate(self):
+        ape=page(simple_heading())
+        def reject_wrapped(html):
+            if html.startswith('<h2>'):raise ValueError('unsupported')
+            return VALIDATE(html)
+        self.assertEqual(normalize_nodes(ape,reject_wrapped),(ape,[]))
+        self.assertEqual(normalize_nodes(ape,lambda _: (_ for _ in ()).throw(ValueError('unsupported'))),(ape,[]))
+
+    def test_simple_header_real_core_preserves_break_heading_level_and_links(self):
+        original={'account':'mastervision','source_origin':'https://shop.mastervision.su',
+                  'course_id':7,'lesson_id':11,'course_title':'Synthetic','lesson_title':'Synthetic',
+                  'format':'ape','ape':page(simple_heading('A<br><a href="https://example.test/file">B &amp; C</a>'))}
+        self.assertIn('unsupported_header',_core().plan_import(original)['issues'])
+        transformed=copy.deepcopy(original);transformed['ape'],_=self.normalize(original['ape'])
+        plan=_core().plan_import(transformed)
+        self.assertTrue(plan['ready']);self.assertEqual(plan['issues'],[])
+        expected=copy.deepcopy(original);expected['ape']=page({'name':'text','fields':{
+            'html':'<h2>A<br><a href="https://example.test/file">B &amp; C</a></h2>'}})
+        self.assertEqual(plan['blocks'],_core().plan_import(expected)['blocks'])
 
     def test_already_importable_nodes_keep_exact_structure_and_fingerprint(self):
         ape=page(video(videoProvider2='rutube',videoSrc2=RT,html='Meaningful caption'),heading(),

@@ -360,6 +360,43 @@ class Store:
         if any(row[0] not in STATES for row in rows): raise StorageError('archive_state_invalid')
         return {row[0]: row[1] for row in rows}
 
+    def deferred_reminders(self):
+        """Return policy IDs and positions from bound metadata, never raw APE.
+
+        bind_course already verified the complete snapshot before atomically
+        recording this order. A newer unbound capture cannot change a reminder.
+        """
+        from lesson_policy import DEFERRED, CODE
+        identity = [tuple(row) for row in self.db.execute('SELECT account,origin,site FROM meta')]
+        if identity != [(ACCOUNT, ORIGIN, SITE)]: raise StorageError('archive_account_mismatch')
+        if (not isinstance(DEFERRED, dict) or not _codes([CODE])
+                or any(not _id(cid) or not isinstance(lids, (set, frozenset, list, tuple))
+                       or any(not _id(lid) for lid in lids) or len(lids) != len(set(lids))
+                       for cid, lids in DEFERRED.items())):
+            raise StorageError('deferred_policy_invalid')
+        result = []
+        for cid, lids in sorted(DEFERRED.items()):
+            row = self.db.execute('''SELECT p.course_digest,p.lesson_digests,c.source_digest,c.lesson_ids
+                FROM course_checkpoints p LEFT JOIN courses c ON c.id=p.course WHERE p.course=?''',
+                (cid,)).fetchone()
+            positions = {}
+            if row is not None:
+                try:
+                    pairs, ids = json.loads(row['lesson_digests']), json.loads(row['lesson_ids'])
+                except (ValueError, TypeError, RecursionError):
+                    raise StorageError('deferred_checkpoint_invalid') from None
+                if (not _digest(row['course_digest']) or row['source_digest'] != row['course_digest']
+                        or not isinstance(pairs, list) or any(not isinstance(pair, list) or len(pair) != 2
+                            or not _id(pair[0]) or not _digest(pair[1]) for pair in pairs)
+                        or not isinstance(ids, list) or any(not _id(lid) for lid in ids)
+                        or len(ids) != len(set(ids)) or [pair[0] for pair in pairs] != ids):
+                    raise StorageError('deferred_checkpoint_invalid')
+                positions = {lid: index for index, lid in enumerate(ids, 1)}
+            for lid in sorted(lids):
+                result.append({'course_id': cid, 'lesson_id': lid,
+                               'source_position': positions.get(lid), 'code': CODE})
+        return result
+
     def report(self):
         summary = self.summary()
         lines = ['# Перенос курсов и уроков МВ', '', 'Источник: https://shop.mastervision.su',
@@ -395,6 +432,13 @@ class Store:
         if excluded:
             lines += ['', '## Исключены из переноса по решению владельца', '']
             lines += [f'- Курс {cid}, урок {lid}: {EXCLUDED_CODE}. Исходник АВО сохранён.' for cid, lid in excluded]
+        reminders = self.deferred_reminders()
+        if reminders:
+            lines += ['', '## Вернуться после основного переноса', '']
+            for row in reminders:
+                position = ('исходная позиция ' + str(row['source_position']) if row['source_position'] is not None
+                            else 'исходная позиция пока не подтверждена')
+                lines.append(f"- Курс {row['course_id']}, урок {row['lesson_id']}: {position}; {row['code']}.")
         path = self.directory / 'ОТЧЁТ-перенос-mastervision.md'
         temporary = path.with_name(path.name + '.tmp-' + os.urandom(6).hex())
         fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
