@@ -69,6 +69,17 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(json.loads(zlib.decompress(row['payload'])),payload)
         self.assertEqual(store.db.execute('SELECT COUNT(*) FROM captures').fetchone()[0],1)
 
+    def test_read_only_audit_snapshot_does_not_block_progress_commits(self):
+        store = self.store()
+        path = self.archive/'mastervision-migration.sqlite'
+        with closing(sqlite3.connect(path.resolve().as_uri()+'?mode=ro',uri=True)) as reader:
+            reader.execute('BEGIN')
+            self.assertEqual(reader.execute('SELECT COUNT(*) FROM events').fetchone()[0],0)
+            store.event('audio',None,None,'audio_staged')
+            self.assertEqual(reader.execute('SELECT COUNT(*) FROM events').fetchone()[0],0)
+            reader.rollback()
+            self.assertEqual(reader.execute('SELECT COUNT(*) FROM events').fetchone()[0],1)
+
     def test_foreign_db_never_mutated_or_given_new_lock(self):
         self.archive.mkdir();path=self.archive/'mastervision-migration.sqlite'
         with closing(sqlite3.connect(path)) as db:

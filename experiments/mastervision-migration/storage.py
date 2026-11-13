@@ -130,6 +130,10 @@ class Store:
                 self.db.commit()
             elif len(rows) != 1 or tuple(rows[0]) != (ACCOUNT, ORIGIN, SITE):
                 raise StorageError('archive_account_mismatch')
+            # A read-only audit may hold a stable snapshot for several minutes.
+            # Its snapshot must not prevent the single worker recording progress.
+            if self.db.execute('PRAGMA journal_mode=WAL').fetchone()[0].lower() != 'wal':
+                raise StorageError('archive_concurrent_reads_unavailable')
         except Exception:
             self.close()
             raise
