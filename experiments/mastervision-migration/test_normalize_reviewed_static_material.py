@@ -145,7 +145,10 @@ class ReviewedStaticTests(unittest.TestCase):
         self.assertIn('Footer one Footer two Footer three Footer four', subject._signature(output)[0])
 
     def test_unapproved_merged_cells_are_never_dropped(self):
-        with self.assertRaises(Review): self.apply('<table><tr><td colspan="2">Keep merged</td></tr></table>')
+        html = '<table><tr><td colspan="2">Keep merged</td></tr></table>'
+        result, _ = self.apply(html)
+        self.assertEqual(result['children'][0]['fields']['html'], html)
+        with self.assertRaises(Review): self.apply(html.replace('colspan="2"', 'colspan="17"'))
 
     def test_excel_metadata_only_exact_value_is_removed(self):
         html = '<div align="center" x:publishsource="Excel"><table><tr><td class="xl6429282">Alpha</td></tr></table></div>'

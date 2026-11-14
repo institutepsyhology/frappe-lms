@@ -150,5 +150,25 @@ class AudioTests(unittest.TestCase):
             with self.assertRaisesRegex(Review,'^audio_source_url_invalid$'):
                 mod.normalize_audio(page(audio(source)),None)
 
+    def test_visible_desktop_and_mobile_controls_preserve_audio_and_style(self):
+        lists = {}
+        for prefix in ('', '$__max_width__576__', '$__max_width__768__'):
+            lists[prefix + 'block'] = {'display': {'value': {'visible': 'block'}}}
+            lists[prefix + 'player'] = {'opacity': {'value': {'number': 1}}}
+        node = audio(); node['style'] = {'lists': lists}; source = page(node)
+        out, changes = mod.normalize_audio(source, {key(): receipt()})
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(out['children'][0]['style'], node['style'])
+        self.assertEqual(source, page(node))
+        for bad in ({'value': {'visible': 'none'}}, {'value': {'visible': False}},
+                    {'value': {'visible': 'block', 'condition': 'private'}}):
+            changed = copy.deepcopy(source)
+            changed['children'][0]['style']['lists']['$__max_width__576__block']['display'] = bad
+            self.assertEqual(mod.normalize_audio(changed, None), (changed, []))
+        for group in ('other', '$__max_width__999__block'):
+            changed = copy.deepcopy(source)
+            changed['children'][0]['style']['lists'][group] = {'display': {'value': {'visible': 'block'}}}
+            self.assertEqual(mod.normalize_audio(changed, None), (changed, []))
+
 
 if __name__=='__main__':unittest.main()

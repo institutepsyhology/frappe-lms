@@ -36,10 +36,17 @@ def _hidden_style(value, path=()):
             current = path + (key,)
             # Observed on every native player: the full-opacity editor control,
             # preserved exactly in the copied style, cannot hide its content.
-            if (current == ('lists', 'player', 'opacity') and isinstance(child, dict)
+            visible_player = {'player', '$__max_width__576__player', '$__max_width__768__player'}
+            visible_block = {'block', '$__max_width__576__block', '$__max_width__768__block'}
+            if (len(current) == 3 and current[0] == 'lists' and current[1] in visible_player
+                    and current[2] == 'opacity' and isinstance(child, dict)
                     and set(child) == {'value'} and isinstance(child['value'], dict)
                     and set(child['value']) == {'number'}
                     and type(child['value']['number']) is int and child['value']['number'] == 1): continue
+            # These exact desktop/mobile controls explicitly show the block;
+            # they are not a visibility condition. Keep the original style.
+            if (len(current) == 3 and current[0] == 'lists' and current[1] in visible_block
+                    and current[2] == 'display' and child == {'value': {'visible': 'block'}}): continue
             if (key.lower() in {'display', 'visibility', 'opacity', 'hidden', 'visibleconditions'}
                     and child is not None and child != '' and child != [] and child != {}): return True
             if _hidden_style(child, current): return True

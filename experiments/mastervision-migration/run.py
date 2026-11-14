@@ -172,7 +172,9 @@ def prepare_payloads(payloads, audio_assets=None):
                             'reviewed_static_material_mismatch', 'reviewed_static_source_invalid',
                             'missing_course_image_material_mismatch', 'missing_course_image_source_invalid',
                             'reviewed_rotation_material_mismatch', 'reviewed_rotation_source_invalid',
-                            'reviewed_rotation_account_mismatch'):
+                            'reviewed_rotation_account_mismatch',
+                            'remaining_static_material_mismatch', 'remaining_static_source_invalid',
+                            'reviewed_legacy_player_account_mismatch', 'reviewed_legacy_player_source_invalid'):
                 raise Stop(str(exc)) from None
             # The unchanged source still goes through the stricter server parser.
             # Unknown embeds are never silently dropped or locally authorized.

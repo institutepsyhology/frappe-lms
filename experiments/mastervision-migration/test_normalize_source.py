@@ -686,9 +686,17 @@ class TablePresentationTests(unittest.TestCase):
     def test_unknown_tags_attributes_and_spans_remain_review_cases(self):
         for table in ['<table unknown="keep" style="height:23px"><tr><td>Cell</td></tr></table>',
                       '<table style="height:23px"><tfoot><tr><td>Footer</td></tr></tfoot></table>',
-                      '<table style="height:23px"><tr><td colspan="2">Merged</td></tr></table>']:
+                      '<table style="height:23px"><tr><td colspan="17">Merged</td></tr></table>']:
             with self.subTest(table=table), self.assertRaises(Review):
                 normalize_payload(payload(table))
+
+    def test_bounded_cell_merges_keep_the_table_topology(self):
+        table = '<table style="height:23px"><tr><td colspan="2" rowspan="1">Merged</td></tr></table>'
+        normalized, _ = normalize_payload(payload(table))
+        cleaned = normalized['ape']['children'][0]['fields']['html']
+        self.assertIn('colspan="2"', cleaned)
+        self.assertIn('rowspan="1"', cleaned)
+        self.assertIn('Merged', cleaned)
 
     def test_confirmed_spreadsheet_metadata_and_header_presentation_are_normalized(self):
         markup = '<table xmlns="http://www.w3.org/1999/xhtml" border="1" cellpadding="0" cellspacing="0" width="500">' \

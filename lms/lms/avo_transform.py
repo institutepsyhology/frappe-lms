@@ -249,6 +249,11 @@ CONFIRMED_OMIT_MANAGER = {
     ('mv-centr','685','8153'): ('79fe64079f2dcd9e2c97890c1e0dfe1a94e07c2c5316bcbcb73924fc976a4040','f4d56d59e0b45007b099df735bc1fcb5056450c4ad28d57692fe373b3fa69a0e'),
     ('mv-centr','771','8257'): ('2495be659295d6d53759263bce1c421a1d21c819e32efcbe79173b6124e0b08e','757f4e0e4fb1fd36a3fc9f49191db0c2fec7b6b7ec6e34904e2d9b64ef6fd9e6'),
 }
+# Exact normalized MV snapshot with explicit main/alternative labels. VK stays
+# beside its YouTube as inert HTML; it is never represented as a Rutube URL.
+REVIEWED_VK_HTML_LABELS = {('mastervision','96','169'):
+    '211b68064d2342a3d27b3bde21b38f87f6b4f4a3b10937fb10027adf245bf921'}
+
 # Owner confirmed this exact VK iframe is the alternative for the preceding
 # YouTube player. Preserve it as an HTML block, not as a fabricated Rutube URL.
 CONFIRMED_VK_ALTERNATIVE = {('mv-centr','583','4086'):
@@ -1135,6 +1140,18 @@ def plan_import(payload, image_urls=None):
                 issue('reviewed_source_changed')
             else:
                 legacy_unmatched.difference_update((id(leaves[0]),id(leaves[2])))
+        reviewed_vk_labels = REVIEWED_VK_HTML_LABELS.get((account,course,lesson))
+        if reviewed_vk_labels:
+            actual = _sha256_text(json.dumps(root,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False))
+            if actual != reviewed_vk_labels:
+                issue('reviewed_source_changed')
+            else:
+                # The full-root witness binds both captions, both players and
+                # their common section. Preserve all four leaves and order.
+                labels = (root['children'][0]['children'][0]['children'][0],
+                          root['children'][0]['children'][1]['children'][0])
+                legacy_unmatched.difference_update(id(label) for label in labels)
+                plan['warnings'].append('reviewed_vk_html_alternative_preserved')
         if legacy_unmatched:
             issue('legacy_player_pair_unresolved')
         if legacy_first:

@@ -7,11 +7,11 @@ import base64
 from html import escape, unescape
 from html.parser import HTMLParser
 import re
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 TAGS={'p','div','span','h1','h2','h3','h4','h5','h6','strong','b','em','i','u','s','a','hr','br','ul','ol','li','blockquote','font','style','iframe','sub','sup','mark','table','colgroup','col','tbody','tr','td'}
 VOID={'br','hr','col'}
-ATTRS={'class','style','href','target','rel','title','savefrom_lm','savefrom_lm_index','dir','span','id','data-xdget-id','data-block-id','data-updated','data-code','data-editable','data-main-class','data-param','color','face','type','src','width','height','aria-level','start','role'}
+ATTRS={'class','style','href','target','rel','title','savefrom_lm','savefrom_lm_index','dir','span','id','data-xdget-id','data-block-id','data-updated','data-code','data-editable','data-main-class','data-param','color','face','type','src','width','height','aria-level','start','role','colspan','rowspan','allow','frameborder','allowfullscreen'}
 CSS={'box-sizing','margin-top','border','color','font-family','font-size','border-bottom','padding',
      'background-color','font-weight','text-decoration-line','margin','line-height','vertical-align',
      'white-space','z-index','background','margin-right','margin-left','margin-bottom','background-image',
@@ -41,10 +41,49 @@ SAFE_CLIPBOARD_CSS='<!--td {border: 1px solid #ccc;}br {mso-data-placement:same-
 
 def valid_link(value):
     if not isinstance(value,str) or not value or len(value)>4096 or re.search(r'[\x00-\x20\x7f\\]',value):return False
+    # A single plain mailbox has no executable URL, headers or body payload.
+    if value.startswith('mailto:'):
+        return len(value)<=320 and bool(re.fullmatch(r'mailto:[A-Za-z0-9.!$\x27*+/=_`{|}~-]{1,64}@(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}',value))
     try:
         u=urlsplit(value)
         return u.scheme in ('http','https') and bool(u.hostname) and not u.username and not u.password and u.port in (None,80,443)
     except ValueError:return False
+
+
+def valid_vk_frame(attrs):
+    """Allow only the observed public VK embed shape, never general iframes."""
+    if set(attrs)!={'src','width','height','allow','frameborder','allowfullscreen'}:
+        return False
+    if attrs['frameborder']!='0' or attrs['allowfullscreen'] not in (None,'','true','allowfullscreen'):
+        return False
+    for key in ('width','height'):
+        value=attrs[key]
+        if not isinstance(value,str) or not re.fullmatch(r'[1-9][0-9]{0,3}',value) or int(value)>4096:
+            return False
+    features=attrs['allow']
+    if (not isinstance(features,str) or len(features)>160
+            or {v.strip() for v in features.split(';') if v.strip()} !=
+            {'autoplay','encrypted-media','fullscreen','picture-in-picture','screen-wake-lock'}):
+        return False
+    source=attrs['src']
+    if not isinstance(source,str) or len(source)>1000 or re.search(r'[\x00-\x20\x7f\\]',source):
+        return False
+    try:
+        url=urlsplit(source)
+        if (url.scheme!='https' or url.hostname not in ('vk.com','vkvideo.ru')
+                or url.username is not None or url.password is not None or url.port is not None
+                or url.fragment or url.path!='/video_ext.php'):
+            return False
+        pairs=parse_qsl(url.query,keep_blank_values=True,strict_parsing=True)
+        query=dict(pairs)
+        if len(query)!=len(pairs) or set(query) not in ({'oid','id','hash','hd'},{'oid','id','hash','hd','autoplay'}):
+            return False
+        return (bool(re.fullmatch(r'-?[1-9][0-9]{0,11}',query['oid']))
+                and bool(re.fullmatch(r'[1-9][0-9]{0,11}',query['id']))
+                and bool(re.fullmatch(r'[0-9a-f]{16}',query['hash']))
+                and query['hd'] in ('2','4') and query.get('autoplay','0') in ('0','1'))
+    except (ValueError,UnicodeError):
+        return False
 
 
 def valid_style(value):
@@ -84,8 +123,9 @@ class StaticHTML(HTMLParser):
         if tag not in TAGS or len({k for k,v in attrs})!=len(attrs):raise ValueError('unsupported_html')
         if tag=='iframe':
             a=dict(attrs)
-            if (set(a)!={'src','width','height'} or a['width']!='640' or a['height']!='480'
-                    or not re.fullmatch(r'https://drive\.google\.com/file/d/[A-Za-z0-9_-]{1,200}/preview',a['src'])):
+            drive=(set(a)=={'src','width','height'} and a['width']=='640' and a['height']=='480'
+                   and isinstance(a['src'],str) and bool(re.fullmatch(r'https://drive\.google\.com/file/d/[A-Za-z0-9_-]{1,200}/preview',a['src'])))
+            if not drive and not valid_vk_frame(a):
                 raise ValueError('unsupported_iframe')
         if self.stylesheet is not None:raise ValueError('unsupported_html')
         if self.answers_depth is not None and (tag not in ('div','p','span','br') or any(k not in ('class','style') for k,v in attrs)):
@@ -94,6 +134,10 @@ class StaticHTML(HTMLParser):
             if key not in ATTRS:raise ValueError('unsupported_attribute')
             if key=='role' and (tag!='p' or value!='presentation'):raise ValueError('unsupported_attribute')
             if key in ('src','height') and tag!='iframe':raise ValueError('unsupported_attribute')
+            if key in ('allow','frameborder','allowfullscreen') and tag!='iframe':raise ValueError('unsupported_attribute')
+            if key in ('colspan','rowspan') and (tag!='td' or not isinstance(value,str)
+                    or not re.fullmatch(r'[1-9]|1[0-6]',value)):
+                raise ValueError('unsupported_attribute')
             if key=='width' and tag!='iframe':
                 if tag not in ('table','col') or not isinstance(value,str) or not re.fullmatch(r'[1-9][0-9]{0,3}',value):raise ValueError('unsupported_attribute')
             if key in ('aria-level','start'):
