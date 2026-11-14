@@ -184,7 +184,11 @@ def prepare_payloads(payloads, audio_assets=None):
                             'reviewed_keycap_source_changed', 'reviewed_keycap_material_mismatch',
                             'owner_purchase_account_mismatch', 'owner_purchase_source_invalid', 'owner_purchase_source_changed',
                             'reviewed_intro_account_mismatch', 'reviewed_intro_source_invalid',
-                            'reviewed_intro_source_changed', 'reviewed_intro_material_mismatch'):
+                            'reviewed_intro_source_changed', 'reviewed_intro_material_mismatch',
+                            'reviewed_club_account_mismatch', 'reviewed_club_source_invalid',
+                            'reviewed_club_source_changed', 'reviewed_club_material_mismatch',
+                            'reviewed_shared_image_account_mismatch', 'reviewed_shared_image_source_invalid',
+                            'reviewed_shared_image_source_changed', 'reviewed_shared_image_material_mismatch'):
                 raise Stop(str(exc)) from None
             # The unchanged source still goes through the stricter server parser.
             # Unknown embeds are never silently dropped or locally authorized.
@@ -349,6 +353,10 @@ def main():
                     cid, lid = int(event['course_id']), int(event['lesson_id'])
                     store.event('import', cid, lid, 'lesson_' + event['status'])
                     if event['status'] == 'created':
+                        from verify_reviewed_shared_image import verify_reviewed_shared_image_target
+                        checked = verify_reviewed_shared_image_target(client, cid, lid)
+                        if checked:
+                            store.event('import', cid, lid, 'image_verified', [checked['code']])
                         emit({'course': cid, 'lesson': lid, 'status': 'lesson_created'})
                 if selected.covers_only:
                     if selected.collect_only or not client:
@@ -406,6 +414,13 @@ def main():
                         result = target.import_course(payloads, apply=selected.apply, images_for_lesson=assets.lesson_images,
                                                       progress_callback=record_target_event)
                         if selected.apply:
+                            # Also verify a resumed/already-present 7364 before
+                            # private-course settings or cover writes can follow.
+                            from verify_reviewed_shared_image import verify_reviewed_shared_image_target
+                            for payload in payloads:
+                                checked = verify_reviewed_shared_image_target(client, cid, payload['lesson_id'])
+                                if checked:
+                                    store.event('import', cid, int(payload['lesson_id']), 'image_verified', [checked['code']])
                             from settings import ensure_private_course
                             ensure_private_course(client, cid, apply=True)
                         store.error('import', False)

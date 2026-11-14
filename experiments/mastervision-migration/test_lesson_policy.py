@@ -13,13 +13,14 @@ def payload(cid, lid):
 
 
 class PolicyTests(unittest.TestCase):
-    def test_exact_eight_owner_deferrals_and_17_exclusions(self):
+    def test_exact_eight_owner_deferrals_and_19_exclusions(self):
         self.assertEqual(DEFERRED, PENDING)
         self.assertTrue(all(isinstance(ids, frozenset) for ids in DEFERRED.values()))
         expected={1:{1,6},2:{2,5},17:{2558},23:{30},207:{1976},259:{1536},273:{1735},274:{1749},
-                  354:{2937},355:{2952},440:{7326},445:{4089},557:{5952},598:{7544},618:{6870}}
+                  354:{2937},355:{2952},440:{7326},445:{4089},557:{5952},598:{7544},613:{6750},
+                  618:{6870},634:{7341}}
         self.assertEqual(EXCLUDED, expected)
-        self.assertEqual(sum(map(len, EXCLUDED.values())), 17)
+        self.assertEqual(sum(map(len, EXCLUDED.values())), 19)
         self.assertNotIn(9037, set().union(*DEFERRED.values(), *EXCLUDED.values()))
 
     def test_eight_deferrals_keep_source_payloads_order_and_exact_identity(self):
@@ -79,7 +80,8 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(partition_payloads([payload(23,30)]),([],[]))
 
     def test_permanent_omissions_are_not_temporary_pending_or_cross_course(self):
-        for cid,lid in ((207,1976),(445,4089),(557,5952),(598,7544),(618,6870)):
+        for cid,lid in ((207,1976),(440,7326),(445,4089),(557,5952),(598,7544),
+                        (613,6750),(618,6870),(634,7341)):
             source=[payload(cid,1),payload(cid,lid),payload(cid,2)];before=copy.deepcopy(source)
             selected,pending=partition_payloads(source)
             self.assertEqual([p['lesson_id'] for p in selected],[1,2]);self.assertEqual(pending,[])

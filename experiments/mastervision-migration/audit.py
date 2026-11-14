@@ -41,7 +41,11 @@ FATAL = {'normalization_account_mismatch', 'normalization_metadata_conflict', 'n
          'reviewed_keycap_source_changed', 'reviewed_keycap_material_mismatch',
          'owner_purchase_account_mismatch', 'owner_purchase_source_invalid', 'owner_purchase_source_changed',
          'reviewed_intro_account_mismatch', 'reviewed_intro_source_invalid',
-         'reviewed_intro_source_changed', 'reviewed_intro_material_mismatch'}
+         'reviewed_intro_source_changed', 'reviewed_intro_material_mismatch',
+         'reviewed_club_account_mismatch', 'reviewed_club_source_invalid',
+         'reviewed_club_source_changed', 'reviewed_club_material_mismatch',
+         'reviewed_shared_image_account_mismatch', 'reviewed_shared_image_source_invalid',
+         'reviewed_shared_image_source_changed', 'reviewed_shared_image_material_mismatch'}
 # Historical evidence, not a claim of a fresh HTTP check. Never silently retry.
 KNOWN_404 = {(280, 1802): 'fc93e347a1ef59ba7b9b32601c74cb670ee69f34403eea8f854f11768224aab8',
              (286, 1857): 'fc93e347a1ef59ba7b9b32601c74cb670ee69f34403eea8f854f11768224aab8'}

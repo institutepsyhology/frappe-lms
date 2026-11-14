@@ -80,7 +80,11 @@ class ReviewedNormalizationReplayTests(unittest.TestCase):
                      'reviewed_keycap_source_changed', 'reviewed_keycap_material_mismatch',
                      'owner_purchase_account_mismatch', 'owner_purchase_source_invalid', 'owner_purchase_source_changed',
                      'reviewed_intro_account_mismatch', 'reviewed_intro_source_invalid',
-                     'reviewed_intro_source_changed', 'reviewed_intro_material_mismatch'):
+                     'reviewed_intro_source_changed', 'reviewed_intro_material_mismatch',
+                     'reviewed_club_account_mismatch', 'reviewed_club_source_invalid',
+                     'reviewed_club_source_changed', 'reviewed_club_material_mismatch',
+                     'reviewed_shared_image_account_mismatch', 'reviewed_shared_image_source_invalid',
+                     'reviewed_shared_image_source_changed', 'reviewed_shared_image_material_mismatch'):
             self.assertIn(code, audit.FATAL)
             with self.subTest(code=code), patch('normalize_source.normalize_payload', side_effect=Review(code)):
                 with self.assertRaisesRegex(controller.Stop, '^' + code + '$'):

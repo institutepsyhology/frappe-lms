@@ -44,6 +44,8 @@ from normalize_reviewed_email_html import normalize_reviewed_email_html
 from normalize_reviewed_keycap_lesson import normalize_reviewed_keycap_lesson
 from normalize_reviewed_intro_lesson import normalize_reviewed_intro_lesson
 from normalize_owner_purchase_buttons import normalize_owner_purchase_buttons
+from normalize_reviewed_club_links import normalize_reviewed_club_links
+from normalize_reviewed_shared_image import normalize_reviewed_shared_image
 from normalize_audio import normalize_audio, CODE as AUDIO_CODE
 
 
@@ -340,7 +342,7 @@ def normalize_payload(payload, audio_assets=None):
             raise Review("normalization_metadata_conflict")
         metadata = result['source_normalization']
         is_audio = isinstance(metadata, dict) and (metadata.get('version') == 7 or
-            metadata.get('version') in (8,9,10,11,12,13,14,15,16,17,18,19,20,21,22) and ('audio_assets' in metadata or bool(metadata.get('audio_blocks'))))
+            metadata.get('version') in (8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23) and ('audio_assets' in metadata or bool(metadata.get('audio_blocks'))))
         stored_assets = metadata.get('audio_assets') if is_audio else None
         if is_audio:
             if (not isinstance(stored_assets, dict) or not stored_assets
@@ -373,6 +375,10 @@ def normalize_payload(payload, audio_assets=None):
     ape, owner_purchase_changes = normalize_owner_purchase_buttons(
         ape, result.get('course_id'), result.get('lesson_id'))
     ape, reviewed_intro_changes = normalize_reviewed_intro_lesson(
+        ape, result.get('course_id'), result.get('lesson_id'), static_validator())
+    ape, reviewed_club_changes = normalize_reviewed_club_links(
+        ape, result.get('course_id'), result.get('lesson_id'), static_validator())
+    ape, reviewed_shared_image_changes = normalize_reviewed_shared_image(
         ape, result.get('course_id'), result.get('lesson_id'), static_validator())
     ape, reviewed_text_changes = normalize_reviewed_text_fragments(
         ape, result.get('course_id'), result.get('lesson_id'), static_validator())
@@ -535,6 +541,8 @@ def normalize_payload(payload, audio_assets=None):
     codes.extend(dict.fromkeys(change['code'] for change in keycap_changes))
     codes.extend(dict.fromkeys(change['code'] for change in owner_purchase_changes))
     codes.extend(dict.fromkeys(change['code'] for change in reviewed_intro_changes))
+    codes.extend(dict.fromkeys(change['code'] for change in reviewed_club_changes))
+    codes.extend(dict.fromkeys(change['code'] for change in reviewed_shared_image_changes))
     if codes:
         result["source_original_ape"] = original_ape
         if (presentation_changes or empty_button_changes or video_value_changes or empty_widget_changes or keyboard_changes
@@ -542,7 +550,8 @@ def normalize_payload(payload, audio_assets=None):
                 or owner_material_links or image_wrapper_changes or annotated_material_changes or reviewed_material_changes
                 or missing_course_images or reviewed_image_rotations or remaining_static_changes or reviewed_player_changes
                 or reviewed_text_changes or reviewed_getcourse_changes or reviewed_email_changes
-                or keycap_changes or owner_purchase_changes or reviewed_intro_changes):
+                or keycap_changes or owner_purchase_changes or reviewed_intro_changes
+                or reviewed_club_changes or reviewed_shared_image_changes):
             metadata = {"version": 10, "kind": "mastervision_editor_normalization", "codes": codes,
                         "blocks": changed, "table_blocks": table_changes, "editor_blocks": editor_changes,
                         "inline_image_blocks": image_changes, "button_blocks": button_changes,
@@ -582,6 +591,9 @@ def normalize_payload(payload, audio_assets=None):
                 metadata.update(version=22, keycap_blocks=keycap_changes,
                                 owner_purchase_buttons=owner_purchase_changes,
                                 reviewed_intro_blocks=reviewed_intro_changes)
+            if reviewed_club_changes or reviewed_shared_image_changes:
+                metadata.update(version=23, reviewed_club_link_blocks=reviewed_club_changes,
+                                reviewed_shared_image_blocks=reviewed_shared_image_changes)
             if audio_changes:
                 metadata["audio_blocks"] = audio_changes
                 metadata["audio_assets"] = {key: copy.deepcopy(audio_assets[key])
