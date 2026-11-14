@@ -2,16 +2,16 @@
 from importer import ACCOUNT, ORIGIN, Stop
 
 CODE = 'owner_deferred_lesson'
-DEFERRED = {317: frozenset({2314}), 607: frozenset({6577}), 624: frozenset({7050}),
-            627: frozenset({7198}), 628: frozenset({7247}), 629: frozenset({7252}),
+DEFERRED = {317: frozenset({2314}), 624: frozenset({7050}),
+            627: frozenset({7198}),
             630: frozenset({7295}), 746: frozenset({8845})}
 EXCLUDED_CODE = 'owner_excluded_obsolete_lesson'
 EXCLUDED = {1: frozenset({1,6}), 2: frozenset({2,5}), 17: frozenset({2558}),
             23: frozenset({30}), 207: frozenset({1976}), 259: frozenset({1536}), 273: frozenset({1735}),
             274: frozenset({1749}),
             354: frozenset({2937}), 355: frozenset({2952}), 440: frozenset({7326}), 445: frozenset({4089}),
-            557: frozenset({5952}), 598: frozenset({7544}), 613: frozenset({6750}),
-            618: frozenset({6870}), 634: frozenset({7341})}
+            557: frozenset({5952}), 598: frozenset({7544}), 607: frozenset({6577}), 613: frozenset({6750}),
+            618: frozenset({6870}), 628: frozenset({7247}), 629: frozenset({7252}), 634: frozenset({7341})}
 
 
 def deferred_ids(course_id):
