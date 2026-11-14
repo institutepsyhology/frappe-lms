@@ -31,7 +31,12 @@ FATAL = {'normalization_account_mismatch', 'normalization_metadata_conflict', 'n
          'reviewed_rotation_material_mismatch', 'reviewed_rotation_source_invalid',
          'reviewed_rotation_account_mismatch',
          'remaining_static_material_mismatch', 'remaining_static_source_invalid',
-         'reviewed_legacy_player_account_mismatch', 'reviewed_legacy_player_source_invalid'}
+         'reviewed_legacy_player_account_mismatch', 'reviewed_legacy_player_source_invalid',
+         'reviewed_text_source_invalid', 'reviewed_text_source_changed', 'reviewed_text_material_mismatch',
+         'reviewed_getcourse_source_changed', 'reviewed_getcourse_source_invalid',
+         'reviewed_getcourse_account_mismatch', 'reviewed_getcourse_validator_invalid',
+         'reviewed_getcourse_material_mismatch', 'reviewed_email_account_mismatch',
+         'reviewed_email_source_invalid', 'reviewed_email_material_mismatch'}
 # Historical evidence, not a claim of a fresh HTTP check. Never silently retry.
 KNOWN_404 = {(280, 1802): 'fc93e347a1ef59ba7b9b32601c74cb670ee69f34403eea8f854f11768224aab8',
              (286, 1857): 'fc93e347a1ef59ba7b9b32601c74cb670ee69f34403eea8f854f11768224aab8'}

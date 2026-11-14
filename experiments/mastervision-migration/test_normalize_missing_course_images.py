@@ -173,6 +173,20 @@ class MissingCourseImageTests(unittest.TestCase):
             with self.subTest(tag=tag), self.assertRaises(Review):
                 self.clean(tag, selected=[binding(tag, tag)])
 
+    def test_hash_bound_missing_image_with_exact_inert_legacy_style_is_omitted(self):
+        tag=MISSING.replace('>', ' style="border:0px;vertical-align:middle;margin-top:0px;">')
+        source='<p>Keep before '+tag+' and after.</p>'+LIVE
+        selected=[binding(source,tag)]
+        out,changes=self.clean(source,selected=selected)
+        self.assertEqual(out['children'][0]['fields']['html'],source.replace(tag,''))
+        self.assertEqual(changes[0]['images'],1)
+        for css in ('display:none','border:0px;vertical-align:middle;margin-top:1px;',
+                    'border:0px;vertical-align:middle;margin-top:0px;content:label'):
+            changed=tag.replace('border:0px;vertical-align:middle;margin-top:0px;',css)
+            with self.subTest(css=css),self.assertRaises(Review):
+                self.clean(changed,selected=[binding(changed,changed)])
+        with self.assertRaises(Review):self.clean(source+' changed',selected=selected)
+
     def test_unrelated_unknown_html_and_live_rotation_are_byte_exact(self):
         source = ('<script>unknown()</script><span style="transform:rotate(3.14rad)">' + LIVE +
                   '</span><span>' + MISSING + '</span>')
@@ -196,7 +210,7 @@ class MissingCourseImageTests(unittest.TestCase):
                 mod.normalize_missing_course_images(tree, cid, lid, static_validator())
 
     def test_public_bindings_separate_47_confirmed_404_and_one_owner_denied_image(self):
-        missing = [item for item in mod.BINDINGS if item.get('code', mod.CODE) == mod.CODE]
+        missing = [item for item in mod.BINDINGS if item['course_id']==520 and item.get('code', mod.CODE) == mod.CODE]
         denied = [item for item in mod.BINDINGS if item.get('code') == mod.ACCESS_DENIED_CODE]
         self.assertEqual(len(missing), 26)
         self.assertEqual(sum(len(item['images']) for item in missing), 47)
@@ -204,9 +218,71 @@ class MissingCourseImageTests(unittest.TestCase):
         self.assertEqual((denied[0]['course_id'], denied[0]['lesson_id'], denied[0]['path']), (520, 5197, [2]))
         self.assertEqual(len(denied[0]['images']), 1)
         self.assertEqual(denied[0]['images'][0][0], '3662ecb5917de8b02aab745da6fd6173421ae2aaac3ef6ea9708feccb89e5dbd')
-        self.assertTrue(all(item['course_id'] == 520 and item['kind'] == 'html' for item in mod.BINDINGS))
+        self.assertTrue(all(item['kind'] == 'html' for item in mod.BINDINGS))
         self.assertNotIn(5176, {item['lesson_id'] for item in mod.BINDINGS})
         self.assertNotIn('https://', repr(mod.BINDINGS))
+
+    def test_additional_confirmed_missing_images_have_exact_source_tag_and_result_bindings(self):
+        added=[item for item in mod.BINDINGS if item['course_id']!=520 and item.get('code',mod.CODE)==mod.CODE]
+        self.assertEqual({(x['course_id'],x['lesson_id'],tuple(x['path']))for x in added},
+                         {(178,984,(0,)),(538,5605,(5,)),(184,1024,(0,)),(187,1037,(0,))})
+        self.assertEqual(sum(len(x['images'])for x in added),6)
+        for record in added:
+            self.assertNotIn('code',record)
+            for value in (record['source_sha256'],record['result_sha256'],
+                          *[v for pair in record['images']for v in pair]):
+                self.assertEqual(len(value),64)
+                self.assertFalse(set(value)-set('0123456789abcdef'))
+
+    def test_owner_approved_402_is_scoped_and_never_reported_as_missing404(self):
+        tag=MISSING.replace('>', ' style=" width: 217.5px">')
+        source=tag+'<p>Keep all teaching material.</p>'
+        selected=binding(source,tag);selected.update(course_id=174,lesson_id=955,code=mod.UNAVAILABLE_CODE)
+        tree=page(source);before=copy.deepcopy(tree)
+        out,changes=self.clean(source,tree=tree,selected=[selected],cid=174,lid=955)
+        self.assertEqual(tree,before)
+        self.assertEqual(out['children'][0]['fields']['html'],'<p>Keep all teaching material.</p>')
+        self.assertEqual(changes[0]['code'],mod.UNAVAILABLE_CODE)
+        self.assertEqual(changes[0]['http_status'],402)
+        self.assertEqual(changes[0]['reason'],'owner_approved_unavailable')
+        for cid,lid in ((174,956),(175,955),(520,5171)):
+            other=copy.deepcopy(selected);other.update(course_id=cid,lesson_id=lid)
+            with self.subTest(cid=cid,lid=lid),self.assertRaises(Review):
+                self.clean(source,selected=[other],cid=cid,lid=lid)
+        for changeset in ({'code':mod.CODE},{'code':mod.ACCESS_DENIED_CODE},{'path':[1]}):
+            changed=copy.deepcopy(selected);changed.update(changeset)
+            with self.subTest(changeset=changeset),self.assertRaises(Review):
+                self.clean(source,selected=[changed],cid=174,lid=955)
+        changed=tag.replace('217.5px','218px')
+        with self.assertRaises(Review):
+            self.clean(changed,selected=[{**selected,**binding(changed,changed),'course_id':174,'lesson_id':955}],cid=174,lid=955)
+
+    def test_402_integration_keeps_original_audio_and_exact_replay(self):
+        import normalize_reviewed_getcourse as gc
+        from normalize_source import normalize_payload
+        from test_normalize_audio import audio,key,receipt
+        source=MISSING+'<p>Keep lesson text.</p>'
+        selected=binding(source);selected.update(course_id=174,lesson_id=955,code=mod.UNAVAILABLE_CODE)
+        data={'account':'mastervision','source_origin':'https://shop.mastervision.su',
+              'course_id':174,'lesson_id':955,'course_title':'Synthetic','lesson_title':'Synthetic',
+              'format':'ape','ape':page(source)}
+        data['ape']['children'].append(audio());before=copy.deepcopy(data)
+        with patch.object(mod,'BINDINGS',[selected]),patch.object(gc,'BINDINGS',{}):
+            q,codes=normalize_payload(data,{key():receipt()})
+            self.assertEqual(data,before)
+            self.assertEqual(q['source_original_ape'],data['ape'])
+            self.assertIn(mod.UNAVAILABLE_CODE,codes);self.assertNotIn(mod.CODE,codes)
+            self.assertEqual(q['source_normalization']['missing_course_images'][0]['http_status'],402)
+            self.assertEqual(normalize_payload(q),(q,codes))
+            changed=copy.deepcopy(q)
+            changed['source_normalization']['missing_course_images'][0]['http_status']=404
+            with self.assertRaisesRegex(Review,'normalization_metadata_conflict'):normalize_payload(changed)
+
+    def test_public_402_binding_is_separate_from_all_missing_and_denied_records(self):
+        selected=[x for x in mod.BINDINGS if x.get('code')==mod.UNAVAILABLE_CODE]
+        self.assertEqual(len(selected),1)
+        self.assertEqual((selected[0]['course_id'],selected[0]['lesson_id'],selected[0]['path']),(174,955,[0]))
+        self.assertEqual(len(selected[0]['images']),8)
 
     def test_denied_metadata_only_for_exact_scope_and_changed_source_requires_review(self):
         selected = binding(MISSING); selected.update(lesson_id=5197, code=mod.ACCESS_DENIED_CODE)

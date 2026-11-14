@@ -116,6 +116,63 @@ class AssetTests(unittest.TestCase):
         with self.assertRaisesRegex(Review,'asset_redirect_forbidden'):self.cache.fetch(base)
         self.assertEqual(len(self.opener.calls),1)
 
+    def test_reviewed_short_google_sources_require_exact_url_hash_and_shape(self):
+        plain='https://lh3.googleusercontent.com/'+'P'*135
+        keyed='https://lh7-rt.googleusercontent.com/docsz/'+'K'*142+'?key='+'T'*24
+        records={hashlib.sha256(plain.encode()).hexdigest():
+                    ('lh3.googleusercontent.com',r'/[A-Za-z0-9_-]{135}',''),
+                 hashlib.sha256(keyed.encode()).hexdigest():
+                    ('lh7-rt.googleusercontent.com',r'/docsz/[A-Za-z0-9_-]{142}',r'key=[A-Za-z0-9_-]{24}')}
+        with patch.object(assets,'REVIEWED_DIRECT_IMAGE_URLS',records):
+            for url in (plain,keyed):
+                self.assertEqual(assets._url(url),url)
+                self.assertEqual(self.cache.fetch(url),(png(),'png'))
+            for url in (plain+'A',plain+'?',plain+'?key=test',plain[:-1]+'Q',
+                        keyed[:-1]+'Q',keyed+'&key='+'T'*24,keyed+'&other=1',
+                        keyed.replace('/docsz/','/other/'),keyed.replace('lh7-rt.','lh7-us.')):
+                with self.subTest(url=url),self.assertRaises(Review):assets._url(url)
+        for request,_ in self.opener.calls:
+            self.assertNotIn('cookie',{k.lower()for k in request.headers})
+            self.assertNotIn('authorization',{k.lower()for k in request.headers})
+
+    def test_exact_hash_does_not_override_source_host_path_query_or_global_url_guards(self):
+        urls=('https://lh7-rt.googleusercontent.com/docsz/'+'K'*142+'?key='+'T'*24,
+              'http://lh3.googleusercontent.com/'+'P'*135,
+              'https://u:p@lh3.googleusercontent.com/'+'P'*135,
+              'https://lh3.googleusercontent.com:443/'+'P'*135,
+              'https://lh3.googleusercontent.com/'+'P'*135+'#fragment')
+        for url in urls:
+            wrong=(('lh3.googleusercontent.com',r'/[A-Za-z0-9_-]{135}',''))
+            with patch.object(assets,'REVIEWED_DIRECT_IMAGE_URLS',
+                    {hashlib.sha256(url.encode()).hexdigest():wrong}):
+                with self.subTest(url=url),self.assertRaises(Review):assets._url(url)
+        base='https://lh7-rt.googleusercontent.com/docsz/'+'K'*142+'?key='+'T'*24
+        rule=('lh7-rt.googleusercontent.com',r'/docsz/[A-Za-z0-9_-]{142}',r'key=[A-Za-z0-9_-]{24}')
+        for url in (base.replace('/docsz/','/other/'),base.replace('K'*142,'K'*143),
+                    base+'&key='+'T'*24,base+'&extra=1',base.replace('?key=','?other=')):
+            with patch.object(assets,'REVIEWED_DIRECT_IMAGE_URLS',
+                    {hashlib.sha256(url.encode()).hexdigest():rule}):
+                with self.subTest(url=url),self.assertRaises(Review):assets._url(url)
+
+    def test_reviewed_email_background_requires_exact_hash_and_shape(self):
+        url='https://mastervision.su/synthetic-bg/letters/fixture_bg.jpg'
+        record=('mastervision.su',r'/[a-z][a-z0-9-]{11}/letters/[a-z_]{10}\.jpg','')
+        with patch.object(assets,'REVIEWED_DIRECT_IMAGE_URLS',
+                {hashlib.sha256(url.encode()).hexdigest():record}):
+            self.assertEqual(assets._url(url),url)
+            self.assertEqual(self.cache.fetch(url),(png(),'png'))
+            for other in (url+'?version=2',url.replace('mastervision.su','www.mastervision.su'),
+                          url.replace('/letters/','/other/'),url.replace('fixture_bg','another_bg')):
+                with self.subTest(url=other),self.assertRaises(Review):assets._url(other)
+
+    def test_six_reviewed_source_records_contain_only_hashes_and_shapes(self):
+        self.assertEqual(len(assets.REVIEWED_DIRECT_IMAGE_URLS),6)
+        self.assertTrue(all(len(key)==64 and not set(key)-set('0123456789abcdef')
+                            for key in assets.REVIEWED_DIRECT_IMAGE_URLS))
+        self.assertEqual({x[0]for x in assets.REVIEWED_DIRECT_IMAGE_URLS.values()},
+                         {'lh3.googleusercontent.com','lh7-rt.googleusercontent.com','mastervision.su'})
+        self.assertNotIn('https://',repr(assets.REVIEWED_DIRECT_IMAGE_URLS))
+
     def test_source_and_cdn_requests_are_anonymous_with_no_proxy_or_redirect(self):
         data=self.cache.lesson_images(payload(image()))
         self.assertEqual(base64.b64decode(data['picture']),png())

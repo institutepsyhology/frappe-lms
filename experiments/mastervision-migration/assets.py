@@ -31,6 +31,23 @@ PLACEHOLDER_IMAGE_SHA256 = '44c98968db4973a119db3bbc00ca36392c1466e1b631596e1fff
 IMAGE_KEY = re.compile(r'[A-Za-z0-9_-]{1,80}')
 DATA_MIMES = {'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/webp': 'webp'}
 BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+# Exact authored URLs verified anonymously as complete images on 2026-11-14.
+# Hashes bind the original URL, including its query, without publishing tokens.
+# No other URL on these hosts is enabled by these records.
+REVIEWED_DIRECT_IMAGE_URLS = {
+    '1fb2658cc6637f4aca472047734f62d5a2e0a3188e570a0237f81fc01cc936c8':
+        ('lh3.googleusercontent.com', r'/[A-Za-z0-9_-]{135}', ''),
+    '2b5e87844cd5cd7ac3cc68f862bdd366ab260913ab0d3fb8f5938b3b8486070e':
+        ('lh7-rt.googleusercontent.com', r'/docsz/[A-Za-z0-9_-]{142}', r'key=[A-Za-z0-9_-]{24}'),
+    'a3c8a72f8f502755f451e8a06ebe5d0520e4ceaaea01fe7264bff8e30ac52d4c':
+        ('lh7-rt.googleusercontent.com', r'/docsz/[A-Za-z0-9_-]{142}', r'key=[A-Za-z0-9_-]{24}'),
+    '2db81aafae54644c7ada50ef07f0ffd649f52ecf17c8ad6ceb5e1a0c908ee37a':
+        ('lh7-rt.googleusercontent.com', r'/docsz/[A-Za-z0-9_-]{142}', r'key=[A-Za-z0-9_-]{24}'),
+    '45f517b72cb6d692f6c054935eaf7fd9fe600185866ce56598ef0ab7768e7bc2':
+        ('lh7-rt.googleusercontent.com', r'/docsz/[A-Za-z0-9_-]{140}', r'key=[A-Za-z0-9_-]{24}'),
+    '28a67573ba45c801804620323a163d7a7d089cff3ab70889d66691a216a68dc3':
+        ('mastervision.su', r'/[a-z][a-z0-9-]{11}/letters/[a-z_]{10}\.jpg', ''),
+}
 
 
 def _binding():
@@ -59,9 +76,12 @@ def _url(value):
     verified_google_image = (url.hostname in {'lh3.googleusercontent.com', 'lh4.googleusercontent.com',
         'lh5.googleusercontent.com', 'lh6.googleusercontent.com'} and not url.query
         and '?' not in value and '#' not in value and re.fullmatch(r'/[A-Za-z0-9_-]{188,190}', url.path))
+    reviewed = REVIEWED_DIRECT_IMAGE_URLS.get(hashlib.sha256(value.encode('utf-8')).hexdigest())
+    verified_exact_image = (reviewed is not None and url.hostname == reviewed[0]
+        and re.fullmatch(reviewed[1], url.path) and re.fullmatch(reviewed[2], url.query))
     if (url.hostname != 'shop.mastervision.su' and
             not re.fullmatch(r'f[0-9]+\.autoweboffice\.com', url.hostname or '')
-            and not verified_ru and not verified_getcourse and not verified_google_image):
+            and not verified_ru and not verified_getcourse and not verified_google_image and not verified_exact_image):
         raise Review('asset_host_requires_review')
     # Preserve percent-encoded source paths byte for byte; do not rewrite the
     # original URL into its decoded form before an anonymous CDN request.

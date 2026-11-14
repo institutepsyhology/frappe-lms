@@ -1,9 +1,11 @@
 """Omit source-bound owner-approved images; never fetch URLs.
 
-47 source images returned HTTP404. One separately scoped source image in
+53 source images returned HTTP404. Eight separately scoped GetCourse images
+returned HTTP402 and their omission was approved separately. They are never
+labelled as missing. One separately scoped source image in
 520/5197 returned access-denied HTTP403 after redirects; the owner separately
 approved its omission. It is never labelled as confirmed missing.
-The checks were made anonymously on 2026-11-13. They describe original
+The checks were made anonymously on 2026-11-13 and 2026-11-14. They describe original
 Master Vision APE, before image extraction. Only IMG tags and image-only span
 tags around them are removed; surrounding text and links remain byte-exact. The
 normal caller must retain the original APE witness and run the usual converter.
@@ -21,6 +23,7 @@ from normalize_static_presentation import VOID
 
 CODE = 'owner_confirmed_missing_course_image_omitted'
 ACCESS_DENIED_CODE = 'owner_access_denied_image_omitted'
+UNAVAILABLE_CODE = 'owner_unavailable_image_omitted'
 
 
 def _sha(value):
@@ -32,12 +35,13 @@ def _review():
 
 
 class _Images(HTMLParser):
-    def __init__(self, source, wanted):
+    def __init__(self, source, wanted, extra_image_style=None):
         super().__init__(convert_charrefs=False)
         self.source, self.wanted, self.found, self.ranges = source, wanted, [], []
         self.lines = [0] + [i + 1 for i, char in enumerate(source) if char == '\n']
         self.tree = {'tag': '', 'children': []}
         self.stack, self.wrappers = [self.tree], 0
+        self.extra_image_style = extra_image_style
 
     def handle_starttag(self, tag, attrs):
         raw = self.get_starttag_text()
@@ -56,8 +60,10 @@ class _Images(HTMLParser):
         pair = [_sha(src), _sha(raw)]
         if pair not in self.wanted:
             return
-        if (len(values) != len(attrs) or set(values) - {'src', 'width', 'height', 'alt'}
-                or values.get('alt') not in (None, '')):
+        if (len(values) != len(attrs) or set(values) - {'src', 'width', 'height', 'alt', 'style'}
+                or values.get('alt') not in (None, '') or 'style' in values and (
+                    not isinstance(values['style'], str) or values['style'] not in
+                    {'border:0px;vertical-align:middle;margin-top:0px;', self.extra_image_style})):
             _review()
         if self.source[start:start + len(raw)] != raw:
             _review()
@@ -154,7 +160,8 @@ def _clean(source, binding, validate):
     if digest != binding['source_sha256']:
         _review()
     wanted = binding['images']
-    parser = _Images(source, wanted)
+    extra_style = ' width: 217.5px' if binding.get('code') == UNAVAILABLE_CODE else None
+    parser = _Images(source, wanted, extra_style)
     parser.feed(source)
     parser.close()
     parser.select_wrappers(validate)
@@ -212,8 +219,9 @@ def normalize_missing_course_images(ape, course_id, lesson_id, validate_static):
         binding = expected.get(tuple(path))
         if binding is not None:
             code = binding.get('code', CODE)
-            if code not in {CODE, ACCESS_DENIED_CODE} or (
-                    (code == ACCESS_DENIED_CODE) != ((course_id, lesson_id) == (520, 5197))):
+            expected_code = (ACCESS_DENIED_CODE if (course_id, lesson_id) == (520, 5197) else
+                             UNAVAILABLE_CODE if (course_id, lesson_id) == (174, 955) else CODE)
+            if code != expected_code or code == UNAVAILABLE_CODE and binding['path'] != [0]:
                 _review()
             if (protected or binding['kind'] != 'html' or node.get('name') not in {'text', 'code'}
                     or children or set(fields) - {'html', 'anchor'}
@@ -232,6 +240,8 @@ def normalize_missing_course_images(ape, course_id, lesson_id, validate_static):
                                 'url_sha256': [item[0] for item in binding['images']]}
                 if code == ACCESS_DENIED_CODE:
                     change.update(http_status=403, reason='owner_approved_access_denied')
+                elif code == UNAVAILABLE_CODE:
+                    change.update(http_status=402, reason='owner_approved_unavailable')
                 changes.append(change)
         for index, child in enumerate(children):
             walk(child, path + [index], protected)
@@ -503,3 +513,64 @@ BINDINGS.append({'course_id': 520,
  'images': [['3662ecb5917de8b02aab745da6fd6173421ae2aaac3ef6ea9708feccb89e5dbd',
              'c185eeaae7c627a5871a9d35b0e535984bef6abfaae8ebeac5c94185c6c3e225']],
  'result_sha256': '059627f3f19948819f223f3ba7187571e2fa26ef05a7d63345689433268c0dcf'})
+
+# Four further source images returned HTTP404 directly on 2026-11-14.
+# The owner requested that confirmed missing pictures never block other material.
+BINDINGS.extend([
+ {'course_id': 178, 'lesson_id': 984, 'path': [0], 'kind': 'html',
+  'source_sha256': '370d65093e97b2762f0ba1908138d2176c8020e318a5519c1a45968a45d7c2ca',
+  'images': [
+   ['1175a5d44480f64b6fc00e5ea6a18905b50a8d29607be9667c08e26b3e1eb448',
+    '84e16d5e7759934ac6972518d1603a0a055646fe299cfb226c48a1f7851b63f9'],
+   ['70ebd32a97df94c9bc7600409587719de3576281763ce58b109188cb86a25f38',
+    '951fd243e0fbb88ef9eb0e7d56d7cd33cf4f74b4e0d81a86807127125e0b4c2b'],
+   ['6b668d794dc2252cd036038b41b86def647a09ea4b6c5ff23317a12c6ae6db7e',
+    'd0603d94f1e44f9935e4cb0ca235db62eb2e3634ef13478e6aa57f30960b19f2']],
+  'result_sha256': '59cb4baf1d58f15a88597edae82a0d035de6a69de1f8f40c0806dc1c93bd7a5b'},
+ {'course_id': 538, 'lesson_id': 5605, 'path': [5], 'kind': 'html',
+  'source_sha256': 'c177b84ac918f8634726914ecbe4a8b3a799ce3f7822aee42cb1beedad880c5e',
+  'images': [['88e250419cb34126ea894beba0da4fde005caf829638e67d8de2cb6d3b82472f',
+              'e1d7a722ffd5bb411ca910ae6cd48659a74b17e74007113ae2f539f9ac728d63']],
+  'result_sha256': 'ec69263fc1e0cdc2078124f5ebddfdc7f485df4dc35281cc6956ba929cc68d41'},
+])
+
+# Apply after the exact reviewed GetCourse wrappers pass. Raw APE is retained.
+BINDINGS.extend([{'code': 'owner_unavailable_image_omitted',
+  'course_id': 174,
+  'images': [['06d20a1a8ec0ae4ae713bf597f21c2aa1f6ad1a0aaa72a30e1242b08e49745c3',
+              '43b5c702dc4cc9f925b0dc43ba8dae26d885a75cb179826ed90e9bd1dabbf1d2'],
+             ['8a43b1bfd21e4527ed767f4c39f8841c8cf55c95031152f212f71092e9792044',
+              '28790b7416039060cecd91431669c66ea4984e3eeb0ed46b7abec75262a59d2a'],
+             ['1961e0a54b2a6c2b7aabce21d67e728eb26bd43f6e26641fb7876cf9a975d7f8',
+              '0a133751931611ef17ade0037a9176d1b84f124e7603fbbda064647a2eaddce0'],
+             ['16eb28a923b034a5438d7211ce7f223112e82c8124b9aeba5d3ce1dbcecf3e65',
+              '75c34ceb6e4edde73cfd631c294b8ece5458c23459f7c1a6c7b6756f75d4b63c'],
+             ['e12d753c7b277b88f65407622ce97c240e42b2993a30e83099860f29ad3da446',
+              '660b1a3146b9c0f37a4cea9a6fd808eef0001a513b8d712845be29ed06e411f8'],
+             ['778ce7120ca724d1bfc2df2487b7bcd494a17628a5da6d36135298394a890ecd',
+              '9986fa0eff0d512abc3342e40349146168c7597b4c32259ea5e9b668bc5edc75'],
+             ['b1fc82cf4b71ed69cfe5bf643fcc4d8de318972a08a1de43ee04e5bee07f27a7',
+              'a5802e8c38828a5b779d08da4de2f5807589fb359c0a30c3b05d9a5c3d68d918'],
+             ['30f6ace51add14bb19313270440ea4aaff485f326a3eda504fd06c301f7ef0b4',
+              'f1a1056ee3d5752361641351e15205b82375e0dc07ed12257bc4a04928dfe227']],
+  'kind': 'html',
+  'lesson_id': 955,
+  'path': [0],
+  'result_sha256': 'cf7b0c7e74ec83577046b5057a31440bb18977d85281e93af6eda667d50a6a03',
+  'source_sha256': '0a5944cd39d27a842ca357a597cf810bf9a307f7a1c3129a76b0ae3681040437'},
+ {'course_id': 184,
+  'images': [['e7e1c88e471847993966ba20d6c9063e88e869143f2a95050008a929f8f80bfa',
+              '904acdae785b6ce76d3512390514d6848719f7f9ae9bad0a9ae6299e4fa82679']],
+  'kind': 'html',
+  'lesson_id': 1024,
+  'path': [0],
+  'result_sha256': '41591ea2e66f6de8a1652c12fcd492cf316bb9b7e6a8799d2b9e40435b16d58f',
+  'source_sha256': '097c2dc7a89f7099fb70ebd1da63b24feb22f7680af6c4f7dd32916ec667fb49'},
+ {'course_id': 187,
+  'images': [['0725094ebc9d12f9c6f8bdd844e94bcb3f88877cb7b31b93118f3c22f6b5c7de',
+              '36796013f1c6518d6b32b49e5cae2827d4e7f37a4cf8e44d672e937c9c6b30bc']],
+  'kind': 'html',
+  'lesson_id': 1037,
+  'path': [0],
+  'result_sha256': '86ccd44da47331791a026df7b7af0954ec50ba266a0b144b901ab282379b7191',
+  'source_sha256': '512170a37fb4fd7a7ed7e93bbbb8bae517a60a9675db56dbd55e8de663e60cc8'}])
