@@ -20,14 +20,16 @@ class Client:
         self.lesson = {'name': 'lesson7364', 'course': 'course634', 'custom_avo_account': 'mastervision',
             'custom_avo_id': '7364', 'custom_lms_id': '7364', 'is_draft': 1,
             'include_in_preview': 0, 'owner': 'Administrator'}
-        self.blocks = [{'type': 'image', 'data': {'file': {'url': subject.PINNED_TARGET_PATH}}},
+        # Contract independently read from native 7363/7415 and avo_import:
+        # EditorJS is in content, body is empty, image URL is data.url.
+        self.blocks = [{'type': 'image', 'data': {'url': subject.PINNED_TARGET_PATH}},
             {'type': 'paragraph', 'data': {'text': '<a href="https://' + self.site
                 + subject.PINNED_TARGET_PATH + '">Image</a>'}}]
         self.file = {'name': 'file7364', 'file_name': subject.PINNED_TARGET_PATH.rsplit('/', 1)[1],
             'file_url': subject.PINNED_TARGET_PATH, 'file_size': len(self.raw),
             'content_hash': hashlib.md5(self.raw).hexdigest(), 'owner': 'Administrator',
             'is_private': 1, 'attached_to_doctype': 'Course Lesson',
-            'attached_to_name': self.lesson['name'], 'attached_to_field': 'body'}
+            'attached_to_name': self.lesson['name'], 'attached_to_field': None}
         self.opener = SimpleNamespace(open=self.open)
 
     def open(self, request, timeout):
@@ -38,7 +40,7 @@ class Client:
     def call(self, method, args):
         self.calls.append((method, args['doctype']))
         if method == 'get_document':
-            return {**self.lesson, 'body': json.dumps({'blocks': self.blocks})}
+            return {**self.lesson, 'content': json.dumps({'blocks': self.blocks}), 'body': ''}
         rows = {'LMS Course': [self.course], 'Course Lesson': [self.lesson], 'File': [self.file]}[args['doctype']]
         return {'documents': copy.deepcopy(rows), 'has_next_page': False}
 
@@ -83,7 +85,7 @@ class SharedImageTargetTests(unittest.TestCase):
             if change == 'missing': client.blocks.pop()
             elif change == 'different': client.blocks[1]['data']['text'] = '<a href="https://example.org">Image</a>'
             elif change == 'duplicate': client.blocks.append(copy.deepcopy(client.blocks[1]))
-            else: client.blocks[0]['data']['file']['url'] = '/private/files/other.jpg'
+            else: client.blocks[0]['data']['url'] = '/private/files/other.jpg'
             with self.subTest(change=change), self.assertRaisesRegex(Stop, subject.CODE): self.invoke(client)
 
     def test_byte_mismatch_and_failed_get_stop_without_any_write(self):
@@ -91,6 +93,17 @@ class SharedImageTargetTests(unittest.TestCase):
         with self.assertRaisesRegex(Stop, subject.CODE): self.invoke(client)
         client = Client(); client.opener.open = lambda *args, **kwargs: (_ for _ in ()).throw(OSError())
         with self.assertRaisesRegex(Stop, '^reviewed_shared_image_readback_unavailable$'): self.invoke(client)
+
+    def test_incorrect_body_editor_and_nested_image_file_models_are_rejected(self):
+        client = Client(); client.blocks[0]['data'] = {'file': {'url': subject.PINNED_TARGET_PATH}}
+        with self.assertRaisesRegex(Stop, subject.CODE): self.invoke(client)
+        client = Client(); original = client.call
+        def wrong(method, args):
+            result = original(method, args)
+            if method == 'get_document': result['body'], result['content'] = result['content'], ''
+            return result
+        client.call = wrong
+        with self.assertRaisesRegex(Stop, subject.CODE): self.invoke(client)
 
     def test_controller_does_not_mark_complete_when_created_or_resumed_image_fails(self):
         import test_run as controller

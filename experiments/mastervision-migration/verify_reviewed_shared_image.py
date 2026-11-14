@@ -60,9 +60,9 @@ def verify_reviewed_shared_image_target(client, course_id, lesson_id):
              and lesson.get('include_in_preview') == 0)
     doc = client.call('get_document', {'doctype': 'Course Lesson', 'name': lesson['name']})
     _require(isinstance(doc, dict) and all(doc.get(k) == v for k, v in lesson.items()))
-    body = doc.get('body')
-    _require(isinstance(body, str) and len(body.encode()) <= 1024 * 1024)
-    try: blocks = json.loads(body)['blocks']
+    content = doc.get('content')
+    _require(doc.get('body') == '' and isinstance(content, str) and len(content.encode()) <= 1024 * 1024)
+    try: blocks = json.loads(content)['blocks']
     except (ValueError, KeyError, TypeError): raise Stop(CODE) from None
     _require(isinstance(blocks, list) and len(blocks) <= 100)
     image_urls, links = [], _Links()
@@ -70,8 +70,8 @@ def verify_reviewed_shared_image_target(client, course_id, lesson_id):
         _require(isinstance(block, dict) and isinstance(block.get('data'), dict))
         data = block['data']
         if block.get('type') == 'image':
-            _require(isinstance(data.get('file'), dict))
-            image_urls.append(data['file'].get('url'))
+            _require(isinstance(data.get('url'), str))
+            image_urls.append(data['url'])
         elif block.get('type') == 'paragraph':
             _require(isinstance(data.get('text'), str)); links.feed(data['text'])
     links.close()
@@ -87,7 +87,8 @@ def verify_reviewed_shared_image_target(client, course_id, lesson_id):
              and type(image.get('file_size')) is int and image['file_size'] == IMAGE_SIZE
              and image.get('is_private') == 1 and image.get('owner') == FILE_OWNER
              and image.get('attached_to_doctype') == 'Course Lesson'
-             and image.get('attached_to_name') == lesson['name'] and image.get('attached_to_field') == 'body')
+             and image.get('attached_to_name') == lesson['name']
+             and image.get('attached_to_field') in (None, ''))
     # The URL is a fixed same-site constant; the client's NoRedirect opener
     # prevents forwarding authentication elsewhere. Bounded read, never mutate.
     try:

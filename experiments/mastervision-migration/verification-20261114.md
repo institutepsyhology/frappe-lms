@@ -195,3 +195,13 @@ Windows skip. Включены source guards, v22/v23 replay, File/link/bytes mi
 Все 11 активных уроков 634 pure-ready, raw и replay точны; 7364 последний в
 исходном порядке после исключения 7341. Новые эталоны и import/readback этой
 группы будут записаны после фактического завершения.
+
+До запуска final12 независимый review обнаружил ошибку нового postchecker:
+он ожидал EditorJS в body, image.data.file.url и File.attached_to_field='body'.
+Нативное чтение 7363/7415 и avo_import независимо подтвердили фактический
+контракт: content содержит EditorJS, body пустой, image.data.url, attachment
+field=None. Исправлена именно проверка и её synthetic fixtures; добавлены
+отрицательные тесты прежних неверных моделей. Ни один final12 урок до этого
+не создавался. Reference File дополнительно прочитан по HTTPS целиком:
+221327 bytes, точные MD5/SHA256, owner/private/URL совпали. Доступ ученику
+определяет content-reference resolver; поле attachment не назначается.
