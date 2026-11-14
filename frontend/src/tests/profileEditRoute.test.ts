@@ -217,6 +217,23 @@ describe('the profile edit route', () => {
 		expect(wrapper.find('[data-testid="profile-save"]').exists()).toBe(true)
 	})
 
+	it('allows the owner to edit when the address uses a numeric AVO ID', async () => {
+		const router = makeRouter()
+		await router.push('/user/5/edit')
+		const wrapper = mount(ProfileEditForm, {
+			props: { username: '5', profile: profileResource },
+			global: {
+				plugins: [router],
+				provide: { $user: { data: { name: 'john@example.com', username: USERNAME } } },
+				stubs: { teleport: true },
+				mocks: { __: (text: string) => text },
+			},
+		})
+		await flushPromises()
+		expect(wrapper.find('[data-testid="profile-fields"]').exists()).toBe(true)
+		expect(wrapper.find('[data-testid="profile-save"]').exists()).toBe(true)
+	})
+
 	// Cold deep link: nothing opened this form, so there is no history entry of
 	// ours to pop and no in-memory profile handed over from a click. The form
 	// seeds itself from the resource the parent route already owns — the modal's
