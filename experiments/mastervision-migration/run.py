@@ -179,7 +179,12 @@ def prepare_payloads(payloads, audio_assets=None):
                             'reviewed_getcourse_source_changed', 'reviewed_getcourse_source_invalid',
                             'reviewed_getcourse_account_mismatch', 'reviewed_getcourse_validator_invalid',
                             'reviewed_getcourse_material_mismatch', 'reviewed_email_account_mismatch',
-                            'reviewed_email_source_invalid', 'reviewed_email_material_mismatch'):
+                            'reviewed_email_source_invalid', 'reviewed_email_material_mismatch',
+                            'reviewed_keycap_account_mismatch', 'reviewed_keycap_source_invalid',
+                            'reviewed_keycap_source_changed', 'reviewed_keycap_material_mismatch',
+                            'owner_purchase_account_mismatch', 'owner_purchase_source_invalid', 'owner_purchase_source_changed',
+                            'reviewed_intro_account_mismatch', 'reviewed_intro_source_invalid',
+                            'reviewed_intro_source_changed', 'reviewed_intro_material_mismatch'):
                 raise Stop(str(exc)) from None
             # The unchanged source still goes through the stricter server parser.
             # Unknown embeds are never silently dropped or locally authorized.

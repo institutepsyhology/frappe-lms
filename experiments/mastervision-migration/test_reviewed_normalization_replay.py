@@ -75,7 +75,12 @@ class ReviewedNormalizationReplayTests(unittest.TestCase):
                      'reviewed_getcourse_source_changed', 'reviewed_getcourse_source_invalid',
                      'reviewed_getcourse_account_mismatch', 'reviewed_getcourse_validator_invalid',
                      'reviewed_getcourse_material_mismatch', 'reviewed_email_account_mismatch',
-                     'reviewed_email_source_invalid', 'reviewed_email_material_mismatch'):
+                     'reviewed_email_source_invalid', 'reviewed_email_material_mismatch',
+                     'reviewed_keycap_account_mismatch', 'reviewed_keycap_source_invalid',
+                     'reviewed_keycap_source_changed', 'reviewed_keycap_material_mismatch',
+                     'owner_purchase_account_mismatch', 'owner_purchase_source_invalid', 'owner_purchase_source_changed',
+                     'reviewed_intro_account_mismatch', 'reviewed_intro_source_invalid',
+                     'reviewed_intro_source_changed', 'reviewed_intro_material_mismatch'):
             self.assertIn(code, audit.FATAL)
             with self.subTest(code=code), patch('normalize_source.normalize_payload', side_effect=Review(code)):
                 with self.assertRaisesRegex(controller.Stop, '^' + code + '$'):

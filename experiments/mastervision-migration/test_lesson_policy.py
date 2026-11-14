@@ -4,7 +4,7 @@ from unittest.mock import patch
 from importer import ACCOUNT, ORIGIN, Stop
 from lesson_policy import DEFERRED, EXCLUDED, deferred_ids, excluded_ids, partition_payloads
 
-PENDING = {607:{6577},624:{7050},627:{7198},628:{7247},629:{7252},630:{7295}}
+PENDING = {317:{2314},607:{6577},624:{7050},627:{7198},628:{7247},629:{7252},630:{7295},746:{8845}}
 
 
 def payload(cid, lid):
@@ -13,16 +13,16 @@ def payload(cid, lid):
 
 
 class PolicyTests(unittest.TestCase):
-    def test_exact_six_owner_deferrals_leave_all_16_exclusions_unchanged(self):
+    def test_exact_eight_owner_deferrals_and_17_exclusions(self):
         self.assertEqual(DEFERRED, PENDING)
         self.assertTrue(all(isinstance(ids, frozenset) for ids in DEFERRED.values()))
         expected={1:{1,6},2:{2,5},17:{2558},23:{30},207:{1976},259:{1536},273:{1735},274:{1749},
-                  354:{2937},355:{2952},445:{4089},557:{5952},598:{7544},618:{6870}}
+                  354:{2937},355:{2952},440:{7326},445:{4089},557:{5952},598:{7544},618:{6870}}
         self.assertEqual(EXCLUDED, expected)
-        self.assertEqual(sum(map(len, EXCLUDED.values())), 16)
+        self.assertEqual(sum(map(len, EXCLUDED.values())), 17)
         self.assertNotIn(9037, set().union(*DEFERRED.values(), *EXCLUDED.values()))
 
-    def test_six_deferrals_keep_source_payloads_order_and_exact_identity(self):
+    def test_eight_deferrals_keep_source_payloads_order_and_exact_identity(self):
         for cid, ids in PENDING.items():
             lid = next(iter(ids))
             source = [payload(cid, x) for x in (900001, lid, 900002)]
@@ -37,7 +37,7 @@ class PolicyTests(unittest.TestCase):
 
     def test_selected_five_courses_run_as_partial_without_normalizing_deferred_content(self):
         import test_run as controller
-        for cid in (607,624,627,628,630):
+        for cid in (317,607,624,627,628,630,746):
             lid = next(iter(PENDING[cid]))
             source = [{**controller.payload(cid),'lesson_id':x} for x in (900001,lid,900002)]
             source[1]['ape'] = {'name':'unrecognized_owner_pending_source'}

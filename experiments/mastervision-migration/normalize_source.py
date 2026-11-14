@@ -41,6 +41,9 @@ from normalize_reviewed_legacy_players import normalize_reviewed_legacy_players
 from normalize_reviewed_getcourse import normalize_reviewed_getcourse
 from normalize_reviewed_text_fragments import normalize_reviewed_text_fragments
 from normalize_reviewed_email_html import normalize_reviewed_email_html
+from normalize_reviewed_keycap_lesson import normalize_reviewed_keycap_lesson
+from normalize_reviewed_intro_lesson import normalize_reviewed_intro_lesson
+from normalize_owner_purchase_buttons import normalize_owner_purchase_buttons
 from normalize_audio import normalize_audio, CODE as AUDIO_CODE
 
 
@@ -337,7 +340,7 @@ def normalize_payload(payload, audio_assets=None):
             raise Review("normalization_metadata_conflict")
         metadata = result['source_normalization']
         is_audio = isinstance(metadata, dict) and (metadata.get('version') == 7 or
-            metadata.get('version') in (8,9,10,11,12,13,14,15,16,17,18,19,20,21) and ('audio_assets' in metadata or bool(metadata.get('audio_blocks'))))
+            metadata.get('version') in (8,9,10,11,12,13,14,15,16,17,18,19,20,21,22) and ('audio_assets' in metadata or bool(metadata.get('audio_blocks'))))
         stored_assets = metadata.get('audio_assets') if is_audio else None
         if is_audio:
             if (not isinstance(stored_assets, dict) or not stored_assets
@@ -365,6 +368,12 @@ def normalize_payload(payload, audio_assets=None):
     if result.get("format") != "ape" or not isinstance(ape, dict) or ape.get("name") != "page":
         raise Review("normalization_source_invalid")
     original_ape, changed, table_changes = copy.deepcopy(ape), [], []
+    ape, keycap_changes = normalize_reviewed_keycap_lesson(
+        ape, result.get('course_id'), result.get('lesson_id'), static_validator())
+    ape, owner_purchase_changes = normalize_owner_purchase_buttons(
+        ape, result.get('course_id'), result.get('lesson_id'))
+    ape, reviewed_intro_changes = normalize_reviewed_intro_lesson(
+        ape, result.get('course_id'), result.get('lesson_id'), static_validator())
     ape, reviewed_text_changes = normalize_reviewed_text_fragments(
         ape, result.get('course_id'), result.get('lesson_id'), static_validator())
     ape, reviewed_getcourse_changes = normalize_reviewed_getcourse(
@@ -523,13 +532,17 @@ def normalize_payload(payload, audio_assets=None):
     codes.extend(dict.fromkeys(change['code'] for change in reviewed_text_changes))
     codes.extend(dict.fromkeys(change['code'] for change in reviewed_getcourse_changes))
     codes.extend(dict.fromkeys(change['code'] for change in reviewed_email_changes))
+    codes.extend(dict.fromkeys(change['code'] for change in keycap_changes))
+    codes.extend(dict.fromkeys(change['code'] for change in owner_purchase_changes))
+    codes.extend(dict.fromkeys(change['code'] for change in reviewed_intro_changes))
     if codes:
         result["source_original_ape"] = original_ape
         if (presentation_changes or empty_button_changes or video_value_changes or empty_widget_changes or keyboard_changes
                 or link_metadata_changes or legacy_decoration_changes or video_source_changes or owner_media_omissions
                 or owner_material_links or image_wrapper_changes or annotated_material_changes or reviewed_material_changes
                 or missing_course_images or reviewed_image_rotations or remaining_static_changes or reviewed_player_changes
-                or reviewed_text_changes or reviewed_getcourse_changes or reviewed_email_changes):
+                or reviewed_text_changes or reviewed_getcourse_changes or reviewed_email_changes
+                or keycap_changes or owner_purchase_changes or reviewed_intro_changes):
             metadata = {"version": 10, "kind": "mastervision_editor_normalization", "codes": codes,
                         "blocks": changed, "table_blocks": table_changes, "editor_blocks": editor_changes,
                         "inline_image_blocks": image_changes, "button_blocks": button_changes,
@@ -565,6 +578,10 @@ def normalize_payload(payload, audio_assets=None):
                 metadata.update(version=21, reviewed_text_blocks=reviewed_text_changes,
                                 reviewed_getcourse_blocks=reviewed_getcourse_changes,
                                 reviewed_email_blocks=reviewed_email_changes)
+            if keycap_changes or owner_purchase_changes or reviewed_intro_changes:
+                metadata.update(version=22, keycap_blocks=keycap_changes,
+                                owner_purchase_buttons=owner_purchase_changes,
+                                reviewed_intro_blocks=reviewed_intro_changes)
             if audio_changes:
                 metadata["audio_blocks"] = audio_changes
                 metadata["audio_assets"] = {key: copy.deepcopy(audio_assets[key])
