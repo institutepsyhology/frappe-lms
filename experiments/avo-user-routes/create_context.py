@@ -30,7 +30,7 @@ def main():
             info=tarfile.TarInfo(name);info.size=len(data);info.mode=0o644;info.mtime=0
             tar.addfile(info,io.BytesIO(data))
     recipe=f'''# syntax=docker/dockerfile:1.4
-FROM {BASE}
+FROM company-lms:avo-user-routes-base50
 USER root
 WORKDIR /home/frappe/frappe-bench
 RUN --mount=type=bind,source=overlay.tar,target=/tmp/overlay.tar \\
