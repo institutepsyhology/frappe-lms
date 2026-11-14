@@ -205,3 +205,54 @@ field=None. Исправлена именно проверка и её synthetic
 не создавался. Reference File дополнительно прочитан по HTTPS целиком:
 221327 bytes, точные MD5/SHA256, owner/private/URL совпали. Доступ ученику
 определяет content-reference resolver; поле attachment не назначается.
+
+Исправленная версия ea7c954454d5720d26bc31d1ae6d66946f7a9762 опубликована,
+remote ref совпал; postchecker+controller — 48 успешных targeted tests.
+Preflight final12: два курса, 13 raw → 12 active, одно изображение, две обложки,
+native audio=0. Fully-excluded 613/6750 проверен отдельно. Все42 production SHA,
+checkpoints и normalization replay неизменны. expected-next12.json SHA256
+cfa9307e884cb9ca3bea0ac649e8f7de75072c4719fcf54fae19256cf0553ec2;
+media-preflight-next12.json SHA256
+2384814b44f4c410ab113b6ebfdf8d6c0a7d528adf57b8208a7d762f9846490d.
+
+job-f83fc68e3ab74d85bacae478585592bb завершился exit=0: 619/6883 и все11
+активных уроков634 созданы, две обложки сохранены во Frappe. 6750 и7341
+исключены по политике. Две записи image_verified для7364 подтверждают postcheck
+сразу после создания и перед private-course/cover действиями.
+Ledger:717 full,7 partial,3 excluded,1 review. Нативные account-счётчики root
+независимо подтвердили724 курса/7225 уроков; global Enrollment3/AccessGrant0.
+
+Полный readonly proof final12 прошёл:2 курса/12 тел/32 блока/1image/2covers,
+13raw и полностью excluded613,42 code hashes, source snapshots/replay и metadata
+проверены. Counts до/после одинаковы. endproof-next12-bodies.json SHA256
+8a9853da10f6d7f4715416e51228be74c5a2b320b88910573847d98d09d73a0d.
+Отдельная native7364 проверка подтвердила новый File, ссылку, image.data.url,
+owner/private и все221327 фактических bytes; independent-native-7364-after12.json
+SHA256059488608f135cf934ed9a367666deafa19c3403dba60febec93214d1e0acf27.
+
+Свежий offline audit оставляет ровно8 отложенных уроков в7 partial и одном
+полностью отложенном курсе629. В этих восьми курсах261 raw, из них253 активных
+уже перенесены. Normalization reviews=0, collection failures=0. Активных
+неперенесённых уроков больше нет; будущая вставка отложенных середних уроков
+остаётся отдельным backlog. Все курсы и уроки сохраняют draft/private.
+
+Финальная глобальная metadata-only сверка account=mastervision (9 MCP страниц)
+подтвердила точное равенство всех724 course ID и7225 lesson ID исходному архиву
+после19 exclusions/8 deferrals. Missing/extra IDs=0, неверных lesson→course
+связей=0, custom_lms_id==AVO ID у всех, все курсы unpublished/private, уроки
+draft/no-preview. Исходно пустой курс4 сохранён; fully-inactive2/23/613 и
+полностью отложенный629 отсутствуют. Source SQL и policy hashes до/после совпали.
+Массового чтения тел или File не было, записи на сервере не выполнялись.
+final-native-id-coverage-mastervision.json SHA256
+d314ccf52fb3bf318c9153ff9b81f90978e7c431967c5576047b3ace8054abd1.
+
+Главные приватные отчёты об остатке и вопросах обновлены после final12 PASS,
+проверки ledger/native counts и свежего offline audit. Старые версии сохранены
+как before-final12, запись выполнена с CAS и отдельным receipt. Последующее
+уточнение ограничивает закрытые вопросы содержимым уроков и перечисляет все
+шесть будущих вставок в середину; worker/future-insertion backlog остаётся.
+Итоговый ОСТАТОК-переноса-МВ.md SHA256
+16cd24d1f64de43e1928d46bd296789f814f715a8682af2295fdc856ef426674;
+ВОПРОСЫ-по-остатку-МВ.md SHA256
+04cfad2f582666f9728a33683bc85539dd7f9280ccc91d35b8a24bf4877f8c30.
+Сам архив, отчёты, данные уроков и учётные данные в GitHub не публикуются.
