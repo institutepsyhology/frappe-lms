@@ -121,7 +121,7 @@ defineProps({
 // writing into the unmounted one's state. The member forms announce saves
 // through `membersRevision` instead (see stores/members.ts).
 const members = createResource({
-	url: 'lms.lms.api.get_members',
+	url: 'lms.lms.avo_user_routes.get_members',
 	makeParams: () => ({
 		search: search.value,
 		start: start.value,
@@ -185,7 +185,7 @@ const roleLabels: Record<string, string> = {
 // The settings dialog remains open behind the card.
 const openEditMember = (member: Member) => {
 	const avoId = member.kind === 'Contact' ? member.avo_id : member.custom_avo_contact_id
-	if (canOpenCard.value && avoId && /^[1-9][0-9]*$/.test(avoId)) {
+	if ((canOpenCard.value || (member.kind !== 'Contact' && canEditMembers.value)) && avoId && /^[1-9][0-9]*$/.test(avoId)) {
 		openFormRoute(router, { name:'AvoContactById', params:{ avoId } })
 		return
 	}

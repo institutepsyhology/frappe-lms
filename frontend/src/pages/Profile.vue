@@ -192,10 +192,15 @@ onMounted(() => {
 })
 
 const profile = createResource({
-	url: 'lms.lms.api.get_profile_details',
+	url: 'lms.lms.avo_user_routes.get_profile_details',
 	makeParams() {
 		return {
 			username: props.username,
+		}
+	},
+	onSuccess(data) {
+		if (data?.avo_route_id && props.username !== data.avo_route_id) {
+			router.replace({ name: route.name, params: { ...route.params, username: data.avo_route_id }, query: route.query, hash: route.hash })
 		}
 	},
 })

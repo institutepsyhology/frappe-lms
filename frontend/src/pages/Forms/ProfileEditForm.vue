@@ -121,7 +121,7 @@ const { close, saveAndReplace } = useFormRoute(parent)
 // UX gate, not an authorization boundary — Frappe's own DocPerms on User are.
 const refusal = computed(() => {
 	if (readOnlyMode) return __('This site is in read-only mode.')
-	if (user.data?.username !== props.username)
+	if (profileData.value && user.data?.name !== profileData.value.name)
 		return __('You can only edit your own profile.')
 	return ''
 })

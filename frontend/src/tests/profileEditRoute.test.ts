@@ -110,7 +110,7 @@ const mountForm = (router: Router, username: string) =>
 		global: {
 			plugins: [router],
 			provide: {
-				$user: { data: { name: 'john@example.com', username } },
+				$user: { data: { name: username === 'someoneelse' ? 'other@example.com' : 'john@example.com', username } },
 			},
 			stubs: { teleport: true },
 			mocks: { __: (text: string) => text },

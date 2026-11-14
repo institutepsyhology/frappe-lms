@@ -25,4 +25,12 @@ describe('AVO contact URL', () => {
 		expect(wrapper.find('[data-testid=member]').exists()).toBe(false)
 		expect(wrapper.get('[role=alert]').text()).toContain('Не удалось открыть')
 	})
+	it('allows a moderator to resolve a user without contact-card permissions', async () => {
+		callMock.mockRejectedValueOnce(new Error('not permitted'))
+		callMock.mockResolvedValueOnce({kind:'User',name:'user@example.test'})
+		const wrapper = mount(AvoContactById, { props:{avoId:'221910'} })
+		await flushPromises()
+		expect(callMock).toHaveBeenCalledWith('lms.lms.avo_user_routes.resolve_member', {source_id:'221910'})
+		expect(wrapper.get('[data-testid=member]').text()).toBe('user@example.test')
+	})
 })
