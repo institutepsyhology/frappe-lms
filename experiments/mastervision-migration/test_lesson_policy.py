@@ -4,7 +4,7 @@ from unittest.mock import patch
 from importer import ACCOUNT, ORIGIN, Stop
 from lesson_policy import DEFERRED, EXCLUDED, deferred_ids, excluded_ids, partition_payloads
 
-PENDING = {317:{2314},624:{7050},627:{7198},630:{7295},746:{8845}}
+PENDING = {}
 
 
 def payload(cid, lid):
@@ -36,21 +36,12 @@ class PolicyTests(unittest.TestCase):
             outside = [payload(999999,lid)]
             self.assertEqual(partition_payloads(outside), (outside, []))
 
-    def test_selected_five_courses_run_as_partial_without_normalizing_deferred_content(self):
-        import test_run as controller
-        for cid in (317,624,627,630,746):
-            lid = next(iter(PENDING[cid]))
-            source = [{**controller.payload(cid),'lesson_id':x} for x in (900001,lid,900002)]
-            source[1]['ape'] = {'name':'unrecognized_owner_pending_source'}
-            before = copy.deepcopy(source)
-            with patch.object(controller.mod,'stored_course',return_value=source):
-                result=controller.ControllerTests().invoke(cid,args=['--stored','--apply','--course',str(cid)])
-            self.assertEqual(result[0],0); self.assertEqual(source,before)
-            self.assertEqual([p['lesson_id'] for p in result[4].payloads[0]],[900001,900002])
-            self.assertEqual(result[1].marks,[(cid,'partial')])
-            self.assertIn(('import',cid,lid,'review',['owner_deferred_lesson']),result[1].events)
-            self.assertIn({'course':cid,'status':'partial','lessons':2,'created':0,'deferred':[lid]},result[5])
-            self.assertEqual(result[2].urls,[])
+    def test_five_completed_lessons_are_selected_in_source_order(self):
+        for cid,lid in ((317,2314),(624,7050),(627,7198),(630,7295),(746,8845)):
+            source=[payload(cid,x) for x in (900001,lid,900002)]
+            selected,pending=partition_payloads(source)
+            self.assertEqual(selected,source)
+            self.assertEqual(pending,[])
 
     def test_629_all_excluded_without_fake_empty_target(self):
         import test_run as controller
