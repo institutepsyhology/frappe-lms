@@ -3,7 +3,7 @@ import original from './vite.config.js'
 
 export default async (environment) => mergeConfig(
   typeof original === 'function' ? await original(environment) : original,
-  { build: { sourcemap: false, rollupOptions: { output: { manualChunks(id) {
+  { build: { sourcemap: false, minify: false, rollupOptions: { output: { manualChunks(id) {
     if (id.includes('/node_modules/@tensorflow/')) return 'tensorflow'
     if (id.includes('/node_modules/face-api.js/')) return 'face-api'
     if (id.includes('/node_modules/pdfjs-dist/')) return 'pdfjs'
