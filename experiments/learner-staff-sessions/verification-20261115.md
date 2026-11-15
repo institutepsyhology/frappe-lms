@@ -136,3 +136,22 @@ The complete archive utility is ready for its first live run. It still needs
 the GET key entered in its own masked window because the separate three-card
 preflight process exited without storing that key. No full live run is claimed
 by the tests or by this preparation receipt.
+
+## Full archive run started
+
+The owner entered the GET key in the full collector window. The running process
+uses the published `d725c689` collection source. At the live read-back check it
+had saved 20,397 contacts, made 205 requests, reported zero consecutive errors,
+and was continuing the contacts resource; other resources/link phase were still
+pending. These are a checkpoint, not a completeness claim.
+
+Three persisted pages (0, 101, 202) were decrypted locally for metadata-only
+verification. All 300 rows had matching stored counts, unique source IDs,
+matching encrypted snapshot provenance and entries in the separate contact-ID
+index. Each page had only one correct row-to-personal-link UID association,
+confirming the source list-link defect in the current live API too. Raw list
+links remain untrusted; the later individual-card phase is required.
+
+No source values were printed/published. Frappe and the AVO records were not
+modified. The live count/progress file in the private output folder is the
+authority for subsequent status; the application continues without model calls.
