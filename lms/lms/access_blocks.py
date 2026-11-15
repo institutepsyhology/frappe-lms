@@ -99,17 +99,21 @@ def set_block(course: str, member: str, blocked, until=None, lesson=None):
     # All writes for a course serialize; deterministic keys avoid duplicate bans.
     frappe.db.get_value('LMS Course', course, 'name', for_update=True)
     name = hashlib.sha256((course + '\0' + member + '\0' + (lesson or '')).encode()).hexdigest()
-    if frappe.db.exists(DOCTYPE, name):
+    new_block = not frappe.db.exists(DOCTYPE, name)
+    if not new_block:
         doc = frappe.get_doc(DOCTYPE, name, for_update=True)
         if (doc.course, doc.member, doc.lesson or None) != (course, member, lesson):
             frappe.throw(_('Access block identity mismatch.'), frappe.ValidationError)
     elif enabled:
-        doc = frappe.get_doc({'doctype': DOCTYPE, 'name': name, 'course': course, 'member': member, 'lesson': lesson})
+        doc = frappe.get_doc({'doctype': DOCTYPE, 'course': course, 'member': member, 'lesson': lesson})
     else:
         return {'active': False, 'lesson': lesson, 'blocked_until': None}
     doc.active = int(enabled)
     doc.blocked_until = end if enabled else None
-    doc.save(ignore_permissions=True)
+    if new_block:
+        doc.insert(set_name=name, ignore_permissions=True)
+    else:
+        doc.save(ignore_permissions=True)
     cache = getattr(getattr(frappe, 'local', None), '_lms_access_block_rows', None)
     if cache is not None:
         cache.pop((member, course), None)

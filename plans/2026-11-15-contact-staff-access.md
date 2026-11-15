@@ -25,12 +25,12 @@ Implementation sequence:
 
 - [x] Diagnose/rebuild numeric-route update without source maps; retain 51 layers.
 - [x] Audit staff-mutation bypasses, roster, access engine and shared card.
-- [ ] Guard role changes/deletion in API, native User/Role hooks and evaluator.
-- [ ] Add delegated position model, permissions and employee/position screens.
-- [ ] Unify contact card and permission-filtered course list.
-- [ ] Replace roster load-more with bounded server pages and sorting.
-- [ ] Move personal rights to shared dialog; add pair-level blocking/provenance.
-- [ ] Test permissions through UI and direct methods, page boundaries, source
+- [x] Guard role changes/deletion in API, native User/Role hooks and evaluator.
+- [x] Add delegated position model, permissions and employee/position screens.
+- [x] Unify contact card and permission-filtered course list.
+- [x] Replace roster load-more with bounded server pages and sorting.
+- [x] Move personal rights to shared dialog; add pair-level blocking/provenance.
+- [x] Test permissions through component tests and direct methods, page boundaries, source
       account separation, multi-grant deny behavior and timed unblock.
 - [ ] Publish exact sources, back up sites, targeted schema reload, deploy with
       healthy-services/count checks and image rollback, verify actual MCP/HTTP.

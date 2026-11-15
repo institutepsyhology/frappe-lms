@@ -195,7 +195,7 @@ def save_card(kind, name, values):
         identity = identity or any(row.get('phone') for row in doc.get('phone_nos') or [])
         if not identity:
             frappe.throw(_('Provide a name, email, phone or social account.'), frappe.ValidationError)
-        save_options['ignore_mandatory'] = True
+        doc.flags.ignore_mandatory = True
     doc.save(**save_options)
     if doc.get('custom_no_marketing_email') and doc.get('custom_avo_account') and doc.get('custom_avo_contact_id'):
         from lms.lms.avo_marketing import protect_existing_groups

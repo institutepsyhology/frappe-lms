@@ -13,6 +13,9 @@ class Row(dict):
 
 
 class Doc(Row):
+    @property
+    def flags(self):
+        return self.setdefault('_flags', Row())
     def set(self, field, value): self[field] = value
     def append(self, field, value): self.setdefault(field, []).append(Row(value))
     def save(self, **kwargs): self.saved = True

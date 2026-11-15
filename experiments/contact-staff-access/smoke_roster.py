@@ -182,7 +182,7 @@ def run():
         people.set_member_block(course.name, 0, enrollment=token)
         checks['course_unblock'] = not is_blocked(members[0], course.name) and grant_allows_lesson(user=members[0], lesson=lesson.name)
         until = add_to_date(now_datetime(), minutes=5)
-        people.set_member_block(course.name, 1, enrollment=token, until=until, lesson=lesson.name)
+        people.set_member_block(course.name, 1, enrollment=token, until=str(until), lesson=lesson.name)
         checks['lesson_timed_block'] = (is_blocked(members[0], course.name, lesson=lesson.name)
             and not is_blocked(members[0], course.name, lesson=lesson.name, now=add_to_date(until, seconds=1)))
         people.set_member_block(course.name, 0, enrollment=token, lesson=lesson.name)
