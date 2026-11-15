@@ -220,5 +220,32 @@ class StaffPolicyTests(unittest.TestCase):
         self.assertEqual(doc.enabled,1);self.assertEqual(saved,[True])
         self.assertIsNone(self.f.flags.get('_lms_staff_user_write'))
 
+    def _sync_document(self, roles):
+        doc=Doc(name='legacy@example.test',roles=[Row(role=role) for role in roles],enabled=1)
+        doc.set=lambda key,value:doc.__setitem__(key,value)
+        doc.save=lambda **kwargs:None
+        original=self.f.get_doc
+        self.f.get_doc=lambda doctype,name:doc if doctype=='User' else original(doctype,name)
+        self.f.clear_cache=lambda **kwargs:None
+        return doc
+
+    def test_administrator_replaces_retired_password_role_with_only_selected_position_roles(self):
+        self.f.session.user='Administrator'
+        doc=self._sync_document(('LMS Student','Moderator','Course Creator','LMS Credential Manager'))
+        self.api._sync_user(Row(user=doc.name,position='assistant',active=1))
+        self.assertEqual(doc.roles,[{'role':'LMS Student'}])
+        self.assertEqual(doc.enabled,1)
+
+    def test_retired_password_role_is_not_a_nonadmin_delegation_exception(self):
+        doc=self._sync_document(('LMS Student','LMS Credential Manager'))
+        with self.assertRaises(ValueError):self.api._sync_user(Row(user=doc.name,position='assistant',active=1))
+        self.assertIn('LMS Credential Manager',[row.role for row in doc.roles])
+
+    def test_administrator_still_cannot_silently_remove_real_technical_roles(self):
+        self.f.session.user='Administrator'
+        doc=self._sync_document(('LMS Student','LMS Credential Manager','System Manager'))
+        with self.assertRaises(ValueError):self.api._sync_user(Row(user=doc.name,position='assistant',active=1))
+        self.assertIn('System Manager',[row.role for row in doc.roles])
+
 
 if __name__=='__main__':unittest.main()

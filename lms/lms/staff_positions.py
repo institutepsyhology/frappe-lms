@@ -212,7 +212,13 @@ def prevent_assignment_delete(doc, method=None):
 def _sync_user(assignment):
     doc = frappe.get_doc('User', assignment.user)
     raw_roles = {r.role for r in (doc.roles or [])}
-    if not raw_roles <= NATIVE_ROLES:
+    unsupported = raw_roles - NATIVE_ROLES
+    # The retired direct password role no longer grants credential authority:
+    # explicit positions (or legacy Role Profiles) decide that. Administrator
+    # may replace this obsolete marker while assigning the selected position.
+    # It is never retained or delegated, and genuine technical roles still fail.
+    legacy_password_transition = _admin() and unsupported == {'LMS Credential Manager'}
+    if unsupported and not legacy_password_transition:
         frappe.throw(_('Remove technical roles in the administrator console before assigning a bounded staff position.'), frappe.ValidationError)
     position = frappe.get_doc('LMS Staff Position', assignment.position)
     effective = cint(assignment.active) and _position_active(position.name, _graph())
