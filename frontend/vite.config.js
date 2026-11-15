@@ -50,6 +50,9 @@ export default defineConfig(async ({ mode }) => {
 				jinjaBootData: true,
 				buildConfig: {
 					indexHtmlPath: '../lms/www/_lms.html',
+					// Frappe UI's plugin defaults to true and overrides build.sourcemap.
+					// Source maps are unnecessary for the deployed LMS interface.
+					sourcemap: false,
 				},
 			}),
 			vue(),

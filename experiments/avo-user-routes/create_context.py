@@ -16,7 +16,7 @@ FILES = (
     'frontend/src/components/Settings/Members.vue', 'frontend/src/pages/Forms/AvoContactById.vue',
     'frontend/src/pages/Forms/ProfileEditForm.vue', 'frontend/src/pages/Profile.vue',
     'frontend/src/tests/avoContactById.test.ts', 'frontend/src/tests/profileEditRoute.test.ts',
-    'frontend/vite.memory.config.mjs',
+    'frontend/vite.config.js',
 )
 
 def main():
@@ -36,7 +36,8 @@ USER root
 WORKDIR /home/frappe/frappe-bench
 RUN --mount=type=bind,source=overlay.tar,target=/tmp/overlay.tar \\
     tar -xf /tmp/overlay.tar -C apps/lms && tar -tf /tmp/overlay.tar | sed 's|^|apps/lms/|' | xargs chown frappe:0 && \\
-    su -s /bin/sh frappe -c 'ulimit -c 0; env/bin/python -B -m unittest lms.lms.test_avo_user_routes_unit lms.lms.test_avo_import_unit lms.lms.test_avo_reviewed_embed_html -q && cd apps/lms/frontend && node node_modules/vitest/vitest.mjs run --maxWorkers=1 src/tests/avoContactById.test.ts src/tests/profileEditRoute.test.ts src/tests/memberFormRoute.test.ts && NODE_OPTIONS=--max-old-space-size=2600 nice -n 15 node node_modules/vite/bin/vite.js build --config vite.memory.config.mjs --base=/assets/lms/frontend/ && cp ../lms/public/frontend/index.html ../lms/www/_lms.html'
+    su -s /bin/sh frappe -c 'ulimit -c 0; env/bin/python -B -m unittest lms.lms.test_avo_user_routes_unit lms.lms.test_avo_import_unit lms.lms.test_avo_reviewed_embed_html -q && cd apps/lms/frontend && node node_modules/vitest/vitest.mjs run --maxWorkers=1 src/tests/avoContactById.test.ts src/tests/profileEditRoute.test.ts src/tests/memberFormRoute.test.ts && NODE_OPTIONS=--max-old-space-size=2100 nice -n 15 yarn build'
+USER frappe
 LABEL org.opencontainers.image.source="https://github.com/institutepsyhology/frappe-lms" org.opencontainers.image.revision="{revision}" ru.mvcentr.baseline="sha256:49c3f96248bf312703eddc286726009f77233aee7939e685a2a94ff2c90c3702" ru.mvcentr.release="avo-user-routes-v1"
 '''
     (out/'Dockerfile').write_text(recipe,encoding='utf8',newline='\n')
