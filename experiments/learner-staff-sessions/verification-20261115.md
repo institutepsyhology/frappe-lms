@@ -76,3 +76,63 @@ The Frappe contact import code reviewed does not pass these link fields. No
 production DB scan of secret values was needed or performed. Native Frappe
 still has one common session; same-host realm isolation and legacy-link
 redemption have not been deployed by this preparatory work.
+
+## Fresh individual-card preflight
+
+The owner entered the account's GET key in the local masked window. Exactly
+three individual contact cards were requested: three response-ID/link-UID
+checks passed, zero failed. Only their verified links and provenance were
+stored in the separate Windows-user-encrypted local archive. Read-back confirms
+all three DPAPI decryptions work and the plaintext login path is absent from
+the database bytes. No login links were opened; no AVO/Frappe records or
+credentials were changed. The process exited and the GET key was not stored.
+
+This proves the individual-card retrieval path for three contacts. It is not
+bulk completeness, successful Frappe authentication, or a guarantee that every
+historical email/bot key has been captured.
+
+One previously saved individual response can be matched to the fresh captures.
+For that same contact the origin, path and UID are unchanged, but `vc` differs.
+This is evidence that captured key versions can change between observations;
+it does not establish a rotation schedule, invalidate the old key, or prove
+that API reads themselves rotate keys. Preserve separately captured versions.
+
+## Resumable bulk link worker prepared
+
+`collect_personal_links_bulk.py` adds the full individual-card collection mode.
+44 synthetic tests pass across the preflight, DPAPI and bulk modules. The worker
+checks every source ID/account before asking for a key, keeps the key only in
+memory, appends encrypted versions and commits link/success/audit together.
+It writes an atomic aggregate progress report, supports STOP/resume, respects
+retry delays and prevents concurrent writers. It stops after ten consecutive
+ordinary failed contacts, or immediately on authentication, structure, UID,
+secret-leak or encryption errors. A wrong link is never marked as a success.
+
+The three-card verified archive can seed a new bulk run after decryption and
+revalidation. Historical list captures are not treated as fresh individual-card
+verification. The bulk worker has not been launched against the live API;
+the only live requests so far were the three-card preflight. Broader resource
+snapshot collection is being prepared following the owner's new instruction.
+
+## Full legacy-resource archive utility
+
+The new `legacy_api_snapshot.py` collects the 26 documented legacy resource
+names available to the MVC GET key. It compresses/encrypts raw source responses,
+records per-resource coverage, preserves failed-page evidence without advancing
+the success cursor, and builds a separate numeric-IDs-only contact index.
+Optional individual-link collection reuses the key in memory after the other
+resources, with independent progress and correct failure propagation. The GUI
+provides progress, Stop and completion/failure notification. No new Data Export
+host or credential is used.
+
+72 synthetic tests pass across the archive and link modules. Independent review
+findings were fixed and regression-tested: provider backoff applies even after
+the final attempt; interrupted HTTP bodies are retryable; 403/404 after a saved
+prefix is partial; undecodable bodies cannot persist an unchecked encoded key;
+explicit foreign source metadata is rejected; and a wrong-model empty marker
+cannot complete another resource. Tests use no real account data or network.
+
+The complete archive utility is ready for its first live run. It still needs
+the GET key entered in its own masked window because the separate three-card
+preflight process exited without storing that key. No full live run is claimed
+by the tests or by this preparation receipt.

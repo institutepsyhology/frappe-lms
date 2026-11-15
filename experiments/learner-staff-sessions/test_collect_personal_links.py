@@ -1,10 +1,12 @@
 from contextlib import closing
+from http.client import IncompleteRead
 import json
 import sqlite3
 import unittest
+from unittest.mock import patch
 
 from audit_legacy_links import SHOP_HOST
-from collect_personal_links import CollectionError, collect, normalize_detail, parse_key
+from collect_personal_links import CollectionError, collect, normalize_detail, parse_key, read_detail
 from private_link_storage import StorageError, protect_url, unprotect_url
 from test_audit_legacy_links import row, synthetic_database
 
@@ -131,6 +133,21 @@ class CollectionTests(unittest.TestCase):
             unprotect_url(8, protected)
         with self.assertRaises(StorageError):
             unprotect_url(7, protected[:20])
+
+    def test_real_transport_interrupted_body_is_retryable_without_url_leak(self):
+        class BrokenResponse:
+            def __init__(self, url): self.url = url
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def geturl(self): return self.url
+            def read(self, size): raise IncompleteRead(b'SYNTHETIC_PRIVATE_BODY', 10)
+
+        with patch('collect_personal_links.build_opener') as opener:
+            opener.return_value.open.side_effect = lambda request, timeout: BrokenResponse(request.full_url)
+            with self.assertRaises(CollectionError) as caught:
+                read_detail('SYNTHETIC_KEY', 7)
+        self.assertEqual(str(caught.exception), 'network_error')
+        self.assertNotIn('SYNTHETIC_KEY', str(caught.exception))
 
 
 if __name__ == '__main__':

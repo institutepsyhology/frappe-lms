@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 from contextlib import closing
 from datetime import datetime, timezone
+from http.client import HTTPException
 import json
 import os
 from pathlib import Path
@@ -75,7 +76,7 @@ def read_detail(key, source_id):
         code = error.code
         error.close()
         raise CollectionError('http_' + str(code)) from None
-    except (URLError, TimeoutError, OSError):
+    except (URLError, TimeoutError, OSError, HTTPException):
         raise CollectionError('network_error') from None
     except (ValueError, UnicodeError):
         raise CollectionError('invalid_response_json') from None

@@ -49,6 +49,14 @@ unscoped API credential.
    authentication principals linked to the same person. Demonstrate independent
    login, logout, recovery, staff deactivation and media/websocket access before
    applying changes to production identities.
+   Stock User forces `name=email` and username resolves the same password, so
+   two native Users sharing one real address are not a viable alias solution.
+   Prefer a custom learner principal/hashed credential/session linked to the
+   existing canonical member User. Keep staff native User and privileges intact;
+   learner requests stay native Guest behind narrow explicit-member services.
+   Do not use `set_user(canonical_staff_user)` to implement learner requests.
+   Contacts with no member User require a separate membership-model extension;
+   independent authentication alone does not fix Link User enrollment fields.
 3. **Implement locally redeemable personal links.**
    Import only `link_personal_auth`; encrypt recoverable original URLs and index
    a keyed account/site-bound digest. Store provenance, revocation and usage
