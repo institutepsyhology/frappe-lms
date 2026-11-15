@@ -33,7 +33,6 @@ def main():
     recipe=f'''# syntax=docker/dockerfile:1.4
 FROM company-lms:avo-user-routes-base50
 USER root
-WORKDIR /home/frappe/frappe-bench
 RUN --mount=type=bind,source=overlay.tar,target=/tmp/overlay.tar \\
     tar -xf /tmp/overlay.tar -C apps/lms && tar -tf /tmp/overlay.tar | sed 's|^|apps/lms/|' | xargs chown frappe:0 && \\
     su -s /bin/sh frappe -c 'ulimit -c 0; env/bin/python -B -m unittest lms.lms.test_avo_user_routes_unit lms.lms.test_avo_import_unit lms.lms.test_avo_reviewed_embed_html -q && cd apps/lms/frontend && node node_modules/vitest/vitest.mjs run --maxWorkers=1 src/tests/avoContactById.test.ts src/tests/profileEditRoute.test.ts src/tests/memberFormRoute.test.ts && NODE_OPTIONS=--max-old-space-size=2100 nice -n 15 yarn build'
