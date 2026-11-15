@@ -82,6 +82,9 @@ explicitly unproven; Data Export API requires separate schema/access discovery.
 follows the already running MVC reader. It needs the existing verified SSH
 identity, not the AVO key. `--once` sends one bounded links/page cycle for initial
 verification. The destination is fixed to the MVC backend and MVC site; the
+sender batches up to 100 links and 20 raw pages per cycle, with a 4 MiB page
+batch target (one larger source page remains intact). This avoids one server
+startup per tiny page while keeping only a small working buffer in memory. The
 private payload travels only on SSH stdin. The standalone receiver uses the
 existing site encryption key and `private/avo-ingest/archive.sqlite`, outside
 the downloadable files directory. No Docker image/layer or HTTP route is added.

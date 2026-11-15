@@ -173,18 +173,25 @@ def remote(request):
 
 
 def page_batch(db, state, snapshot):
-    cursor = state.execute('SELECT COALESCE(MAX(version_id),0) FROM page_receipts').fetchone()[0]
-    row = db.execute('SELECT * FROM pages WHERE version_id>? ORDER BY version_id LIMIT 1',(cursor,)).fetchone()
-    if row is None: return None
+    previous = state.execute('SELECT COALESCE(MAX(version_id),0) FROM page_receipts').fetchone()[0]
     names = [item[1] for item in db.execute('PRAGMA table_info(pages)')]
-    payload = dict(zip(names,row))
-    encrypted = payload.pop('raw_encrypted')
-    envelope = unprotect_page(payload['resource'],payload['page'],encrypted)
-    if envelope['snapshot'] != snapshot or envelope['sha256'] != payload['sha256']:
-        raise DeliveryError('invalid_local_page')
-    payload['body_b64'] = base64.b64encode(zlib.compress(envelope['raw'],6)).decode('ascii')
-    return request_for(snapshot,'pages',dict(db.execute('SELECT key,value FROM metadata')),
-                       [wrap(payload['version_id'],None,payload)])
+    records,total=[],0
+    cursor=db.execute('SELECT * FROM pages WHERE version_id>? ORDER BY version_id LIMIT 20',(previous,))
+    try:
+        for row in cursor:
+            payload = dict(zip(names,row))
+            encrypted = payload.pop('raw_encrypted')
+            envelope = unprotect_page(payload['resource'],payload['page'],encrypted)
+            if envelope['snapshot'] != snapshot or envelope['sha256'] != payload['sha256']:
+                raise DeliveryError('invalid_local_page')
+            payload['body_b64'] = base64.b64encode(zlib.compress(envelope['raw'],6)).decode('ascii')
+            record=wrap(payload['version_id'],None,payload)
+            size=len(canonical(record))
+            if records and total+size>4*1024*1024: break
+            records.append(record);total+=size
+    finally: cursor.close()
+    if not records:return None
+    return request_for(snapshot,'pages',dict(db.execute('SELECT key,value FROM metadata')),records)
 
 
 def directories(job):

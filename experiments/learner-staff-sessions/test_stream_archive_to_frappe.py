@@ -223,8 +223,19 @@ class SenderTests(unittest.TestCase):
                 self.assertEqual(result['pending_links'],0)
                 result2=sender.run(folder,once=True,transport=transport)
                 self.assertEqual(result2['consecutive_failures'],0)
+                with closing(sqlite3.connect(folder/'snapshot.sqlite')) as db:
+                    with db:
+                        for page in range(1,22):
+                            db.execute('INSERT INTO pages VALUES (NULL,?,?,?,?,?,?,?,?,?,?)',
+                                (raw_archive.FORMAT,'mv-centr',sender.API_ORIGIN,'contacts',page,
+                                 hashlib.sha256(body).hexdigest(),1,'2026-11-16T00:00:00+00:00','accepted',
+                                 raw_archive.protect_page('contacts',page,body,snapshot)))
+                result3=sender.run(folder,once=True,transport=transport)
+                self.assertEqual(result3['pages_delivered'],21)
+                result4=sender.run(folder,once=True,transport=transport)
+                self.assertEqual(result4['pages_delivered'],22)
                 with closing(sqlite3.connect(folder/'remote/archive.sqlite')) as db:
-                    self.assertEqual(db.execute('SELECT COUNT(*) FROM records').fetchone()[0],4)
+                    self.assertEqual(db.execute('SELECT COUNT(*) FROM records').fetchone()[0],25)
             finally: self.cleanup_fixture(folder)
 
 
