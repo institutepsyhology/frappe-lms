@@ -28,13 +28,15 @@ from collect_personal_links import (
     CollectionError, ERROR_CODES, normalize_detail, parse_key, read_detail, verified_link,
 )
 from private_link_storage import StorageError, protect_url, unprotect_url
-from progress_io import ProgressWriteError, write_json
+from progress_io import ProgressWriteError, read_json, write_json
 
 
 ACCOUNT = 'mv-centr'
 REPOSITORY = Path(__file__).resolve().parents[2]
 MAX_ATTEMPTS = 3
 FAILURE_LIMIT = 10
+MAX_REQUESTS_PER_SECOND = 5.0
+RECOVERY_SUCCESSES = 100
 RETRYABLE = frozenset({'network_error', 'http_408', 'http_429'})
 BULK_CODES = frozenset({
     'invalid_arguments', 'wrong_account', 'wrong_source_archive', 'empty_source_archive',
@@ -81,6 +83,56 @@ def immediate_stop(code):
     return not (is_retryable(code) or code in CONTACT_FAILURES)
 
 
+class AdaptiveRate:
+    """Local speed setting plus provider backoff; contains no account secrets."""
+    def __init__(self, directory, target):
+        self.path = Path(directory) / 'speed.json'
+        self.default = self.target = float(target)
+        self.ceiling = MAX_REQUESTS_PER_SECOND
+        self.signature = None
+        self.clean = 0
+        self.warning = None
+
+    @property
+    def current(self):
+        return min(self.target, self.ceiling)
+
+    def refresh(self):
+        try:
+            if self.path.is_symlink():
+                self.warning = 'invalid_speed_setting'
+                return
+            try:
+                info = self.path.stat()
+            except FileNotFoundError:
+                signature, value = ('absent',), self.default
+            else:
+                signature = (info.st_mtime_ns, info.st_size)
+                if signature == self.signature:
+                    return
+                settings = read_json(self.path, max_bytes=256)
+                if set(settings) != {'requests_per_second'}:
+                    raise ValueError('invalid_speed_setting')
+                value = settings['requests_per_second']
+            if type(value) not in (int, float) or not 0 < value <= MAX_REQUESTS_PER_SECOND or not math.isfinite(value):
+                raise ValueError('invalid_speed_setting')
+            self.target = float(value)
+            # Manual changes cannot undo the separate adaptive throttle ceiling.
+            self.signature, self.warning = signature, None
+        except (OSError, ValueError, TypeError):
+            self.warning = 'invalid_speed_setting'
+
+    def failed(self):
+        self.ceiling = max(0.25, self.current / 2)
+        self.clean = 0
+
+    def succeeded(self):
+        self.clean += 1
+        if self.clean >= RECOVERY_SUCCESSES:
+            self.ceiling = min(MAX_REQUESTS_PER_SECOND, self.ceiling + 0.25)
+            self.clean = 0
+
+
 def validate_source(database, account):
     """Validate EVERY source ID/account before any network request or key prompt.
 
@@ -123,7 +175,7 @@ def private_output(directory, source_database, seed_database=None):
     # Refuse symlink/hardlink aliases too: a misplaced output file must never
     # make SQLite or the atomic-progress temporary file modify the source.
     for name in ('links.sqlite', 'links.sqlite-wal', 'links.sqlite-shm',
-                 'collector.lock', 'progress.json', 'progress.json.tmp'):
+                 'collector.lock', 'progress.json', 'progress.json.tmp', 'speed.json', 'speed.json.tmp'):
         candidate = directory / name
         if candidate.is_symlink():
             raise BulkError('private_output_required')
@@ -382,7 +434,7 @@ def graphical_key(total, pending):
     frame.grid()
     ttk.Label(frame, text='Полный сбор: ВСЕ контакты МВЦ', font=('', 12)).grid(sticky='w')
     ttk.Label(frame, text=f'В исходнике: {total:,}. Осталось проверить: {pending:,}.\n'
-              'Каждая карточка читается отдельно через API GET, не чаще 1 запроса/сек.\n'
+              'Каждая карточка читается отдельно; скорость подстраивается под ограничения API.\n'
               'Это длительный сбор, а не проверка трёх карточек.\n'
               'АВО используется ТОЛЬКО ДЛЯ ЧТЕНИЯ. Во Frappe изменений не будет.\n'
               'Ссылки не открываются; пароли и профили не сохраняются.').grid(sticky='w', pady=10)
@@ -424,7 +476,7 @@ def collect(source_database, output_directory, *, account, key=None, key_provide
             fetch=read_detail, clock=time.monotonic, wait=time.sleep, stop_requested=None):
     """Collect all validated IDs. Injectable fetch/clock are for offline tests only."""
     if (isinstance(requests_per_second, bool) or not isinstance(requests_per_second, (int, float))
-            or not math.isfinite(requests_per_second) or not 0 < requests_per_second <= 1
+            or not 0 < requests_per_second <= MAX_REQUESTS_PER_SECOND or not math.isfinite(requests_per_second)
             or type(max_attempts) is not int or not 1 <= max_attempts <= 5 or type(refresh) is not bool):
         raise BulkError('invalid_arguments')
     folder = private_output(output_directory, source_database, seed_database)
@@ -436,6 +488,7 @@ def collect(source_database, output_directory, *, account, key=None, key_provide
               'source_values_printed': False, 'frappe_changed': False,
               'links_redeemed': False, 'key_stored': False}
     stopped_path = folder / 'STOP'
+    rate = AdaptiveRate(folder, requests_per_second)
 
     def check_stop():
         if stopped_path.exists() or (stop_requested is not None and stop_requested()):
@@ -452,6 +505,9 @@ def collect(source_database, output_directory, *, account, key=None, key_provide
     with writer_lock(folder), closing(open_output(folder / 'links.sqlite', source_fingerprint, len(ids))) as db:
         def progress():
             report['verified_total'] = db.execute('SELECT COUNT(*) FROM contact_state').fetchone()[0]
+            report['target_requests_per_second'] = rate.target
+            report['current_requests_per_second'] = rate.current
+            report['speed_setting_warning'] = rate.warning
             try:
                 atomic_progress(folder, report)
             except Exception as error:
@@ -472,8 +528,8 @@ def collect(source_database, output_directory, *, account, key=None, key_provide
                     report['seeded'] = seed_archive(db, seed_database, ids, key, check_stop)
             report['status'] = 'collecting'
             progress()
-            next_request_at = clock()
-            interval = 1.0 / requests_per_second
+            not_before = clock()
+            last_request_at = None
             for ident in ids:
                 check_stop()
                 if not refresh and has_success(db, ident):
@@ -482,8 +538,16 @@ def collect(source_database, output_directory, *, account, key=None, key_provide
                 report['requested_contacts'] += 1
                 code = None
                 for attempt in range(max_attempts):
-                    until(next_request_at)
-                    next_request_at = clock() + interval
+                    while True:
+                        check_stop()
+                        rate.refresh()
+                        deadline = max(not_before, last_request_at + 1 / rate.current
+                                       if last_request_at is not None else clock())
+                        remaining = deadline - clock()
+                        if remaining <= 0:
+                            break
+                        wait(min(0.25, remaining))
+                    last_request_at = clock()
                     report['request_attempts'] += 1
                     try:
                         detail = fetch(key, ident)
@@ -500,6 +564,7 @@ def collect(source_database, output_directory, *, account, key=None, key_provide
                         with db:
                             record_event(db, ident, code)
                         if is_retryable(code):
+                            rate.failed()
                             try:
                                 server_delay = retry_after(error)
                             except BulkError as delay_error:
@@ -509,13 +574,14 @@ def collect(source_database, output_directory, *, account, key=None, key_provide
                                 break
                             # The provider's pause applies to the next request,
                             # including the next contact after exhausted retries.
-                            next_request_at = max(next_request_at, clock() + server_delay)
+                            not_before = max(not_before, clock() + server_delay)
                         if is_retryable(code) and attempt + 1 < max_attempts:
                             delay = max(float(2**attempt), server_delay)
                             report['status'] = 'retry_wait'
                             report['error_code'] = code
                             progress()
-                            until(max(next_request_at, clock() + delay))
+                            not_before = max(not_before, clock() + delay)
+                            until(not_before)
                             report['status'] = 'collecting'
                             continue
                         break
@@ -523,6 +589,7 @@ def collect(source_database, output_directory, *, account, key=None, key_provide
                         detail = None
                         url = None
                 if code is None:
+                    rate.succeeded()
                     report['verified_this_run'] += 1
                     report['consecutive_failures'] = 0
                     report['error_code'] = None

@@ -47,7 +47,7 @@ def output_directory():
     finally:
         # Fixed synthetic files only, no recursive filesystem operation.
         for name in ('links.sqlite', 'links.sqlite-wal', 'links.sqlite-shm', 'links.sqlite-journal',
-                     'collector.lock', 'progress.json', 'progress.json.tmp', 'STOP'):
+                     'collector.lock', 'progress.json', 'progress.json.tmp', 'speed.json', 'speed.json.tmp', 'STOP'):
             (directory / name).unlink(missing_ok=True)
         directory.rmdir()
 
@@ -78,6 +78,131 @@ def count(directory, table):
 
 
 class BulkCollectionTests(unittest.TestCase):
+    def test_manual_down_up_does_not_remove_adaptive_throttle(self):
+        with output_directory() as output:
+            rate = bulk.AdaptiveRate(output,3)
+            rate.failed()
+            self.assertEqual(rate.current,1.5)
+            (output/'speed.json').write_text('{"requests_per_second":1}')
+            rate.refresh()
+            self.assertEqual(rate.current,1)
+            (output/'speed.json').write_text('{"requests_per_second":3}')
+            rate.refresh()
+            self.assertEqual(rate.current,1.5)
+
+    def test_three_requests_per_second_keeps_verified_results(self):
+        with synthetic_database() as source, output_directory() as output:
+            source_archive(source, 3)
+            clock, starts = Clock(), []
+            def fetch(key, ident):
+                starts.append(clock())
+                return detail(ident)
+            report = run(source, output, fetch, clock=clock, requests_per_second=3)
+            self.assertEqual(report['verified_total'], 3)
+            self.assertAlmostEqual(starts[1] - starts[0], 1/3)
+            self.assertAlmostEqual(starts[2] - starts[1], 1/3)
+            self.assertEqual(report['current_requests_per_second'], 3)
+
+    def test_live_setting_can_speed_up_without_another_key_prompt(self):
+        with synthetic_database() as source, output_directory() as output:
+            source_archive(source, 3)
+            clock, starts, prompts = Clock(), [], []
+            def fetch(key, ident):
+                starts.append(clock())
+                if ident == 1:
+                    (output/'speed.json').write_text('{"requests_per_second":3}')
+                return detail(ident)
+            report = bulk.collect(source, output, account='mv-centr',
+                key_provider=lambda total,pending: prompts.append(True) or KEY,
+                fetch=fetch, clock=clock, wait=clock.wait)
+            self.assertEqual(len(prompts), 1)
+            self.assertLess(starts[1]-starts[0], 1)
+            self.assertEqual(report['target_requests_per_second'], 3)
+
+    def test_lowering_speed_mid_wait_delays_next_actual_request(self):
+        with synthetic_database() as source, output_directory() as output:
+            source_archive(source, 2)
+            clock, starts, changed = Clock(), [], []
+            def wait(seconds):
+                clock.wait(seconds)
+                if starts and not changed:
+                    (output/'speed.json').write_text('{"requests_per_second":0.5}')
+                    changed.append(True)
+            def fetch(key, ident):
+                starts.append(clock())
+                return detail(ident)
+            report = bulk.collect(source, output, account='mv-centr',key=KEY,
+                fetch=fetch,clock=clock,wait=wait,requests_per_second=3)
+            self.assertGreaterEqual(starts[1]-starts[0], 2)
+            self.assertEqual(report['current_requests_per_second'], 0.5)
+
+    def test_same_setting_does_not_undo_provider_backoff(self):
+        with synthetic_database() as source, output_directory() as output:
+            source_archive(source, 2)
+            (output/'speed.json').write_text('{"requests_per_second":3}')
+            clock, starts = Clock(), []
+            def fetch(key, ident):
+                starts.append((ident,clock()))
+                if len(starts) == 1:
+                    error = CollectionError('http_429')
+                    error.retry_after = 5
+                    raise error
+                return detail(ident)
+            report = run(source,output,fetch,clock=clock)
+            self.assertGreaterEqual(starts[1][1]-starts[0][1], 5)
+            self.assertGreaterEqual(starts[2][1]-starts[1][1], 1/1.5)
+            self.assertEqual(report['current_requests_per_second'], 1.5)
+
+    def test_rate_increase_does_not_shorten_final_attempt_retry_after(self):
+        with synthetic_database() as source, output_directory() as output:
+            source_archive(source, 2)
+            clock, starts = Clock(), []
+            def fetch(key, ident):
+                starts.append(clock())
+                if ident == 1:
+                    (output/'speed.json').write_text('{"requests_per_second":5}')
+                    error = CollectionError('http_429')
+                    error.retry_after = 30
+                    raise error
+                return detail(ident)
+            report = run(source,output,fetch,clock=clock,requests_per_second=3,max_attempts=1)
+            self.assertGreaterEqual(starts[1]-starts[0], 30)
+            self.assertEqual(report['target_requests_per_second'], 5)
+            self.assertEqual(report['current_requests_per_second'], 1.5)
+
+    def test_invalid_live_settings_keep_valid_rate_without_contact_failures(self):
+        bad = ['{"requests_per_second":true}', '{"requests_per_second":NaN}',
+               '{"requests_per_second":Infinity}', '{"requests_per_second":0}',
+               '{"requests_per_second":6}', '{"requests_per_second":"SYNTHETIC_SECRET"}', '{']
+        for value in bad:
+            with self.subTest(setting=value), synthetic_database() as source, output_directory() as output:
+                source_archive(source, 1)
+                (output/'speed.json').write_text(value)
+                report = run(source,output,requests_per_second=3)
+                self.assertEqual(report['status'], 'completed')
+                self.assertEqual(report['failed_contacts'], 0)
+                self.assertEqual(report['current_requests_per_second'], 3)
+                self.assertEqual(report['speed_setting_warning'], 'invalid_speed_setting')
+                self.assertNotIn('SYNTHETIC_SECRET',json.dumps(report))
+
+    def test_rate_change_does_not_change_archive_identity_or_repeat_saved_contacts(self):
+        with synthetic_database() as source, output_directory() as output:
+            source_archive(source, 2)
+            run(source,output)
+            report = run(source,output,lambda *_: self.fail('already_saved_contact_requested'),requests_per_second=3)
+            self.assertEqual(report['verified_total'], 2)
+            self.assertEqual(report['skipped'], 2)
+
+    def test_adaptive_rate_recovers_gradually_after_clean_responses(self):
+        with output_directory() as output:
+            rate = bulk.AdaptiveRate(output,3)
+            rate.failed()
+            self.assertEqual(rate.current,1.5)
+            for _ in range(bulk.RECOVERY_SUCCESSES): rate.succeeded()
+            self.assertEqual(rate.current,1.75)
+            for _ in range(20*bulk.RECOVERY_SUCCESSES): rate.succeeded()
+            self.assertEqual(rate.current,3)
+
     def test_control_error_logs_category_without_exception_contents(self):
         with synthetic_database() as source, output_directory() as output:
             source_archive(source, 1)
@@ -460,7 +585,7 @@ class BulkCollectionTests(unittest.TestCase):
             self.assertEqual(resumed['verified_total'], 3)
 
     def test_source_hardlink_cannot_be_used_for_progress_or_database(self):
-        for name in ('links.sqlite', 'progress.json.tmp', 'collector.lock'):
+        for name in ('links.sqlite', 'progress.json.tmp', 'collector.lock', 'speed.json', 'speed.json.tmp'):
             with self.subTest(name=name), synthetic_database() as source, output_directory() as output:
                 source_archive(source)
                 before = source.read_bytes()

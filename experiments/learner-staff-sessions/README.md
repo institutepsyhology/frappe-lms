@@ -22,12 +22,16 @@ associated links. See the dated verification and API-data audit reports here.
 - `collect_personal_links_bulk.py --account mv-centr --source-database
   <IDs contacts.sqlite> --output-directory <private folder>`: resumable
   individual-card link collection. Optional `--seed-database <three-card DB>`
-  and `--refresh` (append fresh versions). Default at most one request/second.
+  and `--refresh` (append fresh versions). Core default: one request/second;
+  `--requests-per-second` accepts a bounded ceiling up to five/second.
 - `legacy_api_snapshot.py --output-directory <private folder> --collect-links`:
   GUI collection of the 26 documented legacy resources available to the key,
   followed by individually verified learner links. One masked GET key remains
   in the process's memory for both phases; there is no secret command argument
   or environment variable. The GUI shows the current resource and link progress.
+  Its link phase starts at a three-request/second ceiling, automatically reduced
+  on network/throttling/server errors. This is a client setting, not a statement
+  of the provider's guaranteed throughput or quota.
 
 Use the existing local Python runtime with Tk/Windows DPAPI. Start a GUI process
 with a hidden console. New output folder = new snapshot; same folder = resume.
@@ -43,6 +47,14 @@ separate `links-<snapshot-id>` folder with encrypted versions and its own
 aggregate progress file. STOP or the GUI Stop button requests graceful shutdown.
 The GUI announces completion/failure; per-contact failures remain in the local
 audit. The key is discarded on shutdown; resuming requires entering it again.
+
+To tune a running updated link collector, atomically write `speed.json` in its
+`links-<snapshot-id>` directory, containing only `{"requests_per_second":3}`.
+This changes the requested ceiling without a restart/key entry. The collector
+keeps a separate adaptive ceiling; down/up changes cannot undo throttling.
+Mandatory Retry-After/backoff deadlines survive live speed changes. Malformed,
+non-finite, boolean or out-of-range settings keep the last valid speed. Speed
+is not part of strict archive identity, so completed rows remain resumable.
 
 Status-file writes and reads have bounded retries for temporary Windows locks.
 Link databases include a `diagnostics` table with the operation stage, exception

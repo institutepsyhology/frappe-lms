@@ -63,6 +63,32 @@ def rows(directory, query):
 
 
 class SnapshotTests(unittest.TestCase):
+    def test_link_progress_exposes_only_bounded_numeric_rate(self):
+        with folder() as output:
+            ident = 'c' * 32
+            child = output / ('links-' + ident)
+            child.mkdir()
+            path = child / 'progress.json'
+            try:
+                path.write_text(json.dumps({'current_requests_per_second':2.5,
+                    'target_requests_per_second':float('nan'),'key':KEY}),encoding='utf-8')
+                self.assertEqual(snapshot.read_link_progress(output,ident),{'current_requests_per_second':2.5})
+            finally:
+                path.unlink()
+                child.rmdir()
+
+    def test_fast_link_rate_is_explicitly_forwarded_to_child(self):
+        with folder() as output:
+            seen = []
+            def link_collector(*args,**options):
+                seen.append(options['requests_per_second'])
+                return {'status':'completed'}
+            report = run(output,lambda key,resource,page,*rest:
+                response([{'id_contact':1}]) if page==0 else response([]),
+                collect_links=True,link_collector=link_collector,link_requests_per_second=3)
+            self.assertEqual(seen,[3])
+            self.assertEqual(report['links_status'],'completed')
+
     def test_live_bold_empty_markers_keep_resource_binding(self):
         examples = [('contacts', 'No items where found for model <b></b>'),
                     ('training', 'No items where found for model <b>training</b>'),

@@ -318,6 +318,10 @@ def read_link_progress(folder, snapshot):
         result.update((field, value[field]) for field in
             ('verified_total', 'total_contacts', 'request_attempts', 'failed_contacts')
             if type(value.get(field)) is int and 0 <= value[field] < 2**63)
+        result.update((field, value[field]) for field in
+            ('current_requests_per_second', 'target_requests_per_second')
+            if type(value.get(field)) in (int, float) and 0 < value[field] <= 5
+            and math.isfinite(value[field]))
         return result
     except (OSError, ValueError, TypeError):
         return {}
@@ -326,13 +330,15 @@ def read_link_progress(folder, snapshot):
 def collect(output_directory, *, account=ACCOUNT, key=None, key_provider=None, resources=RESOURCES,
             page_size=100, requests_per_second=1.0, max_attempts=3, fetch=read_page,
             clock=time.monotonic, wait=time.sleep, stop_requested=None, collect_links=False,
-            link_collector=None, on_progress=None):
+            link_collector=None, on_progress=None, link_requests_per_second=1.0):
     if account != ACCOUNT:
         raise SnapshotError('wrong_account')
     if (type(page_size) is not int or not 1 <= page_size <= 100 or type(max_attempts) is not int
             or not 1 <= max_attempts <= 5 or isinstance(requests_per_second, bool)
             or not isinstance(requests_per_second, (int, float)) or not math.isfinite(requests_per_second)
             or not 0 < requests_per_second <= 1 or type(collect_links) is not bool
+            or type(link_requests_per_second) not in (int, float)
+            or not 0 < link_requests_per_second <= 5 or not math.isfinite(link_requests_per_second)
             or not isinstance(resources, (tuple, list)) or not resources
             or any(not isinstance(item, Resource) for item in resources)
             or len({item.name for item in resources}) != len(resources)
@@ -351,10 +357,12 @@ def collect(output_directory, *, account=ACCOUNT, key=None, key_provider=None, r
             raise SnapshotError('cancelled')
 
     def until(deadline):
-        while clock() < deadline:
+        while True:
             check_stop()
-            wait(min(0.25, deadline - clock()))
-        check_stop()
+            remaining = deadline - clock()
+            if remaining <= 0:
+                return
+            wait(min(0.25, remaining))
 
     def progress(db):
         report['resources'] = {name: {'status': status, 'rows': count, 'next_page': page,
@@ -507,7 +515,7 @@ def collect(output_directory, *, account=ACCOUNT, key=None, key_provider=None, r
                     if link_collector is None:
                         from collect_personal_links_bulk import collect as link_collector
                     result = link_collector(folder / 'contacts.sqlite', folder / ('links-' + snapshot),
-                        account=ACCOUNT, key=key,
+                        account=ACCOUNT, key=key, requests_per_second=link_requests_per_second,
                         stop_requested=lambda: (folder / 'STOP').exists() or bool(stop_requested and stop_requested()))
                     link_status = result.get('status') if isinstance(result, dict) else None
                     report['links_status'] = link_status if link_status in LINK_STATUSES else 'incomplete'
@@ -544,7 +552,7 @@ def graphical_collect(directory, collect_links=False):
         'После сбоя повторный запуск продолжает тот же снимок. Новый снимок — новая папка.').grid(sticky='w', pady=10)
     if collect_links:
         ttk.Label(frame, text='После основных разделов программа отдельно соберёт персональные ссылки.\n'
-                  'Это длительный сбор; его прогресс будет показан в этом окне.').grid(sticky='w', pady=6)
+                  'Предел — 3 запроса/сек, с автоматическим снижением при ограничении API.').grid(sticky='w', pady=6)
     ttk.Label(frame, text='API KEY GET МВЦ — только в памяти этого процесса:').grid(sticky='w')
     entry = ttk.Entry(frame, width=72, show='*')
     entry.grid(sticky='ew')
@@ -570,7 +578,8 @@ def graphical_collect(directory, collect_links=False):
             nonlocal secret
             try:
                 value = collect(directory, key=secret, collect_links=collect_links,
-                    stop_requested=stopped.is_set, on_progress=lambda report: messages.put(('progress', report)))
+                    stop_requested=stopped.is_set, on_progress=lambda report: messages.put(('progress', report)),
+                    link_requests_per_second=3.0)
             except Exception as error:
                 value = {'status': 'stopped', 'error_code': safe_code(error)}
             finally:
@@ -599,7 +608,9 @@ def graphical_collect(directory, collect_links=False):
             if counts:
                 label.configure(text='Персональные ссылки: ' + str(counts.get('verified_total', 0))
                     + ' / ' + str(counts.get('total_contacts', 0))
-                    + ' | Запросов: ' + str(counts.get('request_attempts', 0)))
+                    + ' | Запросов: ' + str(counts.get('request_attempts', 0))
+                    + (' | Предел: ' + str(counts['current_requests_per_second']) + '/с'
+                       if 'current_requests_per_second' in counts else ''))
         root.after(150, poll)
 
     def close():
