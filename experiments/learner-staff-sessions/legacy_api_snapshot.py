@@ -35,6 +35,7 @@ from audit_legacy_links import API_ORIGIN
 from collect_personal_links import NoRedirect, parse_key
 from collect_personal_links_bulk import writer_lock
 from private_link_storage import _crypt
+from progress_io import ProgressWriteError, read_json, write_json
 
 
 ACCOUNT = 'mv-centr'
@@ -95,6 +96,8 @@ def utc_now():
 
 
 def safe_code(error):
+    if isinstance(error, ProgressWriteError):
+        return 'progress_file_locked'
     code = error.args[0] if len(error.args) == 1 else None
     return code if isinstance(code, str) and (code in CODES or re.fullmatch(r'http_[1-5]\d\d', code)) else 'internal_failure'
 
@@ -310,13 +313,7 @@ def read_link_progress(folder, snapshot):
         path = Path(folder) / ('links-' + snapshot) / 'progress.json'
         if path.is_symlink():
             return {}
-        with path.open('rb') as stream:
-            raw = stream.read(65537)
-        if len(raw) > 65536:
-            return {}
-        value = json.loads(raw)
-        if not isinstance(value, dict):
-            return {}
+        value = read_json(path)
         result = {'status': value['status']} if value.get('status') in LINK_STATUSES else {}
         result.update((field, value[field]) for field in
             ('verified_total', 'total_contacts', 'request_attempts', 'failed_contacts')
@@ -363,9 +360,7 @@ def collect(output_directory, *, account=ACCOUNT, key=None, key_provider=None, r
         report['resources'] = {name: {'status': status, 'rows': count, 'next_page': page,
             'error_code': code, 'id_validation': 'enabled' if INVENTORY[name].id_field else 'undocumented_id'}
             for name, page, count, status, code in db.execute('SELECT * FROM resource_state')}
-        temporary = folder / 'progress.tmp.json'
-        temporary.write_text(json.dumps(report, ensure_ascii=True, indent=2), encoding='utf-8')
-        os.replace(temporary, folder / 'progress.json')
+        write_json(folder / 'progress.json', report, temporary=folder / 'progress.tmp.json')
         if on_progress:
             on_progress(json.loads(json.dumps(report)))
 

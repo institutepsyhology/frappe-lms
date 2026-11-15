@@ -78,6 +78,33 @@ def count(directory, table):
 
 
 class BulkCollectionTests(unittest.TestCase):
+    def test_control_error_logs_category_without_exception_contents(self):
+        with synthetic_database() as source, output_directory() as output:
+            source_archive(source, 1)
+            original = bulk.atomic_progress
+            calls = []
+
+            def fail_once(directory, report):
+                calls.append(report['status'])
+                if len(calls) == 3:
+                    error = PermissionError(13, 'SYNTHETIC_PRIVATE_EXCEPTION_' + KEY)
+                    error.winerror = 5
+                    raise error
+                return original(directory, report)
+
+            with patch.object(bulk, 'atomic_progress', side_effect=fail_once):
+                report = run(source, output)
+            self.assertEqual(report['status'], 'stopped_fatal_error')
+            self.assertEqual(report['verified_total'], 1)
+            with closing(sqlite3.connect(output / 'links.sqlite')) as db:
+                diagnostics = db.execute('SELECT stage,error_type,errno,winerror FROM diagnostics').fetchall()
+            self.assertIn(('write_progress', 'PermissionError', 13, 5), diagnostics)
+            self.assertNotIn(KEY, (output / 'links.sqlite').read_bytes().decode('latin1'))
+            self.assertNotIn(KEY, (output / 'progress.json').read_text())
+            resumed = run(source, output)
+            self.assertEqual(resumed['verified_total'], 1)
+            self.assertEqual(resumed['skipped'], 1)
+
     def test_all_individual_cards_encrypted_and_source_unchanged(self):
         with synthetic_database() as source, output_directory() as output:
             source_archive(source, 4)

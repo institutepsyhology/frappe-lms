@@ -44,6 +44,11 @@ aggregate progress file. STOP or the GUI Stop button requests graceful shutdown.
 The GUI announces completion/failure; per-contact failures remain in the local
 audit. The key is discarded on shutdown; resuming requires entering it again.
 
+Status-file writes and reads have bounded retries for temporary Windows locks.
+Link databases include a `diagnostics` table with the operation stage, exception
+class and numeric OS codes; exception messages/URLs/keys are excluded. Successful
+link transactions remain authoritative even if the following status write fails.
+
 `reclassify_terminal_markers.py --output-directory <private folder>` repairs
 only old `invalid_json` completion labels when a saved exact legacy HTML end
 marker is proven, encrypted provenance matches, and accepted pages/counts/IDs

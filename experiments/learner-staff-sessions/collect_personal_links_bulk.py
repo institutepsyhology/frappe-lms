@@ -28,6 +28,7 @@ from collect_personal_links import (
     CollectionError, ERROR_CODES, normalize_detail, parse_key, read_detail, verified_link,
 )
 from private_link_storage import StorageError, protect_url, unprotect_url
+from progress_io import ProgressWriteError, write_json
 
 
 ACCOUNT = 'mv-centr'
@@ -40,7 +41,7 @@ BULK_CODES = frozenset({
     'private_output_required', 'source_output_overlap', 'collector_already_running',
     'archive_metadata_mismatch', 'invalid_private_archive', 'invalid_seed_archive',
     'token_collision', 'retry_after_excessive', 'internal_failure', 'cancelled',
-    'invalid_key_input', 'private_storage_failed',
+    'invalid_key_input', 'private_storage_failed', 'progress_file_locked',
 })
 # Missing links and a deleted contact may be isolated source conditions. Other
 # malformed replies are evidence of an API/schema/account problem: stop at once.
@@ -62,6 +63,8 @@ def utc_now():
 
 def safe_code(error):
     """Never format an exception: urllib/SQLite exceptions may contain secrets."""
+    if isinstance(error, ProgressWriteError):
+        return 'progress_file_locked'
     if isinstance(error, (CollectionError, StorageError)) and len(error.args) == 1:
         code = error.args[0]
         if isinstance(code, str) and (code in ERROR_CODES or code in BULK_CODES
@@ -208,6 +211,11 @@ def open_output(path, source_fingerprint, total):
                 event_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 occurred_at TEXT NOT NULL, source_id INTEGER, code TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS diagnostics (
+                id INTEGER PRIMARY KEY, occurred_at TEXT NOT NULL,
+                stage TEXT NOT NULL, error_type TEXT NOT NULL,
+                errno INTEGER, winerror INTEGER
+            );
         ''')
         actual = dict(db.execute('SELECT key, value FROM metadata'))
         if actual and actual != expected:
@@ -351,16 +359,16 @@ def retry_after(error):
 
 
 def atomic_progress(directory, report):
-    temporary = directory / 'progress.json.tmp'
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    try:
-        with os.fdopen(descriptor, 'w', encoding='utf-8') as stream:
-            json.dump(dict(report, updated_at=utc_now()), stream, ensure_ascii=True, sort_keys=True)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, directory / 'progress.json')
-    finally:
-        temporary.unlink(missing_ok=True)
+    write_json(directory / 'progress.json', dict(report, updated_at=utc_now()))
+
+
+def record_diagnostic(db, stage, error):
+    """Record exception category/numeric OS codes, never messages or tracebacks."""
+    numeric = lambda value: value if type(value) is int else None
+    with db:
+        db.execute('INSERT INTO diagnostics (occurred_at,stage,error_type,errno,winerror) VALUES (?,?,?,?,?)',
+                   (utc_now(), stage, type(error).__name__, numeric(getattr(error, 'errno', None)),
+                    numeric(getattr(error, 'winerror', None))))
 
 
 def graphical_key(total, pending):
@@ -444,7 +452,11 @@ def collect(source_database, output_directory, *, account, key=None, key_provide
     with writer_lock(folder), closing(open_output(folder / 'links.sqlite', source_fingerprint, len(ids))) as db:
         def progress():
             report['verified_total'] = db.execute('SELECT COUNT(*) FROM contact_state').fetchone()[0]
-            atomic_progress(folder, report)
+            try:
+                atomic_progress(folder, report)
+            except Exception as error:
+                record_diagnostic(db, 'write_progress', error)
+                raise
 
         try:
             for ident, in db.execute('SELECT source_id FROM contact_state'):
@@ -483,6 +495,7 @@ def collect(source_database, output_directory, *, account, key=None, key_provide
                         code = None
                         break
                     except Exception as error:
+                        record_diagnostic(db, 'read_or_store_contact', error)
                         code = safe_code(error)
                         with db:
                             record_event(db, ident, code)
@@ -532,6 +545,7 @@ def collect(source_database, output_directory, *, account, key=None, key_provide
             with db:
                 record_event(db, None, 'cancelled')
         except Exception as error:
+            record_diagnostic(db, 'collection_control', error)
             report['status'] = 'stopped_fatal_error'
             report['error_code'] = safe_code(error)
             with db:
