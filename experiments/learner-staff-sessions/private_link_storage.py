@@ -49,4 +49,6 @@ def protect_url(source_id, url):
 
 
 def unprotect_url(source_id, value):
+    if isinstance(value,bytes) and value.startswith(b'REMOTE:MVC-FRAPPE:v1:'):
+        raise StorageError('private_link_stored_on_frappe')
     return _crypt(source_id, value, decrypt=True).decode('utf-8')

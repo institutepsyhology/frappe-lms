@@ -89,7 +89,6 @@ class AdaptiveRate:
         self.path = Path(directory) / 'speed.json'
         self.default = self.target = float(target)
         self.ceiling = MAX_REQUESTS_PER_SECOND
-        self.signature = None
         self.clean = 0
         self.warning = None
 
@@ -103,13 +102,12 @@ class AdaptiveRate:
                 self.warning = 'invalid_speed_setting'
                 return
             try:
-                info = self.path.stat()
+                self.path.stat()
             except FileNotFoundError:
-                signature, value = ('absent',), self.default
+                value = self.default
             else:
-                signature = (info.st_mtime_ns, info.st_size)
-                if signature == self.signature:
-                    return
+                # Windows can retain the same timestamp for a rapid same-size
+                # replacement. Read the bounded control instead of caching stat.
                 settings = read_json(self.path, max_bytes=256)
                 if set(settings) != {'requests_per_second'}:
                     raise ValueError('invalid_speed_setting')
@@ -118,7 +116,7 @@ class AdaptiveRate:
                 raise ValueError('invalid_speed_setting')
             self.target = float(value)
             # Manual changes cannot undo the separate adaptive throttle ceiling.
-            self.signature, self.warning = signature, None
+            self.warning = None
         except (OSError, ValueError, TypeError):
             self.warning = 'invalid_speed_setting'
 
@@ -280,11 +278,35 @@ def open_output(path, source_fingerprint, total):
             OR l.source_id<>s.source_id LIMIT 1''').fetchone()
         if invalid:
             raise BulkError('invalid_private_archive')
+        validate_remote_receipts(db)
         db.commit()
         return db
     except BaseException:
         db.close()
         raise
+
+
+def validate_remote_receipts(db):
+    """An evicted ciphertext must retain a matching durable delivery receipt."""
+    prefix = b'REMOTE:MVC-FRAPPE:v1:'
+    if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='delivery_receipts'").fetchone():
+        if not db.execute('SELECT 1 FROM links WHERE substr(url_encrypted,1,?)=? LIMIT 1',
+                          (len(prefix),prefix)).fetchone(): return
+        raise BulkError('invalid_private_archive')
+    invalid=db.execute('''SELECT 1 FROM delivery_receipts r LEFT JOIN links l ON r.version_id=l.version_id
+        WHERE l.version_id IS NULL OR length(r.snapshot)<>32 OR r.snapshot GLOB '*[^a-f0-9]*'
+        OR length(r.sha256)<>64 OR r.sha256 GLOB '*[^a-f0-9]*' OR r.target<>'my-lk.mv-centr.ru'
+        OR l.url_encrypted<>CAST(? || r.snapshot || ':' || l.version_id || ':' || r.sha256 AS BLOB) LIMIT 1''',
+        (prefix.decode('ascii'),)).fetchone()
+    if invalid: raise BulkError('invalid_private_archive')
+    invalid=db.execute('''SELECT 1 FROM links l LEFT JOIN delivery_receipts r ON r.version_id=l.version_id
+        WHERE substr(l.url_encrypted,1,?)=? AND (r.version_id IS NULL
+        OR length(r.snapshot)<>32 OR r.snapshot GLOB '*[^a-f0-9]*'
+        OR length(r.sha256)<>64 OR r.sha256 GLOB '*[^a-f0-9]*'
+        OR r.target<>'my-lk.mv-centr.ru'
+        OR l.url_encrypted<>CAST(? || r.snapshot || ':' || l.version_id || ':' || r.sha256 AS BLOB)) LIMIT 1''',
+        (len(prefix),prefix,prefix.decode('ascii'))).fetchone()
+    if invalid: raise BulkError('invalid_private_archive')
 
 
 def record_event(db, source_id, code):

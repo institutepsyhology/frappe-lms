@@ -76,6 +76,34 @@ After collection, compare actual available fields and source IDs before scoped
 imports. Roles/permission matrices, lesson-builder content and other gaps remain
 explicitly unproven; Data Export API requires separate schema/access discovery.
 
+## Immediate delivery without another AVO key prompt
+
+`stream_archive_to_frappe.py --job-directory <existing private snapshot folder>`
+follows the already running MVC reader. It needs the existing verified SSH
+identity, not the AVO key. `--once` sends one bounded links/page cycle for initial
+verification. The destination is fixed to the MVC backend and MVC site; the
+private payload travels only on SSH stdin. The standalone receiver uses the
+existing site encryption key and `private/avo-ingest/archive.sqlite`, outside
+the downloadable files directory. No Docker image/layer or HTTP route is added.
+
+Server commit and independent decrypt/read-back precede each exact receipt.
+After acknowledgment, one local transaction stores that receipt and replaces
+only the link ciphertext with an explicit `REMOTE:MVC-FRAPPE:v1:` reference.
+Version IDs, token digests, contact cursors and learning records remain intact.
+Freed SQLite pages are reused; no VACUUM, full local copy or drive D is used.
+Raw resource pages are streamed too, retaining their current fixed local copy
+while the parent reader is open. `delivery/progress.json` logs aggregate counts
+and fixed errors, never source values. `delivery/STOP` stops only the sender;
+ten consecutive transfer failures or less than 128 MiB free also put a STOP
+marker in the parent job so collection cannot fill the disk unchecked.
+
+This is encrypted source retention on the Frappe server, not an activation of
+legacy login links or an overwrite of current user profiles. Future readers
+must fetch remote references from the encrypted archive rather than feed them
+to Windows DPAPI. Retain the MVC site's existing encryption key in its protected
+server backups and explicitly include `private/avo-ingest`: default private-file
+backups may cover only `private/files`.
+
 ## Verification
 
 Run `python -B -m unittest discover -s experiments/learner-staff-sessions

@@ -78,6 +78,18 @@ def count(directory, table):
 
 
 class BulkCollectionTests(unittest.TestCase):
+    def test_same_size_speed_file_with_unchanged_timestamp_is_reread(self):
+        with output_directory() as output:
+            path=output/'speed.json'
+            path.write_text('{"requests_per_second":1}')
+            original=path.stat()
+            rate=bulk.AdaptiveRate(output,3)
+            rate.refresh()
+            path.write_text('{"requests_per_second":3}')
+            os.utime(path,ns=(original.st_atime_ns,original.st_mtime_ns))
+            rate.refresh()
+            self.assertEqual(rate.current,3)
+
     def test_manual_down_up_does_not_remove_adaptive_throttle(self):
         with output_directory() as output:
             rate = bulk.AdaptiveRate(output,3)
