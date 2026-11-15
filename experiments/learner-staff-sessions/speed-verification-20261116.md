@@ -19,8 +19,17 @@ settings and down/up settings after throttling, malformed controls, explicit GUI
 rate forwarding, privacy-safe display and resuming an unchanged old archive.
 The raw-resource wait also avoids negative sleep intervals after stop checks.
 
-The old live worker continues at one/second until the tested source is published
-and a graceful handoff is performed. A single new local masked key entry is
-needed because the old process does not have live speed-control support and
-never persisted its key. Actual throughput must be measured after activation;
-configured ceilings alone do not prove a speedup.
+After source commit c631e11 was verified on the remote branch, the old worker
+was stopped gracefully using an exclusively created, operation-owned STOP
+marker. All 10,883 verified records were preserved. Only that marker and the
+identified old GUI process were removed. The new GUI was confirmed visible and
+responding; the owner supplied the key in its masked local field.
+
+Live continuation skipped all 10,883 stored successes. A 25.02-second observation
+then advanced from 11,211 to 11,283 verified links: 72 new records, or 2.878/second.
+The configured/current ceilings were both 3/second, with zero failed contacts,
+zero consecutive failures and no speed-setting warning. This is about 2.9 times
+the previous observed one/second rate, rather than an inference from the limit.
+The same background job continues; future throughput depends on API responses
+and automatic throttling. The two pre-existing raw subscription-resource errors
+remain separate from the healthy personal-link phase. No Frappe data changed.
