@@ -63,6 +63,15 @@ def request(*payloads, kind='links'):
 
 
 class SinkTests(unittest.TestCase):
+    def test_legacy_page_zero_is_valid_but_negative_and_boolean_pages_are_not(self):
+        payload=page_payload()
+        payload['page']=0
+        self.assertEqual(self.send(request(payload,kind='pages'))['stored_total'],1)
+        for bad in (-1,True):
+            payload['version_id']+=1
+            payload['page']=bad
+            self.assertRejected(request(payload,kind='pages'),'invalid_page')
+
     def setUp(self):
         # Existing workspace fixtures avoid the host's inaccessible TEMP ACLs.
         parent = Path(__file__).resolve().parents[3] / 'exports'
@@ -203,7 +212,7 @@ class SinkTests(unittest.TestCase):
 
     def test_pages_wrong_binding_and_corrupt_compression(self):
         for field, value in [('account', 'other'), ('source', 'https://wrong.invalid'),
-                             ('module', 'wrong'), ('page', 0), ('row_count', -1),
+                             ('module', 'wrong'), ('page', -1), ('row_count', -1),
                              ('resource', '../../escape'), ('sha256', '0' * 64),
                              ('body_b64', base64.b64encode(b'not zlib').decode())]:
             payload = page_payload()

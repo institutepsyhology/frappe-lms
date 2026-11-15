@@ -20,6 +20,14 @@ The live preflight confirmed the MVC backend running, an existing MVC site key,
 and about 8 GiB of server free space. No existing learner login was redeemed.
 Actual server delivery and background operation must be checked after publication.
 
+Initial live delivery committed and independently verified 100 personal-link
+versions before local ciphertext eviction. The first raw API page was correctly
+left local when rejected: the legacy paginator begins at zero. Receiver checks
+now accept an exact integer page >=0 and still reject negative/boolean pages;
+the page/link pipeline fixture also uses the real zero-based page convention.
+The original raw ciphertext was never deleted. Safe receiver error codes are
+propagated to the delivery status without private payloads.
+
 The encrypted archive is under the site's private/avo-ingest directory. Protect
 the existing site key and include this path explicitly in server backups; a
 normal private/files backup alone is not evidence that the archive is backed up.

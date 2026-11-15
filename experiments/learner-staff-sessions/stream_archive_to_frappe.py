@@ -25,6 +25,7 @@ from collect_personal_links_bulk import writer_lock, validate_remote_receipts
 from legacy_api_snapshot import FORMAT as SOURCE_FORMAT, unprotect_page
 from private_link_storage import unprotect_url
 from progress_io import read_json, write_json
+from server_archive_sink import SAFE_CODES as REMOTE_CODES
 
 FORMAT = 'mvc-frappe-archive-v1'
 SITE = 'my-lk.mv-centr.ru'
@@ -164,7 +165,9 @@ def remote(request):
         value = json.loads(result.stdout)
     except (OSError,subprocess.SubprocessError,ValueError,UnicodeError):
         raise DeliveryError('remote_result_uncertain') from None
-    if result.returncode: raise DeliveryError('remote_rejected_batch')
+    if result.returncode:
+        code=value.get('error') if isinstance(value,dict) else None
+        raise DeliveryError('remote_'+code if code in REMOTE_CODES else 'remote_rejected_batch')
     verify_ack(request,value)
     return value
 

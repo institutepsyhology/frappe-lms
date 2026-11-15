@@ -169,7 +169,7 @@ def _validate_page(payload, record, metadata):
             or type(payload.get('version_id')) is not int
             or payload.get('module') != PAGE_FORMAT or payload.get('account') != ACCOUNT
             or payload.get('source') != API_ORIGIN or payload.get('resource') not in RESOURCES
-            or not _positive(payload.get('page'))
+            or type(payload.get('page')) is not int or not 0 <= payload['page'] < 2**63
             or type(payload.get('row_count')) is not int
             or not 0 <= payload['row_count'] <= int(metadata['page_size'])
             or not _sha(payload.get('sha256')) or not _timestamp(payload.get('captured_at'))

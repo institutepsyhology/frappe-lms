@@ -209,9 +209,9 @@ class SenderTests(unittest.TestCase):
                     body=b'[{"id_contact":1}]'
                     import hashlib
                     with db: db.execute('INSERT INTO pages VALUES (NULL,?,?,?,?,?,?,?,?,?,?)',
-                        (raw_archive.FORMAT,'mv-centr',sender.API_ORIGIN,'contacts',1,
+                        (raw_archive.FORMAT,'mv-centr',sender.API_ORIGIN,'contacts',0,
                          hashlib.sha256(body).hexdigest(),1,'2026-11-16T00:00:00+00:00','accepted',
-                         raw_archive.protect_page('contacts',1,body,snapshot)))
+                         raw_archive.protect_page('contacts',0,body,snapshot)))
                 source_archive(folder/'contacts.sqlite',3)
                 run(folder/'contacts.sqlite',folder/('links-'+snapshot))
                 cipher=Fernet(Fernet.generate_key())
