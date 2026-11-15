@@ -63,6 +63,18 @@ def rows(directory, query):
 
 
 class SnapshotTests(unittest.TestCase):
+    def test_live_bold_empty_markers_keep_resource_binding(self):
+        examples = [('contacts', 'No items where found for model <b></b>'),
+                    ('training', 'No items where found for model <b>training</b>'),
+                    ('trainingAccess', 'No items where found for model <b>trainingAccess</b>')]
+        for resource, text in examples:
+            with self.subTest(resource=resource):
+                self.assertEqual(snapshot.parse_rows(text.encode(), snapshot.INVENTORY[resource]), [])
+        with self.assertRaisesRegex(snapshot.SnapshotError, '^unexpected_structure$'):
+            snapshot.parse_rows(b'No items where found for model <b>employee</b>', snapshot.INVENTORY['contacts'])
+        with self.assertRaises(snapshot.SnapshotError):
+            snapshot.parse_rows(b'<html>No items where found for model <b></b></html>', snapshot.INVENTORY['contacts'])
+
     def test_uncheckable_encoding_is_not_archived_with_encoded_key(self):
         encoded = quote(KEY, safe='').encode('ascii')
         with folder() as output:

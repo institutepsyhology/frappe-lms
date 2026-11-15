@@ -172,6 +172,14 @@ def parse_rows(raw, resource):
     empty = re.compile(r'No items where found for model(?:(?:\s*:\s*|\s+)([A-Za-z][A-Za-z0-9_]*))?\s*')
 
     def is_empty_message(value):
+        # The live legacy endpoint wraps the optional model in this exact tag.
+        # Do not strip arbitrary HTML: unrelated pages must not end an export.
+        html_marker = re.fullmatch(
+            r'No items where found for model\s+<b>([A-Za-z][A-Za-z0-9_]*)?</b>', value)
+        if html_marker:
+            value = 'No items where found for model'
+            if html_marker.group(1):
+                value += ' ' + html_marker.group(1)
         match = empty.fullmatch(value)
         if not match:
             return False

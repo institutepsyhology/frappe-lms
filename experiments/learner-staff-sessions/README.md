@@ -44,6 +44,12 @@ aggregate progress file. STOP or the GUI Stop button requests graceful shutdown.
 The GUI announces completion/failure; per-contact failures remain in the local
 audit. The key is discarded on shutdown; resuming requires entering it again.
 
+`reclassify_terminal_markers.py --output-directory <private folder>` repairs
+only old `invalid_json` completion labels when a saved exact legacy HTML end
+marker is proven, encrypted provenance matches, and accepted pages/counts/IDs
+form a continuous prefix. Original responses remain unchanged and each repair
+is audited. Foreign-model or unrelated HTML responses cannot end a resource.
+
 Snapshot APIs and link requests are distinct: raw list links stay untrusted.
 The old snapshots and preflight remain available for later historical-version
 seeding. Unknown old email/bot keys cannot be manufactured from contact IDs.
