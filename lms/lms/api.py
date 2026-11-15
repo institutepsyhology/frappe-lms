@@ -82,6 +82,16 @@ def get_user_info():
 	user.is_system_manager = "System Manager" in user.roles
 	from lms.lms.credential_profiles import can_manage_credentials
 	user.can_manage_credentials = can_manage_credentials(user.name)
+	from lms.lms.staff_authority import can_manage_staff_roles, has_capability
+	user.can_manage_staff_roles = can_manage_staff_roles()
+	user.staff_capabilities = {
+		resource: {action: has_capability(resource, action) for action in actions}
+		for resource, actions in {
+			"contacts": ("read", "create", "write", "delete"),
+			"staff": ("read", "create", "write", "delete"),
+			"positions": ("read", "create", "write", "delete"),
+		}.items()
+	}
 	user.sitename = frappe.local.site
 	user.developer_mode = frappe.conf.developer_mode
 	if user.is_fc_site and user.is_system_manager:
@@ -1086,6 +1096,8 @@ def member_roles(member: str) -> list[str]:
 
 @frappe.whitelist()
 def get_member(member: str):
+	from lms.lms.staff_authority import require_capability
+	require_capability("contacts", "read")
 	"""One member by exact name, for the member edit form.
 
 	get_members is a paginated search that also hides disabled users, so it
@@ -1113,6 +1125,8 @@ def get_member(member: str):
 
 @frappe.whitelist()
 def get_members(start: int = 0, search: str = None, role: str = "All", status: str = "Active"):
+	from lms.lms.staff_authority import require_capability
+	require_capability("contacts", "read")
 	from lms.lms.credential_profiles import can_manage_credentials
 	if not can_manage_credentials() and "Moderator" not in frappe.get_roles():
 		frappe.throw(_("Not permitted."), frappe.PermissionError)
@@ -2134,6 +2148,8 @@ def get_certification_details(course: str) -> dict:
 @frappe.whitelist()
 def save_role(user: str, role: str, value: int):
 	frappe.only_for("Moderator")
+	from lms.lms.staff_authority import require_role_change
+	require_role_change(user, role)
 	if role not in LMS_ROLES:
 		frappe.throw(_("You do not have permission to modify this role."), frappe.PermissionError)
 
@@ -2156,6 +2172,8 @@ def save_role(user: str, role: str, value: int):
 
 def save_evaluator_role(user: str, value: int):
 	frappe.only_for("Moderator")
+	from lms.lms.staff_authority import require_role_change
+	require_role_change(user, "Batch Evaluator")
 	if cint(value):
 		if not frappe.db.exists("Has Role", {"parent": user, "role": "Batch Evaluator"}):
 			doc = frappe.new_doc("Has Role")
@@ -2184,6 +2202,8 @@ def save_evaluator_role(user: str, value: int):
 @frappe.whitelist()
 def delete_member(user: str):
 	frappe.only_for("Moderator")
+	from lms.lms.staff_authority import require_staff_delete
+	require_staff_delete(user)
 	if not isinstance(user, str):
 		frappe.throw(_("user must be a string"))
 	if user in ("Administrator", "Guest", frappe.session.user):
@@ -2562,6 +2582,9 @@ def get_profile_details(username: str):
 	# the not-found check so a caller without one can't use the difference
 	# between the two errors to enumerate usernames.
 	is_own_profile = bool(details) and details.name == frappe.session.user
+	from lms.lms.staff_policy import assigned_capability
+	if not is_own_profile and assigned_capability('contacts', 'read') is False:
+		frappe.throw(_("Your position does not permit this action."), frappe.PermissionError)
 	if not is_own_profile and not has_lms_role():
 		frappe.throw(
 			_("User does not have permission to access this user's profile details."), frappe.PermissionError
@@ -3086,6 +3109,8 @@ def get_badges(member: str):
 @frappe.whitelist()
 def clear_demo_data():
 	frappe.only_for("Moderator")
+	from lms.lms.staff_authority import require_role_change
+	require_role_change(frappe.session.user)
 	quiz_title = "Do you know Frappe Learning?"
 	if frappe.db.exists("LMS Quiz", {"title": quiz_title}):
 		frappe.db.delete("LMS Quiz", {"title": quiz_title})

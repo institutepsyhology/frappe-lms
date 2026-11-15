@@ -1,83 +1,82 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
+enableAutoUnmount(afterEach)
 
-const { callMock, toastMock } = vi.hoisted(() => ({
-	callMock: vi.fn(), toastMock: { success: vi.fn(), error: vi.fn() },
+const { callMock, toastMock } = vi.hoisted(() => ({callMock:vi.fn(),toastMock:{success:vi.fn(),error:vi.fn()}}))
+vi.mock('frappe-ui',()=>({call:callMock,toast:toastMock,
+	Button:{props:['disabled'],emits:['click'],template:'<button :disabled="disabled" @click="$emit(\'click\')"><slot /></button>'},
+	FormControl:{props:['modelValue','label','disabled'],emits:['update:modelValue'],template:'<label>{{ label }}<input :value="modelValue" :disabled="disabled" @input="$emit(\'update:modelValue\',$event.target.value)" /></label>'},
 }))
-vi.mock('frappe-ui', () => ({
-	call: callMock,
-	toast: toastMock,
-	Button: { template: '<button @click="$emit(\'click\')"><slot /></button>' },
-	FormControl: { props: ['modelValue','label','disabled'], emits:['update:modelValue'], template: '<label>{{ label }}<input :value="modelValue" :disabled="disabled" @input="$emit(\'update:modelValue\', $event.target.value)" /></label>' },
-}))
-vi.mock('vue-router', () => ({ useRouter: () => ({ replace:vi.fn() }) }))
+vi.mock('@/components/PersonCourseAccessDialog.vue',()=>({default:{name:'PersonCourseAccessDialog',props:['open','course','member','contact'],template:'<div v-if="open" data-testid="access-dialog">{{ course }}|{{ member }}|{{ contact }}</div>'}}))
 import Card from '@/components/Settings/AvoContactCard.vue'
 
-const make = (roles: string[], system = false, allowed = false) => mount(Card, {
-	props: { memberId:'member@example.invalid' },
-	global: { provide: { $user:{ data:{ name:'staff@example.invalid', is_system_manager:system, can_manage_credentials:allowed, roles } } } },
-})
-
-describe('AVO contact card', () => {
-	beforeEach(() => {
-		callMock.mockReset()
-		callMock.mockImplementation(async (url: string) => {
-			if (url.endsWith('get_card')) return { email:'member@example.invalid', enabled:true, custom_avo_contact_id:'42', custom_avo_account:'mv-centr', credential_manager:false }
-			if (url.endsWith('courses_for_user')) return []
-			if (url.endsWith('reveal')) return { password:'synthetic-test-secret' }
-			return { queued:true }
+let caps:Record<string,boolean>, kind:'User'|'Contact'
+const course={course:'course-one',title:'Course One',starts_at:'2026-01-01',ends_at:null,end_unknown:false,status:'Active',archive_only:false,source_label:'Способ выдачи не записан',source_actor:null,source_event_at:null,imported_at:null,imported_by:null}
+const make=()=>mount(Card,{props:{memberId:kind==='User'?'member@example.test':'contact-42',kind}})
+const button=(wrapper:ReturnType<typeof mount>,text:string)=>wrapper.findAll('button').find(b=>b.text()===text)!
+describe('unified contact card',()=>{
+	beforeEach(()=>{
+		kind='User';caps={read:true,write:true,credential_read:false,credential_write:false,credential_send:false}
+		callMock.mockReset();window.read_only_mode=false
+		callMock.mockImplementation(async(url:string,args:any)=>{
+			if(url.endsWith('get_card')||url.endsWith('save_card'))return {kind,name:kind==='User'?'member@example.test':'contact-42',email:kind==='User'?'member@example.test':null,custom_avo_contact_id:'42',custom_avo_account:'mv-centr',capabilities:{...caps}}
+			if(url.endsWith('list_person_courses'))return {rows:[course],total:76,page:args.page,page_size:args.page_size}
+			if(url.endsWith('reveal'))return {password:'synthetic-test-secret'}
+			return {queued:true}
 		})
 	})
-	it('saves the marketing opt-out separately from transactional mail', async () => {
-		const wrapper=make([],true)
-		await flushPromises()
-		await wrapper.find('input[type="checkbox"]').setValue(true)
-		await wrapper.findAll('button').find((button) => button.text()==='Сохранить данные')!.trigger('click')
-		await flushPromises()
-		const callArgs=callMock.mock.calls.find(([url]) => url.endsWith('save_card'))
-		expect(callArgs?.[1].values.custom_no_marketing_email).toBe(true)
-		expect(wrapper.text()).toContain('Служебные письма')
+	it('uses the same profile and paged course section for a no-login contact',async()=>{
+		kind='Contact';const w=make();await flushPromises()
+		expect(w.text()).toContain('Контакт без связанной учётной записи')
+		expect(w.text()).toContain('Курсы контакта')
+		expect(callMock).toHaveBeenCalledWith('lms.lms.contact_workspace.list_person_courses',expect.objectContaining({kind:'Contact',name:'contact-42',page:1,page_size:50}))
+		expect(callMock.mock.calls.some(([url])=>url.endsWith('reveal'))).toBe(false)
 	})
-	it('does not expose passwords or individual grants without an authorized profile', async () => {
-		const wrapper=make(['LMS Credential Manager'])
-		await flushPromises()
-		expect(wrapper.text()).toContain('ID 42')
-		expect(wrapper.text()).not.toContain('Показать пароль')
-		expect(wrapper.text()).not.toContain('Дать право работы с паролями')
-		expect(callMock.mock.calls.some(([url]) => url.endsWith('reveal'))).toBe(false)
+	it('saves basic data and opt-out without a password permission or any role mutation',async()=>{
+		const w=make();await flushPromises();await w.find('input[type=checkbox]').setValue(true)
+		await button(w,'Сохранить данные').trigger('click');await flushPromises()
+		expect(callMock).toHaveBeenCalledWith('lms.lms.contact_workspace.save_card',expect.objectContaining({values:expect.objectContaining({custom_no_marketing_email:true})}))
+		expect(callMock.mock.calls.some(([url])=>url.endsWith('save_role'))).toBe(false)
+		expect(w.text()).not.toContain('Модератор')
 	})
-	it('shows the current password to administrators on opening the card', async () => {
-		const wrapper=make([],true)
-		await flushPromises()
-		expect(callMock).toHaveBeenCalledWith('lms.lms.support_credentials.reveal',{name:'member@example.invalid'})
-		expect(wrapper.find('[data-testid="revealed-password"]').text()).toBe('synthetic-test-secret')
-		expect(wrapper.text()).not.toContain('Дать право работы с паролями')
+	it('disables data mutation for read-only card access',async()=>{
+		caps.write=false;const w=make();await flushPromises()
+		expect(w.findAll('input').every(input=>input.attributes('disabled')!==undefined)).toBe(true)
+		expect(w.text()).not.toContain('Сохранить данные')
+		expect(callMock.mock.calls.some(([url])=>url.endsWith('reveal'))).toBe(false)
 	})
-	it('shows the password to an authorized job profile', async () => {
-		const wrapper=make([],false,true)
-		await flushPromises()
-		expect(wrapper.find('[data-testid="revealed-password"]').text()).toBe('synthetic-test-secret')
+	it('separates credential read from write and sending',async()=>{
+		caps.credential_read=true;const w=make();await flushPromises()
+		expect(w.get('[data-testid=revealed-password]').text()).toBe('synthetic-test-secret')
+		expect(w.text()).toContain('Показать пароль')
+		expect(w.text()).not.toContain('Отправить пароль на почту')
+		expect(w.text()).not.toContain('Установить новый пароль')
+		expect(w.text()).not.toContain('Отправить ссылку для смены пароля')
 	})
-	it('opens a contact without implying it has a login account', async () => {
-		const wrapper=mount(Card, { props:{memberId:'contact-42',kind:'Contact'},
-			global:{provide:{ $user:{data:{name:'staff@example.invalid',roles:['LMS Credential Manager']}} }} })
-		await flushPromises()
-		expect(wrapper.text()).toContain('Контакт без связанной учётной записи')
-		expect(wrapper.text()).not.toContain('Показать пароль')
-		expect(callMock).toHaveBeenCalledWith('lms.lms.avo_contact_card.get_card',{kind:'Contact',name:'contact-42'})
-		expect(callMock.mock.calls.some(([url]) => url.endsWith('courses_for_user'))).toBe(false)
+	it('loads only the selected course page and opens the shared person-course dialog',async()=>{
+		const w=make();await flushPromises();await button(w,'Далее').trigger('click');await flushPromises()
+		expect(callMock).toHaveBeenLastCalledWith('lms.lms.contact_workspace.list_person_courses',expect.objectContaining({page:2,page_size:50}))
+		expect(w.findAll('tbody tr')).toHaveLength(1)
+		await button(w,'Course One').trigger('click');await flushPromises()
+		expect(w.get('[data-testid=access-dialog]').text()).toContain('course-one|member@example.test')
 	})
-	it('sets a new password only on explicit action and then clears the field', async () => {
-		const wrapper=make([],false,true)
-		await flushPromises()
-		const field=wrapper.findAll('label').find((label) => label.text()==='Новый пароль')!
-		await field.find('input').setValue('synthetic-new-password')
-		expect(callMock.mock.calls.some(([url]) => url.endsWith('set_new_password'))).toBe(false)
-		await wrapper.findAll('button').find((button) => button.text()==='Установить новый пароль')!.trigger('click')
-		await flushPromises()
-		expect(callMock).toHaveBeenCalledWith('lms.lms.support_credentials.set_new_password',{
-			name:'member@example.invalid',password:'synthetic-new-password',
-		})
-		expect((field.find('input').element as HTMLInputElement).value).toBe('')
+	it('sorts course dates on the server in both directions',async()=>{
+		const w=make();await flushPromises()
+		const header=w.findAll('th button').find(b=>b.text().startsWith('Открытие доступа'))!
+		await header.trigger('click');await flushPromises()
+		expect(callMock).toHaveBeenLastCalledWith('lms.lms.contact_workspace.list_person_courses',expect.objectContaining({sort:'starts_at',direction:'asc',page:1}))
+		await header.trigger('click');await flushPromises()
+		expect(callMock).toHaveBeenLastCalledWith('lms.lms.contact_workspace.list_person_courses',expect.objectContaining({sort:'starts_at',direction:'desc'}))
+	})
+	it('does not overwrite the next opened card with a late save response',async()=>{
+		const w=make();await flushPromises()
+		let finish:(value:any)=>void=()=>{}
+		const implementation=callMock.getMockImplementation()!
+		callMock.mockImplementation((url:string,args:any)=>url.endsWith('save_card')?new Promise(resolve=>{finish=resolve}):implementation(url,args))
+		await button(w,'Сохранить данные').trigger('click')
+		await w.setProps({memberId:'next@example.test'});await flushPromises()
+		finish({kind:'User',name:'old@example.test',capabilities:{...caps}});await flushPromises()
+		await button(w,'Course One').trigger('click');await flushPromises()
+		expect(w.get('[data-testid=access-dialog]').text()).not.toContain('old@example.test')
 	})
 })

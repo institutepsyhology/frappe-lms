@@ -3,8 +3,6 @@
 Only explicit profile fields are exposed. Credentials, reset tokens, and
 unmigrated AVO activity are never returned by these methods.
 """
-import json
-
 import frappe
 from frappe import _
 
@@ -20,9 +18,8 @@ SITE_ACCOUNTS = {'my-lk.mv-centr.ru':'mv-centr', 'access-stage2.local':'mv-centr
 
 
 def _check_access():
-    from lms.lms.credential_profiles import can_manage_credentials
-    if not can_manage_credentials():
-        frappe.throw(_('A permitted staff role profile is required.'), frappe.PermissionError)
+    from lms.lms.staff_authority import require_capability
+    require_capability('contacts', 'read')
 
 
 def _document(kind, name):
@@ -49,27 +46,14 @@ def _present(doc):
 
 @frappe.whitelist()
 def get_card(kind, name):
-    _check_access()
-    return _present(_document(kind, name))
+    from lms.lms.contact_workspace import get_card as workspace_get_card
+    return workspace_get_card(kind, name)
 
 
 @frappe.whitelist()
 def resolve_source_id(source_id):
-    """Resolve an AVO ID within this site's account; never guess on conflicts."""
-    _check_access()
-    if not isinstance(source_id, str) or not source_id.isascii() or not source_id.isdigit() or len(source_id) > 20 or int(source_id) < 1:
-        frappe.throw(_('Invalid contact ID.'), frappe.ValidationError)
-    account = SITE_ACCOUNTS.get(frappe.local.site)
-    if not account:
-        frappe.throw(_('Unknown AVO account.'), frappe.ValidationError)
-    filters = {'custom_avo_account': account, 'custom_avo_contact_id': source_id}
-    users = frappe.get_all('User', filters=filters, fields=['name'], limit_page_length=2)
-    contacts = frappe.get_all('Contact', filters=filters, fields=['name', 'user'], limit_page_length=2)
-    if len(users) == 1 and len(contacts) <= 1 and all(c.user == users[0].name for c in contacts):
-        return {'kind': 'User', 'name': users[0].name}
-    if not users and len(contacts) == 1:
-        return {'kind': 'Contact', 'name': contacts[0].name}
-    frappe.throw(_('Contact ID not found or is ambiguous.'), frappe.ValidationError)
+    from lms.lms.contact_workspace import resolve_source_id as workspace_resolve
+    return workspace_resolve(source_id)
 
 
 @frappe.whitelist()
@@ -101,76 +85,23 @@ def list_source_contacts(start=0, search=None):
 
 @frappe.whitelist(methods=['POST'])
 def save_card(kind, name, values):
-    _check_access()
-    doc = _document(kind, name)
-    if kind == 'User' and frappe.session.user != 'Administrator' and 'System Manager' not in frappe.get_roles():
-        from lms.lms.support_credentials import PRIVILEGED_ROLES
-        from lms.lms.credential_profiles import can_manage_credentials
-        if doc.user_type == 'System User' or PRIVILEGED_ROLES.intersection(frappe.get_roles(doc.name)) or can_manage_credentials(doc.name):
-            frappe.throw(_('Only a system manager can edit a staff account.'), frappe.PermissionError)
-    if isinstance(values, str):
-        values = json.loads(values)
-    allowed = set(EDITABLE) | {'custom_no_marketing_email'} | ({'email'} if kind == 'Contact' else set())
-    if not isinstance(values, dict) or set(values) - allowed:
-        frappe.throw(_('Invalid contact fields.'), frappe.ValidationError)
-    meta = frappe.get_meta(kind)
-    for field, value in values.items():
-        if field == 'custom_no_marketing_email':
-            if type(value) not in (bool, int) or value not in (0, 1):
-                frappe.throw(_('Invalid marketing preference.'), frappe.ValidationError)
-            doc.set(field, int(value))
-            continue
-        if not isinstance(value, str) or len(value) > 140 or (field != 'email' and not meta.has_field(field)):
-            frappe.throw(_('Invalid contact field.'), frappe.ValidationError)
-        if kind == 'Contact' and field == 'email':
-            from frappe.utils import validate_email_address
-            email = value.strip()
-            if email and not validate_email_address(email, throw=False):
-                frappe.throw(_('Enter a valid email address.'), frappe.ValidationError)
-            selected = next((row for row in doc.email_ids if row.is_primary), None)
-            if selected:
-                if email: selected.email_id = email
-                else: doc.remove(selected)
-            elif email:
-                doc.append('email_ids', {'email_id':email, 'is_primary':1})
-        elif kind == 'Contact' and field == 'mobile_no':
-            # Contact.mobile_no is derived from its child phone table.
-            selected = next((row for row in doc.phone_nos if row.is_primary_mobile_no), None)
-            if selected:
-                if value.strip(): selected.phone = value.strip()
-                else: doc.remove(selected)
-            elif value.strip():
-                doc.append('phone_nos', {'phone':value.strip(), 'is_primary_mobile_no':1})
-        else:
-            doc.set(field, value.strip())
-    if not doc.first_name and not doc.last_name:
-        frappe.throw(_('Enter a first or last name.'), frappe.ValidationError)
-    doc.save(ignore_permissions=True)
-    if doc.get('custom_no_marketing_email') and doc.get('custom_avo_account') and doc.get('custom_avo_contact_id'):
-        from lms.lms.avo_marketing import protect_existing_groups
-        protect_existing_groups(doc.custom_avo_account, [doc.custom_avo_contact_id])
-    return _present(doc)
+    from lms.lms.contact_workspace import save_card as workspace_save_card
+    return workspace_save_card(kind, name, values)
 
 
 @frappe.whitelist()
 def courses_for_user(name):
-    _check_access()
-    _document('User', name)
-    enrollments = frappe.get_all('LMS Enrollment', filters={'member':name},
-        fields=['course', 'creation', 'progress'], order_by='creation desc', limit_page_length=200)
-    courses = {row.name:row for row in frappe.get_all('LMS Course',
-        filters={'name':['in', [e.course for e in enrollments]]}, fields=['name','title'], limit_page_length=0)} if enrollments else {}
-    grants = frappe.get_all('LMS Access Grant', filters={'member':name},
-        fields=['course','status','starts_at','ends_at'], order_by='creation desc', limit_page_length=0)
-    return [{'course':e.course, 'title':courses[e.course].title if e.course in courses else e.course,
-             'enrolled_at':e.creation, 'progress':e.progress,
-             'grants':[g for g in grants if g.course == e.course]} for e in enrollments]
+    from lms.lms.contact_workspace import list_person_courses
+    return list_person_courses('User', name, page=1, page_size=200)['rows']
 
 
 @frappe.whitelist(methods=['POST'])
 def send_password_reset(name):
-    _check_access()
-    user = _document('User', name)
+    from lms.lms.staff_authority import require_capability
+    from lms.lms.support_credentials import _support_target
+    from lms.lms.contact_workspace import _scoped
+    require_capability('credentials', 'send')
+    user = _scoped(_support_target(name))
     if not user.enabled or not user.email:
         frappe.throw(_('This account has no active email login.'), frappe.ValidationError)
     from lms.lms.support_credentials import ensure_mail_ready
@@ -183,7 +114,10 @@ def send_password_reset(name):
 @frappe.whitelist(methods=['POST'])
 def set_account_enabled(name, enabled):
     frappe.only_for('System Manager')
-    user = _document('User', name)
+    from lms.lms.staff_authority import require_capability
+    from lms.lms.contact_workspace import _identity
+    require_capability('contacts', 'write')
+    user, _ = _identity('User', name)
     if name == frappe.session.user or enabled not in (0,1,'0','1',False,True):
         frappe.throw(_('This account cannot be changed here.'), frappe.ValidationError)
     user.enabled = int(str(enabled) in ('1','True'))
@@ -196,7 +130,10 @@ def change_user_email(name, email):
     """Rename the User through Frappe so linked documents follow the login."""
     from frappe.utils import validate_email_address
     frappe.only_for('System Manager')
-    user = _document('User', name)
+    from lms.lms.staff_authority import require_capability
+    from lms.lms.contact_workspace import _identity
+    require_capability('contacts', 'write')
+    user, _ = _identity('User', name)
     if name == frappe.session.user:
         frappe.throw(_('Change your own login from another administrator account.'), frappe.ValidationError)
     if not isinstance(email,str) or len(email)>140 or not validate_email_address(email.strip(),throw=False):

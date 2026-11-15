@@ -1,36 +1,34 @@
-import { describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
-
-const { callMock } = vi.hoisted(() => ({ callMock: vi.fn() }))
-vi.mock('frappe-ui', () => ({ call: callMock }))
-vi.mock('@/pages/Forms/MemberForm.vue', () => ({ default: { props:['memberID'], template:'<div data-testid="member">{{ memberID }}</div>' } }))
+import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest'
+import {enableAutoUnmount,flushPromises,mount} from '@vue/test-utils'
+enableAutoUnmount(afterEach)
+const {callMock}=vi.hoisted(()=>({callMock:vi.fn()}))
+vi.mock('frappe-ui',()=>({call:callMock}))
+vi.mock('@/pages/Forms/MemberForm.vue',()=>({default:{props:['memberID'],template:'<div data-testid="member">{{ memberID }}</div>'}}))
 import AvoContactById from '@/pages/Forms/AvoContactById.vue'
-
-describe('AVO contact URL', () => {
-	it('resolves a User on a direct ID URL', async () => {
-		callMock.mockResolvedValueOnce({kind:'User',name:'user@example.test'})
-		const wrapper = mount(AvoContactById, { props:{avoId:'123'} })
-		await flushPromises()
-		expect(callMock).toHaveBeenCalledWith('lms.lms.avo_contact_card.resolve_source_id', {source_id:'123'})
-		expect(wrapper.get('[data-testid=member]').text()).toBe('user@example.test')
+describe('contact numeric URL',()=>{
+	beforeEach(()=>callMock.mockReset())
+	it('opens either kind through the contact-read resolver without a credential gate',async()=>{
+		callMock.mockResolvedValueOnce({kind:'User',name:'person@example.test'})
+		const w=mount(AvoContactById,{props:{avoId:'123'}});await flushPromises()
+		expect(callMock).toHaveBeenCalledWith('lms.lms.contact_workspace.resolve_source_id',{source_id:'123'})
+		expect(w.get('[data-testid=member]').text()).toBe('person@example.test')
+		callMock.mockResolvedValueOnce({kind:'Contact',name:'contact-one'})
+		await w.setProps({avoId:'124'});await flushPromises()
+		expect(w.get('[data-testid=member]').text()).toBe('avo-contact:contact-one')
 	})
-	it('opens contacts without a User and fails closed on errors', async () => {
-		callMock.mockResolvedValueOnce({kind:'Contact',name:'internal-contact'})
-		const wrapper = mount(AvoContactById, { props:{avoId:'456'} })
-		await flushPromises()
-		expect(wrapper.get('[data-testid=member]').text()).toBe('avo-contact:internal-contact')
+	it('fails closed for unknown or ambiguous identities',async()=>{
 		callMock.mockRejectedValueOnce(new Error('ambiguous'))
-		await wrapper.setProps({avoId:'457'})
-		await flushPromises()
-		expect(wrapper.find('[data-testid=member]').exists()).toBe(false)
-		expect(wrapper.get('[role=alert]').text()).toContain('Не удалось открыть')
+		const w=mount(AvoContactById,{props:{avoId:'123'}});await flushPromises()
+		expect(w.find('[data-testid=member]').exists()).toBe(false)
+		expect(w.get('[role=alert]').text()).toContain('Не удалось открыть')
 	})
-	it('allows a moderator to resolve a user without contact-card permissions', async () => {
-		callMock.mockRejectedValueOnce(new Error('not permitted'))
-		callMock.mockResolvedValueOnce({kind:'User',name:'user@example.test'})
-		const wrapper = mount(AvoContactById, { props:{avoId:'221910'} })
-		await flushPromises()
-		expect(callMock).toHaveBeenCalledWith('lms.lms.avo_user_routes.resolve_member', {source_id:'221910'})
-		expect(wrapper.get('[data-testid=member]').text()).toBe('user@example.test')
+	it('never replaces a newly selected contact with a stale resolver response',async()=>{
+		let oldResolve:(v:any)=>void=()=>{}
+		callMock.mockImplementationOnce(()=>new Promise(resolve=>{oldResolve=resolve}))
+		const w=mount(AvoContactById,{props:{avoId:'123'}})
+		callMock.mockResolvedValueOnce({kind:'Contact',name:'new-contact'})
+		await w.setProps({avoId:'124'});await flushPromises()
+		oldResolve({kind:'User',name:'old@example.test'});await flushPromises()
+		expect(w.get('[data-testid=member]').text()).toBe('avo-contact:new-contact')
 	})
 })

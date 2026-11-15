@@ -16,6 +16,8 @@ class LMSEnrollment(Document):
 		self.validate_owner()
 
 	def validate(self):
+		from lms.lms.access_provenance import validate
+		validate(self)
 		self.enforce_server_managed_fields()
 
 	def enforce_server_managed_fields(self):

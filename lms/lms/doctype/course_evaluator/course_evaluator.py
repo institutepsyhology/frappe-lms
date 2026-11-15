@@ -23,6 +23,8 @@ class CourseEvaluator(Document):
 		self.validate_unavailability()
 
 	def on_trash(self):
+		from lms.lms.staff_authority import check_evaluator_role_edits
+		check_evaluator_role_edits(self, "on_trash")
 		# Direct row delete, not User.remove_roles: see validate_evaluator_role.
 		frappe.db.delete("Has Role", {"parent": self.evaluator, "role": "Batch Evaluator"})
 		frappe.clear_cache(user=self.evaluator)
@@ -37,6 +39,8 @@ class CourseEvaluator(Document):
 		cannot open their own schedule. lms.lms.api.save_evaluator_role writes
 		the row directly for the same reason.
 		"""
+		from lms.lms.staff_authority import check_evaluator_role_edits
+		check_evaluator_role_edits(self)
 		if frappe.db.exists("Has Role", {"parent": self.evaluator, "role": "Batch Evaluator"}):
 			return
 

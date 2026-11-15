@@ -280,7 +280,7 @@ const getTabButtons = () => {
 		{ label: __('About'), value: 'About' },
 		{ label: __('Certificates'), value: 'Certificates' },
 	]
-	if ($user.data?.is_moderator) {
+	if ($user.data?.can_manage_staff_roles) {
 		buttons.push({ label: __('Roles'), value: 'Roles' })
 	}
 

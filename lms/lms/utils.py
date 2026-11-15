@@ -3405,6 +3405,9 @@ def validate_course_access(lesson: str):
 	if not frappe.db.exists("Course Lesson", lesson):
 		frappe.throw(_("The lesson does not exist."))
 	course = frappe.db.get_value("Course Lesson", lesson, "course")
+	from lms.lms.access_blocks import is_blocked
+	if not can_modify_course(course) and is_blocked(frappe.session.user, course, lesson):
+		frappe.throw(_("You do not have access to this lesson."), frappe.PermissionError)
 	from lms.lms.individual_access import policy_applies
 
 	if policy_applies(course):

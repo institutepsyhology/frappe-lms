@@ -138,6 +138,7 @@ const enrollment = createResource({
 // link, where that tab was never mounted — correct, since it fetches on mount.
 const reloadStudents = () => {
 	getCachedListResource(['courseProgress', props.courseName])?.reload()
+	window.dispatchEvent(new CustomEvent('course-people-changed', { detail: { course: props.courseName } }))
 }
 
 const validateData = (): boolean => {

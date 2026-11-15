@@ -1,0 +1,13 @@
+{
+ "doctype": "DocType", "name": "LMS Access Block", "module": "LMS",
+ "engine": "InnoDB", "autoname": "Prompt", "track_changes": 1,
+ "field_order": ["course", "member", "lesson", "active", "blocked_until"],
+ "fields": [
+  {"fieldname":"course","fieldtype":"Link","options":"LMS Course","label":"Course","reqd":1,"search_index":1},
+  {"fieldname":"member","fieldtype":"Link","options":"User","label":"Learner","reqd":1,"search_index":1},
+  {"fieldname":"lesson","fieldtype":"Link","options":"Course Lesson","label":"Lesson"},
+  {"fieldname":"active","fieldtype":"Check","label":"Active","default":"1"},
+  {"fieldname":"blocked_until","fieldtype":"Datetime","label":"Blocked Until","description":"Empty means blocked until explicitly reopened. End dates are not extended."}
+ ],
+ "permissions":[{"role":"System Manager","read":1}]
+}

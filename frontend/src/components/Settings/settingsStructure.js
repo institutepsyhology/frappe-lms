@@ -1,6 +1,7 @@
 import { markRaw } from 'vue'
 import Members from '@/components/Settings/Members.vue'
-import CredentialProfiles from '@/components/Settings/CredentialProfiles.vue'
+import StaffPositions from '@/pages/StaffPositions.vue'
+import StaffEmployees from '@/pages/StaffEmployees.vue'
 import Categories from '@/components/Settings/Categories.vue'
 import EmailTemplatePage from '@/components/Settings/EmailTemplate/EmailTemplatePage.vue'
 import EmailConfig from '@/components/Settings/EmailAccount/EmailConfig.vue'
@@ -300,17 +301,26 @@ export const settingsStructure = [
 		hideLabel: false,
 		items: [
 			{
-				label: 'Users',
+				label: 'Контакты',
+				requiredCapability: ['contacts', 'read'],
 				description:
-					'Manage users by adding or inviting them, and assign roles to control their access and permissions',
+					'Карточки контактов, способы связи и индивидуальные доступы к курсам',
 				icon: 'lucide-user',
 				template: markRaw(Members),
 			},
 			{
-				label: 'Должности и доступы',
-				description: 'Право работы с паролями по должностям сотрудников',
+				label: 'Сотрудники',
+				requiredCapability: ['staff', 'read'],
+				description: 'Назначение сотрудников на подчинённые должности',
+				icon: 'lucide-users',
+				template: markRaw(StaffEmployees),
+			},
+			{
+				label: 'Должности',
+				requiredCapability: ['positions', 'read'],
+				description: 'Дерево должностей и разрешённые действия в разделах',
 				icon: 'lucide-shield-check',
-				template: markRaw(CredentialProfiles),
+				template: markRaw(StaffPositions),
 			},
 		],
 	},

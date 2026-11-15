@@ -20,7 +20,13 @@ class ProfileTest(unittest.TestCase):
         self.f.only_for=lambda role: (_ for _ in ()).throw(PermissionError())
         custom=types.ModuleType('frappe.custom.doctype.custom_field.custom_field')
         custom.create_custom_fields=lambda *args,**kwargs:None
-        self.modules=patch.dict(sys.modules,{'frappe':self.f,'frappe.custom.doctype.custom_field.custom_field':custom})
+        self.explicit=None
+        policy=types.ModuleType('lms.lms.staff_policy')
+        policy.assigned_capability=lambda *a,**kw:self.explicit
+        authority=types.ModuleType('lms.lms.staff_authority')
+        authority.require_role_change=lambda *a: (_ for _ in ()).throw(PermissionError())
+        self.modules=patch.dict(sys.modules,{'frappe':self.f,'frappe.custom.doctype.custom_field.custom_field':custom,
+            'lms.lms.staff_policy':policy,'lms.lms.staff_authority':authority})
         self.modules.start();self.addCleanup(self.modules.stop)
         spec=importlib.util.spec_from_file_location('credential_profiles',Path(__file__).with_name('credential_profiles.py'))
         self.m=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.m)
@@ -40,6 +46,13 @@ class ProfileTest(unittest.TestCase):
 
     def test_profile_permission_cannot_be_changed_by_staff(self):
         with self.assertRaises(PermissionError):self.m.set_profile_access('some profile',1)
+
+    def test_explicit_position_overrides_legacy_manager_or_profile_grant(self):
+        self.f.get_roles=lambda user=None:['System Manager']
+        self.explicit=False
+        self.assertFalse(self.m.can_manage_credentials())
+        self.explicit=True
+        self.assertTrue(self.m.can_manage_credentials())
 
 
 if __name__=='__main__':unittest.main()

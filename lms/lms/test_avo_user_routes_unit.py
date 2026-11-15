@@ -29,8 +29,10 @@ class UserRouteTests(unittest.TestCase):
         self.api = types.ModuleType('lms.lms.api')
         self.api.get_profile_details = lambda username: Row(name='u', username=username)
         self.api.get_members = lambda *args: [Row(name='u')]
+        policy=types.ModuleType('lms.lms.staff_policy')
+        policy.require_capability=lambda *a,**kw: None if 'Moderator' in self.f.get_roles() else self.f.throw('Denied',PermissionError)
         self.modules = patch.dict(sys.modules, {'frappe': self.f, 'lms.lms.api': self.api,
-                                                'lms.lms.avo_contact_card': contact})
+                                                'lms.lms.avo_contact_card': contact,'lms.lms.staff_policy':policy})
         self.modules.start()
         spec = importlib.util.spec_from_file_location('avo_user_routes_unit', Path(__file__).with_name('avo_user_routes.py'))
         self.m = importlib.util.module_from_spec(spec)

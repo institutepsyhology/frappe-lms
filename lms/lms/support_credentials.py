@@ -18,10 +18,9 @@ def ensure_role():
         frappe.get_doc({'doctype':'Role','role_name':ROLE,'desk_access':0}).insert(ignore_permissions=True)
 
 
-def _authorized():
-    from lms.lms.credential_profiles import can_manage_credentials
-    if not can_manage_credentials():
-        frappe.throw(_('A permitted staff role profile is required.'), frappe.PermissionError)
+def _authorized(action='read'):
+    from lms.lms.staff_authority import require_capability
+    require_capability('credentials', action)
 
 
 def _user(name):
@@ -115,7 +114,7 @@ def reveal(name):
 
 @frappe.whitelist(methods=['POST'])
 def send_to_account_email(name):
-    _authorized()
+    _authorized('send')
     user=_support_target(name)
     if not user.enabled or not user.email:
         frappe.throw(_('This account has no active email login.'), frappe.ValidationError)
@@ -132,7 +131,7 @@ def send_to_account_email(name):
 
 @frappe.whitelist(methods=['POST'])
 def set_new_password(name, password):
-    _authorized()
+    _authorized('write')
     user=_support_target(name)
     if not user.enabled or not isinstance(password,str) or not password or len(password)>512:
         frappe.throw(_('Enter a valid new password for an active account.'), frappe.ValidationError)

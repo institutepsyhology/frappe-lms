@@ -96,6 +96,9 @@ after_migrate = [
 # Permissions evaluated in scripted ways
 
 permission_query_conditions = {
+	"User": "lms.lms.staff_access_permissions.user_query_conditions",
+	"Contact": "lms.lms.staff_access_permissions.contact_query_conditions",
+	"LMS Enrollment": "lms.lms.staff_access_permissions.enrollment_query_conditions",
 	"LMS Assignment": "lms.lms.permissions.assignment_query_conditions",
 	"LMS Quiz": "lms.lms.permissions.quiz_query_conditions",
 	"LMS Course": "lms.lms.permissions.course_query_conditions",
@@ -112,6 +115,14 @@ permission_query_conditions = {
 }
 
 has_permission = {
+	"Role": "lms.lms.staff_access_permissions.role_definition_permission",
+	"Role Profile": "lms.lms.staff_access_permissions.role_definition_permission",
+	"LMS Enrollment": "lms.lms.staff_access_permissions.has_permission",
+	"LMS Access Grant": "lms.lms.staff_access_permissions.has_permission",
+	"LMS Access Policy": "lms.lms.staff_access_permissions.has_permission",
+	"LMS Access Block": "lms.lms.staff_access_permissions.has_permission",
+	"User": "lms.lms.staff_access_permissions.contact_document_permission",
+	"Contact": "lms.lms.staff_access_permissions.contact_document_permission",
 	"LMS Assignment": "lms.lms.permissions.assignment_has_permission",
 	"LMS Course": "lms.lms.permissions.course_has_permission",
 	"Course Chapter": "lms.lms.permissions.chapter_has_permission",
@@ -192,10 +203,14 @@ doc_events = {
 	"LMS Program Course": {"validate": CHILD_ROW_MOVE_GATE},
 	"LMS Program Member": {"validate": CHILD_ROW_MOVE_GATE},
 	"User": {
-		"validate": "lms.lms.user.validate_username_duplicates",
+		"validate": ["lms.lms.user.validate_username_duplicates", "lms.lms.staff_authority.check_user_role_edits"],
 		"before_insert": "lms.lms.user.add_lms_student_role",
 		"on_update": "lms.lms.avo_marketing.protect_document",
 	},
+	"Role": {"before_validate": "lms.lms.staff_authority.check_role_definition_edits", "on_trash": "lms.lms.staff_authority.check_role_definition_edits"},
+	"Role Profile": {"before_validate": "lms.lms.staff_authority.check_role_definition_edits", "on_trash": "lms.lms.staff_authority.check_role_definition_edits"},
+	"Has Role": {"before_validate": "lms.lms.staff_access_permissions.check_membership_row", "on_trash": "lms.lms.staff_access_permissions.check_membership_row"},
+	"User Role Profile": {"before_validate": "lms.lms.staff_access_permissions.check_membership_row", "on_trash": "lms.lms.staff_access_permissions.check_membership_row"},
 }
 
 # Scheduled Tasks

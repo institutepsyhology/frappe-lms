@@ -27,6 +27,9 @@ def restrict_member_lesson(*, course, lesson, user, enrolled):
 	"""Narrow enrollment for a future selected course; never create enrollment."""
 	if not enrolled:
 		return False
+	from lms.lms.access_blocks import is_blocked
+	if is_blocked(user, course, lesson):
+		return False
 	if not policy_applies(course):
 		return True
 	return grant_allows_lesson(user=user, lesson=lesson)
@@ -194,6 +197,9 @@ def grant_allows_lesson(*, user, lesson, now=None, require_manual=False, require
 	if not course:
 		return False
 	now = get_datetime(now if now is not None else now_datetime())
+	from lms.lms.access_blocks import is_blocked
+	if is_blocked(user, course, lesson, now):
+		return False
 	policy_name = frappe.db.get_value("LMS Access Policy", {"course": course, "enabled": 1}, "name")
 	common_rule = frappe.db.get_value("LMS Access Policy Lesson", {"parent": policy_name,
 		"parenttype": "LMS Access Policy", "parentfield": "lessons", "lesson": lesson},

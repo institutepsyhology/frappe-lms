@@ -17,7 +17,14 @@ def can_manage_credentials(user=None):
     user = user or frappe.session.user
     if not user or user == 'Guest':
         return False
-    if user == 'Administrator' or 'System Manager' in frappe.get_roles(user):
+    if user == 'Administrator':
+        return True
+    from lms.lms.staff_policy import assigned_capability
+    explicit = assigned_capability('credentials', 'read', user=user)
+    if explicit is not None:
+        return bool(explicit or assigned_capability('credentials', 'write', user=user)
+                    or assigned_capability('credentials', 'send', user=user))
+    if 'System Manager' in frappe.get_roles(user):
         return True
     if not frappe.get_meta('Role Profile').has_field(FIELD):
         return False
@@ -38,6 +45,8 @@ def list_profiles():
 @frappe.whitelist(methods=['POST'])
 def set_profile_access(profile, enabled):
     frappe.only_for('System Manager')
+    from lms.lms.staff_authority import require_role_change
+    require_role_change(frappe.session.user)
     if not isinstance(profile,str) or not frappe.db.exists('Role Profile',profile):
         frappe.throw(_('Invalid role profile.'),frappe.ValidationError)
     if type(enabled) not in (bool,int,str) or enabled not in (0,1,'0','1',False,True):

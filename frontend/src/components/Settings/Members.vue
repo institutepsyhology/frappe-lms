@@ -1,258 +1,75 @@
 <template>
-	<SettingsList
-		:title="__(label)"
-		:description="__(description)"
-		:columns="columns"
-		:rows="memberList"
-		:loading="Boolean(currentKind === 'Contact' ? contacts.loading : members.loading)"
-		:show-new="currentKind === 'User' && canEditMembers"
-		:has-next-page="hasNextPage"
-		v-model:search="search"
-		searchable
-		:search-label="__('Search members')"
-		empty-name="Users"
-		empty-icon="lucide-user"
-		@new="openNewMember"
-		@load-more="fetchMembers()"
-		@row-click="(member) => openEditMember(member)"
-	>
-		<template #header-bottom>
-			<Select v-if="canOpenCard" v-model="currentKind" class="w-44" aria-label="Тип записи" :options="kindOptions" />
-			<Select v-if="currentKind === 'User'" v-model="currentStatus" class="w-40" aria-label="Статус учётной записи" :options="statusOptions" />
-			<Select v-if="currentKind === 'User'"
-				v-model="currentRole"
-				class="w-40"
-				:aria-label="__('Filter by role')"
-				:options="roleOptions"
-			/>
-		</template>
-	</SettingsList>
-
-	<Dialog
-		v-model:open="showDeleteDialog"
-		:title="
-			memberToDelete ? __('Delete {0}?').format(memberToDelete.full_name) : ''
-		"
-		:message="
-			__('This permanently deletes the user account and cannot be undone.')
-		"
-		size="sm"
-		:actions="[
-			{
-				label: __('Delete'),
-				theme: 'red',
-				variant: 'solid',
-				onClick: confirmDelete,
-			},
-			{
-				label: __('Cancel'),
-				onClick: () => {
-					showDeleteDialog = false
-				},
-			},
-		]"
-	/>
+	<section class="flex h-full min-h-0 flex-col gap-4 p-5" aria-label="Контакты">
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<div><h2 class="text-lg font-semibold">Контакты</h2><p class="text-sm text-ink-gray-6">{{ description }}</p></div>
+			<Button v-if="canCreate && !readOnly" variant="solid" @click="openNew">Новый контакт</Button>
+		</div>
+		<FormControl v-model="search" type="search" placeholder="ФИО, почта, телефон или ID АВО" label="Поиск контактов" />
+		<p v-if="error" class="text-red-700" role="alert">Не удалось загрузить контакты. Проверьте права доступа.</p>
+		<div class="min-h-0 flex-1 overflow-auto" :aria-busy="loading">
+			<table class="w-full text-left text-sm">
+				<thead class="sticky top-0 bg-surface-white"><tr>
+					<th v-for="column in columns" :key="column.key" class="p-2" :aria-sort="sort === column.key ? direction === 'asc' ? 'ascending' : 'descending' : 'none'">
+						<button type="button" class="text-left font-medium" @click="setSort(column.key)">{{ column.label }} {{ sort === column.key ? direction === 'asc' ? '↑' : '↓' : '' }}</button>
+					</th>
+				</tr></thead>
+				<tbody><tr v-for="row in rows" :key="`${row.kind}:${row.name}`" class="border-t">
+					<td class="p-2"><button type="button" class="text-left text-blue-700 underline" @click="openContact(row)">{{ row.full_name || 'Без имени' }}</button></td>
+					<td class="p-2"><button v-if="row.email" type="button" class="text-left text-blue-700 underline" @click="openContact(row)">{{ row.email }}</button><span v-else>—</span></td>
+					<td class="p-2">{{ row.mobile_no || '—' }}</td>
+					<td class="p-2">{{ row.source_id || '—' }}</td>
+				</tr></tbody>
+			</table>
+			<p v-if="loading" class="p-3 text-ink-gray-6">Загрузка…</p>
+			<p v-else-if="!rows.length && !error" class="p-3 text-ink-gray-6">Контакты не найдены.</p>
+		</div>
+		<div class="flex flex-wrap items-center justify-between gap-3 text-sm">
+			<label>На странице <select v-model.number="pageSize" class="rounded border p-1" aria-label="Контактов на странице" @change="resetPage"><option v-for="size in [25,50,100,200]" :key="size" :value="size">{{ size }}</option></select></label>
+			<div class="flex items-center gap-2"><Button :disabled="page <= 1 || loading" @click="goPage(page - 1)">Назад</Button><span>Страница {{ page }} из {{ pageCount }} · Всего {{ total }}</span><Button :disabled="page >= pageCount || loading" @click="goPage(page + 1)">Далее</Button></div>
+		</div>
+	</section>
 </template>
 <script setup lang="ts">
-import { call, createResource, Dialog, Select, toast } from 'frappe-ui'
+import { Button, FormControl, call } from 'frappe-ui'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { computed, inject, ref, watch } from 'vue'
-import type { SettingsListColumn } from '@/types'
-import { SETTINGS_PAGE_LENGTH } from '@/composables/useSettingsListResource'
 import { openFormRoute } from '@/composables/useFormRoute'
 import { membersRevision } from '@/stores/members'
-import SettingsList from '@/components/Layouts/SettingsList.vue'
-import { cleanError } from '@/utils'
 
-type Member = {
-	username: string
-	full_name: string
-	name: string
-	roles?: string[]
-	user_image?: string
-	kind?: 'Contact'
-	email?: string
-	avo_id?: string
-	custom_avo_contact_id?: string
-	enabled?: boolean | 0 | 1
-}
-
-const router = useRouter()
-const user = inject<any>('$user')!
-const canOpenCard = computed(() => Boolean(user.data?.is_system_manager || user.data?.name === 'Administrator' || user.data?.can_manage_credentials))
-const canEditMembers = computed(() => Boolean(user.data?.is_moderator || user.data?.name === 'Administrator'))
+defineProps<{ label?:string; description?:string }>()
 defineModel('show')
-const search = ref('')
-const currentRole = ref('All')
-const currentKind = ref('User')
-const currentStatus = ref('All')
-const start = ref(0)
-const kindOptions = [{ label:'Пользователи', value:'User' }, { label:'Контакты без учётной записи', value:'Contact' }]
-const statusOptions = [{ label:'Все статусы', value:'All' }, { label:'Активные', value:'Active' }, { label:'Отключённые', value:'Disabled' }]
-
-const roleOptions = [
-	{ label: __('All'), value: 'All' },
-	{ label: __('Student'), value: 'LMS Student' },
-	{ label: __('Instructor'), value: 'Course Creator' },
-	{ label: __('Moderator'), value: 'Moderator' },
-	{ label: __('Evaluator'), value: 'Batch Evaluator' },
-]
-
-const memberList = ref<Member[]>([])
-const hasNextPage = ref(false)
-
-const showDeleteDialog = ref(false)
-const memberToDelete = ref<Member | null>(null)
-
-defineProps({
-	label: {
-		type: String,
-		required: true,
-	},
-	description: {
-		type: String,
-		default: '',
-	},
-})
-
-// No frappe-ui `cache` key on purpose: makeParams closes over this component's
-// refs, and createResource hands back the FIRST instance for a key without
-// rebinding those closures, so a remounted panel would inherit a resource still
-// writing into the unmounted one's state. The member forms announce saves
-// through `membersRevision` instead (see stores/members.ts).
-const members = createResource({
-	url: 'lms.lms.avo_user_routes.get_members',
-	makeParams: () => ({
-		search: search.value,
-		start: start.value,
-		role: currentRole.value,
-		status: currentStatus.value,
-	}),
-	auto: false,
-})
-const contacts = createResource({
-	url: 'lms.lms.avo_contact_card.list_source_contacts',
-	makeParams: () => ({ search:search.value, start:start.value }),
-	auto:false,
-})
-
-// createResource carries no request sequence and aborts nothing, so two calls
-// in flight both resolve and both append: a role change mid-request would show
-// one filter's page under another's, and over-advance `start` past rows nobody
-// ever saw. Each call takes a token and a superseded response is dropped.
-let requestToken = 0
-
-const fetchMembers = async () => {
-	const token = ++requestToken
-	const data = (await (currentKind.value === 'Contact' ? contacts.reload() : members.reload())) as Member[] | null
-	if (token !== requestToken || !data) return
-	memberList.value = memberList.value.concat(data)
-	// Paged by what the server actually returned, not by the constant. An
-	// exact-equality check hides Load More outright the moment the two
-	// disagree, and stepping `start` by the constant would then skip rows.
-	start.value = start.value + data.length
-	hasNextPage.value = data.length >= SETTINGS_PAGE_LENGTH
+type Person = { kind:'User'|'Contact'; name:string; full_name:string|null; email:string|null; mobile_no:string|null; source_id:string|null }
+type Sort = 'full_name'|'email'|'mobile_no'|'source_id'
+const router=useRouter()
+const rows=ref<Person[]>([]),total=ref(0),page=ref(1),pageSize=ref(50)
+const search=ref(''),sort=ref<Sort>('full_name'),direction=ref<'asc'|'desc'>('asc')
+const loading=ref(false),error=ref(false),canCreate=ref(false)
+const readOnly=Boolean(window.read_only_mode)
+const pageCount=computed(() => Math.max(1,Math.ceil(total.value/pageSize.value)))
+const columns:{key:Sort;label:string}[]=[{key:'full_name',label:'ФИО'},{key:'email',label:'Email'},{key:'mobile_no',label:'Телефон'},{key:'source_id',label:'ID АВО'}]
+let request=0,searchTimer:ReturnType<typeof setTimeout>|undefined
+async function fetchPeople(){
+	const token=++request
+	loading.value=true;error.value=false
+	try{
+		const result=await call('lms.lms.contact_workspace.list_people',{page:page.value,page_size:pageSize.value,search:search.value,sort:sort.value,direction:direction.value})
+		if(token!==request)return
+		if(!Array.isArray(result?.rows)||!Number.isInteger(result.total))throw new Error('invalid contacts')
+		rows.value=result.rows;total.value=result.total;canCreate.value=Boolean(result.can_create)
+		if(page.value>pageCount.value){page.value=pageCount.value;await fetchPeople()}
+	}catch{if(token===request){error.value=true;rows.value=[];total.value=0;canCreate.value=false}}
+	finally{if(token===request)loading.value=false}
 }
-
-// The search goes to the server with start reset, so a match past the first
-// page is reachable without pressing Load More first.
-const refreshMembers = () => {
-	memberList.value = []
-	start.value = 0
-	return fetchMembers()
+function resetPage(){page.value=1;fetchPeople()}
+function goPage(value:number){page.value=value;fetchPeople()}
+function setSort(value:Sort){direction.value=sort.value===value&&direction.value==='asc'?'desc':'asc';sort.value=value;resetPage()}
+function openContact(row:Person){
+	if(row.source_id&&/^[1-9][0-9]*$/.test(row.source_id)){openFormRoute(router,{name:'AvoContactById',params:{avoId:row.source_id}});return}
+	openFormRoute(router,{name:'MemberForm',params:{memberID:row.kind==='Contact'?`avo-contact:${row.name}`:row.name}})
 }
-
-watch([search, currentRole, currentKind, currentStatus], () => {
-	refreshMembers()
-})
-
-// A member form saved while this panel is still mounted behind it (the desktop
-// dialog) has no other way to reach the list. On a phone the panel unmounts, so
-// the fresh mount's own first fetch already covers it.
-watch(membersRevision, () => {
-	refreshMembers()
-})
-
-refreshMembers()
-
-const roleLabels: Record<string, string> = {
-	'LMS Student': __('Student'),
-	'Course Creator': __('Instructor'),
-	Moderator: __('Moderator'),
-	'Batch Evaluator': __('Evaluator'),
-}
-
-// The settings dialog remains open behind the card.
-const openEditMember = (member: Member) => {
-	const avoId = member.kind === 'Contact' ? member.avo_id : member.custom_avo_contact_id
-	if ((canOpenCard.value || (member.kind !== 'Contact' && canEditMembers.value)) && avoId && /^[1-9][0-9]*$/.test(avoId)) {
-		openFormRoute(router, { name:'AvoContactById', params:{ avoId } })
-		return
-	}
-	openFormRoute(router, {
-		name: 'MemberForm',
-		params: { memberID: member.kind === 'Contact' ? `avo-contact:${member.name}` : member.name },
-	})
-}
-
-const openNewMember = () => {
-	openFormRoute(router, { name: 'MemberForm', params: { memberID: 'new' } })
-}
-
-const openDeleteDialog = (member: Member) => {
-	memberToDelete.value = member
-	showDeleteDialog.value = true
-}
-
-const columns: SettingsListColumn[] = [
-	{
-		key: 'member',
-		label: __('User'),
-		type: 'stacked',
-		primary: (row) => row.full_name,
-		secondary: (row) => row.kind === 'Contact' ? `${row.email || 'Без почты'} · АВО ID ${row.avo_id || '—'}` : `${row.name}${row.enabled === 0 || row.enabled === false ? ' · Отключён' : ''}`,
-		avatar: (row) => ({ image: row.user_image, label: row.full_name }),
-	},
-	{
-		key: 'roles',
-		label: __('Roles'),
-		type: 'badge',
-		badges: (row) =>
-			((row.roles || []) as string[])
-				.filter((role) => roleLabels[role])
-				.map((role) => ({ label: roleLabels[role], theme: 'gray' as const })),
-	},
-	{
-		key: 'actions',
-		type: 'actions',
-		ariaLabel: (row) => __('Actions for {0}').format(row.full_name),
-		options: (row) => row.kind === 'Contact' || !canEditMembers.value ? [
-			{ label: 'Открыть карточку', onClick: () => openEditMember(row as Member) },
-		] : [
-			{
-				label: __('Edit member'),
-				onClick: () => openEditMember(row as Member),
-			},
-			{
-				label: __('Delete user'),
-				theme: 'red',
-				onClick: () => openDeleteDialog(row as Member),
-			},
-		],
-	},
-]
-
-const confirmDelete = async (close: () => void) => {
-	if (!memberToDelete.value) return
-	try {
-		await call('lms.lms.api.delete_member', { user: memberToDelete.value.name })
-		showDeleteDialog.value = false
-		memberToDelete.value = null
-		refreshMembers()
-		toast.success(__('User deleted'))
-	} catch (err: any) {
-		toast.error(cleanError(err.messages?.[0]) || err)
-	}
-	close?.()
-}
+function openNew(){if(canCreate.value&&!readOnly)openFormRoute(router,{name:'MemberForm',params:{memberID:'new'}})}
+watch(search,()=>{clearTimeout(searchTimer);++request;loading.value=true;searchTimer=setTimeout(resetPage,250)})
+watch(membersRevision,resetPage)
+onMounted(fetchPeople)
+onBeforeUnmount(()=>{++request;clearTimeout(searchTimer)})
 </script>

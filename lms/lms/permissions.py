@@ -277,6 +277,9 @@ def resolve_lesson_access(lesson: str, *, user: str | None = None) -> tuple[bool
 		frappe.session.user = user
 		if can_modify_course(lesson_row.course):
 			return True, True
+		from lms.lms.access_blocks import is_blocked
+		if is_blocked(user, lesson_row.course, lesson):
+			return False, False
 		if not publication_allows_lesson(lesson, lesson_row, user):
 			return False, False
 		from lms.lms.individual_access import policy_applies, restrict_member_lesson

@@ -17,12 +17,7 @@ watch(() => props.avoId, async id => {
 	target.value = ''
 	error.value = false
 	try {
-		let result
-		try {
-			result = await call('lms.lms.avo_contact_card.resolve_source_id', { source_id:id })
-		} catch {
-			result = await call('lms.lms.avo_user_routes.resolve_member', { source_id:id })
-		}
+		const result = await call('lms.lms.contact_workspace.resolve_source_id', { source_id:id })
 		if (current !== sequence) return
 		if (!result || !['User', 'Contact'].includes(result.kind) || typeof result.name !== 'string' || !result.name) throw new Error('invalid contact')
 		target.value = result.kind === 'Contact' ? `avo-contact:${result.name}` : result.name

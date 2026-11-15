@@ -56,7 +56,7 @@ import {
 	SettingsSidebar,
 	createDocumentResource,
 } from 'frappe-ui'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useSettings } from '@/stores/settings'
 import SettingDetails from '@/components/Settings/SettingDetails.vue'
 import { settingsStructure } from '@/components/Settings/settingsStructure.js'
@@ -65,6 +65,7 @@ const show = defineModel()
 const doctype = ref('LMS Settings')
 const activeTab = ref('')
 const settingsStore = useSettings()
+const currentUser = inject('$user')
 
 // Tells openSettings there is something here to open. Nothing mounts this on a
 // phone, and a moderator asking for Settings from a routed form there would
@@ -90,7 +91,7 @@ const items = computed(() => tabs.value.flatMap((group) => group.items))
 const panelProps = (item) => ({
 	label: item.label,
 	description: item.description,
-	...(['Users', 'Transactions'].includes(item.label)
+	...(['Users', 'Контакты', 'Transactions'].includes(item.label)
 		? { 'onUpdate:show': (val) => (show.value = val), show: show.value }
 		: {}),
 })
@@ -100,6 +101,10 @@ const tabs = computed(() => {
 		return {
 			...tab,
 			items: tab.items.filter((item) => {
+				if (item.requiredCapability) {
+					const [resource, action] = item.requiredCapability
+					if (currentUser?.data?.name !== 'Administrator' && !currentUser?.data?.staff_capabilities?.[resource]?.[action]) return false
+				}
 				return !item.condition || item.condition()
 			}),
 		}

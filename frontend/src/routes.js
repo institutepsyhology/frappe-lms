@@ -443,6 +443,16 @@ export const routes = [
 		component: () => import('@/pages/ContactDirectory.vue'),
 	},
 	{
+		path: '/staff/positions',
+		name: 'StaffPositions',
+		component: () => import('@/pages/StaffPositions.vue'),
+	},
+	{
+		path: '/staff/employees',
+		name: 'StaffEmployees',
+		component: () => import('@/pages/StaffEmployees.vue'),
+	},
+	{
 		path: '/settings/contacts/:avoId',
 		name: 'AvoContactById',
 		component: () => import('@/pages/Forms/AvoContactById.vue'),

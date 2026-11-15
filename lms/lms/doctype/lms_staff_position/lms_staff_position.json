@@ -1,0 +1,91 @@
+{
+ "actions": [],
+ "creation": "2026-11-15 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "links": [],
+ "modified": "2026-11-15 00:00:00",
+ "modified_by": "Administrator",
+ "module": "LMS",
+ "owner": "Administrator",
+ "states": [],
+ "track_changes": 1,
+ "name": "LMS Staff Position",
+ "field_order": [
+  "title",
+  "parent_position",
+  "active",
+  "course_scope",
+  "permissions",
+  "native_roles",
+  "changed_by",
+  "changed_at"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "label": "Название должности",
+   "fieldtype": "Data",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "parent_position",
+   "label": "Вышестоящая должность",
+   "fieldtype": "Link",
+   "options": "LMS Staff Position"
+  },
+  {
+   "fieldname": "active",
+   "label": "Активна",
+   "fieldtype": "Check",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "course_scope",
+   "label": "Курсы",
+   "fieldtype": "Select",
+   "options": "Owned\nAll",
+   "default": "Owned",
+   "reqd": 1
+  },
+  {
+   "fieldname": "permissions",
+   "label": "Права по разделам",
+   "fieldtype": "Table",
+   "options": "LMS Staff Position Permission"
+  },
+  {
+   "fieldname": "native_roles",
+   "label": "Роли платформы",
+   "fieldtype": "Table",
+   "options": "Has Role"
+  },
+  {
+   "fieldname": "changed_by",
+   "label": "Кто изменил",
+   "fieldtype": "Link",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "changed_at",
+   "label": "Когда изменил",
+   "fieldtype": "Datetime",
+   "read_only": 1
+  }
+ ],
+ "autoname": "hash",
+ "allow_rename": 0,
+ "title_field": "title",
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  }
+ ]
+}

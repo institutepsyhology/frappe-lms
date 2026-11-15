@@ -1,5 +1,6 @@
 <template>
-	<div class="mt-7">
+	<div v-if="!canManageRoles" class="mt-7" role="alert">У вас нет права изменять должность и роли сотрудника.</div>
+	<div v-else class="mt-7">
 		<h2 class="mb-3 text-md font-semibold text-ink-gray-9">
 			{{ __('Settings') }}
 		</h2>
@@ -49,7 +50,7 @@
 <script setup>
 import { call, createResource, toast } from 'frappe-ui'
 import BooleanSwitch from '@/components/Controls/BooleanSwitch.vue'
-import { ref, watch } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 import { convertToTitleCase } from '@/utils'
 
 const moderator = ref(false)
@@ -57,6 +58,8 @@ const course_creator = ref(false)
 const batch_evaluator = ref(false)
 const lms_student = ref(false)
 const readOnlyMode = window.read_only_mode
+const sessionUser = inject('$user')
+const canManageRoles = computed(() => sessionUser?.data?.can_manage_staff_roles === true || sessionUser?.data?.name === 'Administrator')
 
 const props = defineProps({
 	profile: {
@@ -88,6 +91,7 @@ const roles = createResource({
 watch(
 	() => props.profile,
 	(newValue) => {
+		if (!canManageRoles.value || !newValue?.data?.name) return
 		roles.reload({
 			member: newValue.data?.name,
 		})
@@ -96,6 +100,7 @@ watch(
 )
 
 const saveRole = async (role) => {
+	if (!canManageRoles.value || readOnlyMode) return
 	const roleName =
 		role == 'lms_student'
 			? 'LMS Student'

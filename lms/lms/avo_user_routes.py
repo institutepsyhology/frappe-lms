@@ -29,11 +29,10 @@ def get_members(start: int = 0, search: str = None, role: str = 'All', status: s
 
 @frappe.whitelist()
 def resolve_member(source_id: str):
+    from lms.lms.staff_policy import require_capability
+    require_capability('contacts', 'read')
     if not _id(source_id) or not _account():
         frappe.throw(_('Invalid contact ID.'), frappe.ValidationError)
-    roles = frappe.get_roles()
-    if 'Moderator' not in roles and 'System Manager' not in roles and frappe.session.user != 'Administrator':
-        frappe.throw(_('Not permitted.'), frappe.PermissionError)
     rows = frappe.get_all('User', filters={'custom_avo_account': _account(), 'custom_avo_contact_id': source_id},
                           fields=['name'], limit_page_length=2)
     contacts = frappe.get_all('Contact', filters={'custom_avo_account': _account(), 'custom_avo_contact_id': source_id},

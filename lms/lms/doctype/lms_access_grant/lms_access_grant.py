@@ -5,9 +5,11 @@ from frappe.utils import get_datetime
 
 
 class LMSAccessGrant(Document):
-	"""Administrative record only; does not yet enforce lesson permissions."""
+	"""Personal lesson rights with immutable access-issuance metadata."""
 
 	def before_validate(self):
+		if not self.get("access_source"):
+			self.access_source = "Unknown"
 		if not self.visited_retention_type:
 			self.visited_retention_type = "Inherit"
 		# Preserve compatibility with grants saved before this label was clarified.
@@ -16,6 +18,8 @@ class LMSAccessGrant(Document):
 				row.prerequisite_state = "Satisfied"
 
 	def validate(self):
+		from lms.lms.access_provenance import validate
+		validate(self)
 		if self.status == "Frozen" and not self.frozen_at:
 			frappe.throw(_("A frozen access grant must have a freeze time."))
 		from lms.lms.individual_access import validate_end_rule, validate_retention

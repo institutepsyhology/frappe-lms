@@ -22,9 +22,17 @@
   "section_break_8",
   "column_break_12",
   "member_type",
-  "role"
+  "role",
+  "access_source",
+  "issued_by",
+  "issued_at",
+  "source_reference"
  ],
  "fields": [
+  {"fieldname":"access_source","fieldtype":"Select","label":"Access Source","options":"Unknown\nManual\nImport\nPurchase","default":"Unknown","read_only":1},
+  {"fieldname":"issued_by","fieldtype":"Link","options":"User","label":"Issued By","read_only":1},
+  {"fieldname":"issued_at","fieldtype":"Datetime","label":"Issued At","read_only":1},
+  {"fieldname":"source_reference","fieldtype":"Data","label":"Source Reference","read_only":1},
   {
    "fieldname": "member",
    "fieldtype": "Link",
