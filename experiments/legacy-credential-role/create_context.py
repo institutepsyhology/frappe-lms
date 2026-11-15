@@ -9,7 +9,7 @@ import tarfile
 
 ROOT = Path(__file__).resolve().parents[2]
 BASE = 'sha256:262aa41e480e5c8fa33e0860523a586e9e5af283c59573cf66476dd85374b775'
-ACTIVE = 'sha256:d588adfe762bd7fb29a2f97a588563cb46f734682e14172df837caba07ab05cb'
+ACTIVE = 'sha256:1593e8f40756f5f383ce71a5344adb84da5b12a00c4cea20ea43bb45ede81008'
 FRONTEND_REVISION = '90cbdd59881490c4cb659987133bf474b50cd444'
 
 
@@ -41,7 +41,7 @@ def main():
         'test_contact_workspace_unit','test_avo_contact_resolver_unit','test_course_people_unit',
         'test_credential_profiles_unit','test_avo_import_unit','test_avo_reviewed_embed_html'))
     recipe=f'''# syntax=docker/dockerfile:1.4
-FROM company-lms:contact-staff-access-90cbdd59 AS compiled
+FROM company-lms:legacy-credential-role-722522d1 AS compiled
 FROM company-lms:avo-user-routes-base50
 USER root
 RUN --mount=type=bind,source=overlay.tar,target=/tmp/overlay.tar \\
@@ -53,7 +53,7 @@ RUN --mount=type=bind,source=overlay.tar,target=/tmp/overlay.tar \\
     chown -R frappe:0 apps/lms/lms/public/frontend apps/lms/lms/www/_lms.html && \\
     su -s /bin/sh frappe -c 'env/bin/python -B -m unittest {tests} -q'
 USER frappe
-LABEL org.opencontainers.image.source="https://github.com/institutepsyhology/frappe-lms" org.opencontainers.image.revision="{revision}" ru.mvcentr.baseline="{ACTIVE}" ru.mvcentr.release="legacy-credential-role-v1"
+LABEL org.opencontainers.image.source="https://github.com/institutepsyhology/frappe-lms" org.opencontainers.image.revision="{revision}" ru.mvcentr.baseline="{ACTIVE}" ru.mvcentr.release="system-admin-position-v1"
 '''
     (out/'Dockerfile').write_text(recipe,encoding='utf8',newline='\n')
     (out/'manifest.json').write_text(json.dumps({'revision':revision,'base':BASE,'frontend_revision':FRONTEND_REVISION,

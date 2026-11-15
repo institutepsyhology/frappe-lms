@@ -173,6 +173,10 @@ def _can_target_user(user, position, *, current=None, require_active=True):
     if position not in graph or (require_active and not _position_active(position, graph)):
         frappe.throw(_('Choose an active staff position.'), frappe.ValidationError)
     if not _admin():
+        # Technical administrators keep a separate framework authority. A
+        # delegated position must never become a path to edit/disable one.
+        if frappe.db.exists('User', user) and 'System Manager' in frappe.get_roles(user):
+            _deny()
         _scope_target(position, graph)
         if current:
             _scope_target(current.position, graph)
@@ -218,12 +222,24 @@ def _sync_user(assignment):
     # may replace this obsolete marker while assigning the selected position.
     # It is never retained or delegated, and genuine technical roles still fail.
     legacy_password_transition = _admin() and unsupported == {'LMS Credential Manager'}
-    if unsupported and not legacy_password_transition:
+    preserve_system_access = _admin() and 'System Manager' in raw_roles
+    if unsupported and not (legacy_password_transition or preserve_system_access):
         frappe.throw(_('Remove technical roles in the administrator console before assigning a bounded staff position.'), frappe.ValidationError)
+    enabled = 1 if cint(assignment.active) else 0
+    if preserve_system_access:
+        # A business-position assignment is not a system-role conversion.
+        # Preserve every existing role, profile, user type and security setting.
+        # Avoid a User save entirely when login status is unchanged: Frappe
+        # normally re-populates roles from Role Profiles during User.validate.
+        if cint(doc.enabled) != enabled:
+            doc.enabled = enabled
+            doc.save(ignore_permissions=True)
+        frappe.clear_cache(user=doc.name)
+        clear_policy_cache()
+        return
     position = frappe.get_doc('LMS Staff Position', assignment.position)
     effective = cint(assignment.active) and _position_active(position.name, _graph())
     desired = _roles(position) if effective else frozenset({'LMS Student'})
-    enabled = 1 if cint(assignment.active) else 0
     with _controlled_user_write(doc.name, desired, enabled):
         doc.set('roles', [{'role': role} for role in sorted(desired)])
         doc.set('role_profiles', []); doc.role_profile_name = None

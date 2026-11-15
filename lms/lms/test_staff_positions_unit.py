@@ -243,9 +243,37 @@ class StaffPolicyTests(unittest.TestCase):
 
     def test_administrator_still_cannot_silently_remove_real_technical_roles(self):
         self.f.session.user='Administrator'
-        doc=self._sync_document(('LMS Student','LMS Credential Manager','System Manager'))
+        roles=('LMS Student','Moderator','Script Manager','System Manager')
+        doc=self._sync_document(roles)
+        doc.role_profiles=[Row(role_profile='Existing System Profile')]
+        doc.user_type='System User'
+        doc.save=lambda **kw: self.fail('unchanged system account must not be rewritten')
+        self.api._sync_user(Row(user=doc.name,position='assistant',active=1))
+        self.assertEqual([row.role for row in doc.roles],list(roles))
+        self.assertEqual(doc.role_profiles,[Row(role_profile='Existing System Profile')])
+        self.assertEqual(doc.user_type,'System User')
+
+    def test_nonadmin_cannot_edit_a_technical_account_even_inside_valid_subtree(self):
+        member='system@example.test'
+        self.roles[member]=['System Manager','LMS Student']
+        original=self.f.db.exists
+        self.f.db.exists=lambda doctype,*a,**kw:True if doctype=='User' else original(doctype,*a,**kw)
+        with self.assertRaises(PermissionError):
+            self.api._can_target_user(member,'assistant',current=Row(position='assistant'))
+
+    def test_nonadmin_user_projection_cannot_use_system_preservation_branch(self):
+        doc=self._sync_document(('LMS Student','System Manager'))
         with self.assertRaises(ValueError):self.api._sync_user(Row(user=doc.name,position='assistant',active=1))
         self.assertIn('System Manager',[row.role for row in doc.roles])
+
+    def test_administrator_can_disable_system_login_without_removing_roles(self):
+        self.f.session.user='Administrator'
+        doc=self._sync_document(('LMS Student','System Manager'))
+        saved=[];doc.save=lambda **kw:saved.append(True)
+        self.api._sync_user(Row(user=doc.name,position='assistant',active=0))
+        self.assertEqual(doc.enabled,0)
+        self.assertEqual(saved,[True])
+        self.assertEqual([row.role for row in doc.roles],['LMS Student','System Manager'])
 
 
 if __name__=='__main__':unittest.main()

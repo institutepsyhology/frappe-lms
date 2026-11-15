@@ -8,8 +8,8 @@ import sys
 
 HERE = Path(__file__).resolve().parent
 BASE50 = 'sha256:262aa41e480e5c8fa33e0860523a586e9e5af283c59573cf66476dd85374b775'
-ACTIVE = 'sha256:d588adfe762bd7fb29a2f97a588563cb46f734682e14172df837caba07ab05cb'
-RELEASE = 'legacy-credential-role-v1'
+ACTIVE = 'sha256:1593e8f40756f5f383ce71a5344adb84da5b12a00c4cea20ea43bb45ede81008'
+RELEASE = 'system-admin-position-v1'
 
 
 def load(name,path):

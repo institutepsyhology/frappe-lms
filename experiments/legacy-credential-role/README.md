@@ -8,14 +8,22 @@ precedence, and the older fallback checks Role Profiles rather than this role.
 Administrator may now normalize this one retired marker while assigning the
 selected position. The resulting native roles are exactly those of the
 position, and credential read/write/send permissions come from its matrix.
-The marker is not retained, newly granted or delegated. Non-administrators do
-not gain this exception; genuine technical roles such as System Manager still
-block conversion through this bounded interface.
+The marker is not retained, newly granted or delegated on ordinary accounts.
+Non-administrators do not gain this exception.
+
+An existing System Manager account has a separate framework authority. The
+owner explicitly chose to preserve it while attaching a business position.
+Only Administrator may attach/reassign/disable such an account. Every existing
+system role, Role Profile, user type and security setting is preserved, and
+User is not saved at all when its login status is unchanged. The position's
+application capability matrix applies separately; system roles are not granted
+or delegated through that matrix. Disabling employee login remains an explicit
+Administrator action and does not delete the account's role history.
 
 Three regression tests cover administrator migration, non-administrator denial
-and the real-system-role ceiling. The isolated-stage smoke additionally checks
-both allowed and denied credential-read matrices against real User saves and
-ensures a refused technical-role assignment is rolled back.
+and protection of system accounts from delegated staff. The isolated-stage
+smoke additionally checks allowed/denied credential-read matrices and exact
+system Role Profile preservation without rewriting the User record.
 
 The production image is rebuilt from the pinned 50-layer base into 51 layers.
 The frontend is unchanged: committed frontend sources must match the prior
