@@ -28,6 +28,51 @@ class DB:
 
 
 class ApplicationTests(unittest.TestCase):
+    def test_full_queue_waits_without_attempting_or_losing_current_record(self):
+        values=iter([200,150,99]);waits=[];delays=[]
+        with patch.object(worker,'insert_one',return_value={'kind':'User'}) as insert:
+            result=worker.insert_when_ready(None,{'data':{}},pending=lambda:next(values),
+                waiting=waits.append,stopped=lambda:False,pause=delays.append)
+        self.assertEqual(result,{'kind':'User'})
+        self.assertEqual(waits,[200,150]);self.assertEqual(delays,[2,2]);insert.assert_called_once()
+
+    def test_race_queue_overload_retries_same_decision_after_rollback(self):
+        QueueOverloaded=type('QueueOverloaded',(Exception,),{})
+        class Clock:
+            value=0
+            def now(self):return self.value
+            def pause(self,value):self.value+=value
+        clock=Clock();decision={'data':{'custom_avo_contact_id':'123'}}
+        with patch.object(worker,'insert_one',side_effect=[QueueOverloaded('PRIVATE'),{'kind':'User'}]) as insert, \
+                patch.object(worker.time,'monotonic',side_effect=clock.now):
+            result=worker.insert_when_ready(None,decision,pending=lambda:0,waiting=lambda _:None,
+                stopped=lambda:False,pause=clock.pause)
+        self.assertEqual(result,{'kind':'User'})
+        self.assertEqual(insert.call_count,2)
+        self.assertEqual(insert.call_args_list[0],insert.call_args_list[1])
+
+    def test_operator_stop_during_backpressure_performs_no_write(self):
+        with patch.object(worker,'insert_one') as insert,self.assertRaises(worker.Paused):
+            worker.insert_when_ready(None,{},pending=lambda:300,waiting=lambda _:None,stopped=lambda:True)
+        insert.assert_not_called()
+
+    def test_queue_race_retry_limit_does_not_advance_to_another_person(self):
+        QueueOverloaded=type('QueueOverloaded',(Exception,),{})
+        class Clock:
+            value=0
+            def now(self):return self.value
+            def pause(self,value):
+                if value<0:raise AssertionError('negative_retry_delay')
+                self.value+=value
+        clock=Clock();decision={'data':{'custom_avo_contact_id':'123'}}
+        with patch.object(worker,'insert_one',side_effect=QueueOverloaded()) as insert, \
+                patch.object(worker.time,'monotonic',side_effect=clock.now),self.assertRaises(worker.ApplyError) as error:
+            worker.insert_when_ready(None,decision,pending=lambda:0,waiting=lambda _:None,
+                stopped=lambda:False,pause=clock.pause)
+        self.assertEqual(str(error.exception),'queue_retry_limit')
+        self.assertEqual(insert.call_count,10)
+        self.assertTrue(all(call.args==(None,decision) for call in insert.call_args_list))
+
     def setup_user(self,**changes):
         decision=plan(row(**changes),email_frequency=1)
         doc=Doc(decision['data'],name=decision['data']['email'],enabled=1)

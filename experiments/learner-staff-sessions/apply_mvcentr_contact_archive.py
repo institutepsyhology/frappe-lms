@@ -18,6 +18,7 @@ BASE=Path('/home/frappe/frappe-bench/sites')/SITE/'private'/'apply-avo-contacts'
 
 
 class ApplyError(Exception):pass
+class Paused(Exception):pass
 
 
 def stamp():return datetime.now(timezone.utc).isoformat()
@@ -139,6 +140,30 @@ def insert_one(frappe,decision):
         raise
 
 
+def insert_when_ready(frappe,decision,*,pending,waiting,stopped,pause=time.sleep):
+    """A full RQ queue is backpressure, never an invalid source contact."""
+    for attempt in range(10):
+        while True:
+            if stopped():raise Paused()
+            count=pending()
+            if count<100:break
+            waiting(count)
+            pause(2)
+        try:return insert_one(frappe,decision)
+        except Exception as error:
+            if type(error).__name__!='QueueOverloaded':raise
+            # insert_one already rolled back the entire account transaction.
+            if attempt==9:raise ApplyError('queue_retry_limit') from None
+            waiting(pending())
+            deadline=time.monotonic()+min(30,2**(attempt+1))
+            while True:
+                if stopped():raise Paused()
+                remaining=deadline-time.monotonic()
+                if remaining<=0:break
+                pause(min(0.5,remaining))
+    raise ApplyError('queue_retry_limit')
+
+
 def block_one(frappe,ident):
     from lms.lms.avo_marketing import apply_source_optouts
     frappe.db.begin()
@@ -177,11 +202,14 @@ def run(frappe,*,limit=0,retry_issues=False):
         done={ident for ident,status in state.execute('SELECT source_id,status FROM decisions')
               if not retry_issues or status not in ('deferred','failed')}
         failures=0;created=0;handled=0
+        from frappe.utils.background_jobs import get_queue
+        queue=get_queue('default')
         progress(state,'applying')
         for _,row in iter_contacts(archive,cipher,SNAPSHOT):
             ident=row['id_contact']
             if (BASE/'STOP').exists():return progress(state,'paused')
             if ident in done:continue
+            previously_created=created
             try:
                 current=identities.get(ident)
                 guarded=ident in rules['excluded_ids'] or ident in rules['protected_ids']
@@ -204,19 +232,25 @@ def run(frappe,*,limit=0,retry_issues=False):
                         identities=target_map(frappe);current=identities[ident]
                         status='existing_preserved'
                     else:
-                        identities[ident]=insert_one(frappe,result)
+                        identities[ident]=insert_when_ready(frappe,result,
+                            pending=lambda:queue.count,
+                            waiting=lambda count:progress(state,'waiting_for_queue',error='queue_backpressure'),
+                            stopped=lambda:(BASE/'STOP').exists())
                         status='created_user' if action=='create_user' else 'created_contact'
                         if action=='create_user':taken.add(result['data']['email'])
                         created+=1
                 record(state,ident,status,reason);failures=0
+            except Paused:
+                return progress(state,'paused')
             except Exception as error:
                 frappe.db.rollback()
                 reason=error.args[0] if isinstance(error,(ApplyError,PlanError)) else type(error).__name__
+                if reason=='queue_retry_limit':return progress(state,'stopped',failures=failures,error=reason)
                 record(state,ident,'failed',reason);failures+=1
                 if failures>=10:return progress(state,'stopped',failures=failures,error='ten_consecutive_failures')
                 time.sleep(0.2)
             handled+=1
-            if handled%100==0 or created and created%10==0:progress(state,'applying',failures=failures)
+            if handled%100==0 or created>previously_created and created%10==0:progress(state,'applying',failures=failures)
             if limit and created>=limit:return progress(state,'batch_complete',failures=failures)
         return progress(state,'completed_with_issues' if state.execute("SELECT 1 FROM decisions WHERE status IN ('failed','deferred') LIMIT 1").fetchone() else 'completed')
 

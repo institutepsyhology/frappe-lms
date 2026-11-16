@@ -22,7 +22,23 @@ IOMP key transport and existing MV/MVC regressions. Both operational paths use
 private standalone programs; the running MV process and application containers
 do not need restarting. Existing unrelated source edits remain untouched.
 
-The next gates are a small real MVC import with independent read-back, followed
-by resumable background application, and installation/start of the IOMP source
-worker using its own owner-supplied GET key. A confirmed process launch is not
-proof of completed data application or a working legacy authentication link.
+The first 20 new MVC Users passed independent field, current-password and
+encrypted-support-copy checks; welcome mail remained disabled and all were
+Website Users. Native MCP confirmed all 20 source identities. The background
+writer then created 1,291 users before being paused at a record boundary to
+handle native QueueOverloaded responses. All 678 rejected attempts rolled back;
+they are replayed from the same source with --retry-issues after queue controls.
+
+Native User.on_update queues create_contact after commit, and the framework
+checks queue capacity before registering that callback. The writer now waits
+when the default queue has 100 pending jobs and retains the current source row.
+Race-condition QueueOverloaded failures roll back and retry the same row with
+bounded waits; the tenth unsuccessful retry stops without moving to another ID.
+These transient conditions no longer classify valid source people as errors.
+
+The owner also supplied the IOMP GET key in the masked window. The dedicated
+IOMP worker was confirmed collecting on its own site, with 23,498 contacts saved
+and no source error at observation. MV continued with its completed 563,218-contact
+traversal and was reading course-access records. No application container or
+existing source collector was restarted. These observations do not prove that
+all contacts are already applied or that legacy authentication is activated.
