@@ -1,34 +1,35 @@
-# Apply completed MVC contact capture to existing Frappe identities
+# Existing MVC credentials and source archive
 
-The owner requested continuation after source retention completed. Current MVC
-Frappe has 123,298 distinct source identities; the completed archive has 213,885.
-Apply the missing identities and positive marketing restrictions, preserving
-existing profile edits, source bindings, roles, enrollments and current passwords.
-Use exact account+source ID, never merge people by phone or email. Load exclusion
-and protected-ID rules from a private policy file; do not publish real IDs.
+Updated owner scope, 17 November: do not create new MVC contacts or Users.
+The people with courses were already migrated. Work only on their existing
+source identities; preserve current passwords, enrollments, progress, roles,
+profile edits and positive marketing restrictions. Do not merge by phone/email.
 
-Consume only the completed encrypted MVC server archive. Verify all envelopes,
-raw pages, ID coverage and the source fingerprint in a full read-only pass before
-applying. Raw list login links are invalid and must be excluded; keep verified
-personal links in their separate encrypted archive for the authentication phase.
+The broad creation job is stopped; its final ledger records 1,292 newly created
+Users. No automatic deletion is authorized. They have no enrollments, grants or
+login activity at the read-only check. Retain the private ledger for an explicit
+future decision. Never replay the 678 rolled-back attempts as account creations.
+The fixed existing-only source guard also blocks insertion if STOP is removed.
 
-Create missing unique-email Users through the existing Administrator importer,
-including its verified support-password copy and welcome-email suppression.
-Preserve legitimate no-email/social-only identities as Contacts. Existing
-passwords are never replaced; fill a missing support copy only if the archived
-password matches the current login and the target is not protected staff. Apply
-only positive opt-outs, never clear current ones. Existing profile fields remain
-unchanged because an empty value could be an intentional operator edit.
+The old cohort contains 112,920 Users and 10,378 Contact-only identities.
+All Users have password hashes; 112,918 have encrypted support copies. Existing
+excluded/protected exceptions remain unchanged. Thirty enrolled-user samples
+passed support decryption and comparison with current login hashes; this is
+sample evidence, not proof of every copy's present usability.
 
-The installed Contact controller auto-links by email; an imported duplicate-email
-Contact could therefore point at another source ID. Do not use that unsafe path.
-Log those cases separately while the other records proceed, then implement a
-scoped identity guard without stopping the in-memory-key MV source job. Capture
-individual issues by source ID/fixed reason only; ten consecutive genuine failures
-stop the writer. Persistent checkpoints and identity read-back reconcile commits
-after restart, avoiding duplicate accounts. Publish source before server use.
+All 19,226 people with enrollments have an archived source password and a
+verified individual personal link. Decrypt/validate the whole link vault against
+site/account/source identity, envelope/payload hashes and full ID fingerprint.
+Do not use the repeated personal-link fields from contacts list responses.
+One old target-only identity without courses needs a new individual source
+capture; its old list-derived link is invalid and cannot be substituted.
 
-Start with a full audit, then a small real batch and independent MCP read-back.
-After checks pass, continue in a server-side background worker. No contact payload
-is downloaded to the laptop. The additional ISP source job needs its exact origin
-confirmed first; the MVC application can progress independently meanwhile.
+Data retention and working authentication are separate. The verified links
+remain encrypted on the MVC server; card actions and local link redemption are
+still pending the same-host learner/staff session work specified in
+`specs/2026-11-15-learner-staff-sessions.md`. Do not relabel original AVO URLs as
+working Frappe links, reset passwords, create dummy logins or duplicate contacts.
+
+MV and IOMP source collectors continue independently in their own site-private
+directories. This MVC policy does not stop or mix their captures. Do not restart
+application containers while their API keys exist only in worker memory.

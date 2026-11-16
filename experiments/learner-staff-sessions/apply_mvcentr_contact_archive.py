@@ -1,4 +1,8 @@
-"""Trusted resumable MVC writer. No source key, account email or password in logs."""
+"""Existing-only MVC updater. New account creation was stopped by the owner.
+
+The historical insertion helpers remain regression-tested, but production runs
+cannot call them. No source key, account email or password is logged.
+"""
 import argparse
 from collections import Counter
 from contextlib import closing,contextmanager
@@ -15,6 +19,7 @@ from mvcentr_contact_plan import plan,email,EMAIL,matches,PlanError
 
 SNAPSHOT='fcd7f93e6efe4ce88f2f79f242a6116f'
 BASE=Path('/home/frappe/frappe-bench/sites')/SITE/'private'/'apply-avo-contacts'
+EXISTING_ONLY=True
 
 
 class ApplyError(Exception):pass
@@ -112,6 +117,8 @@ def target_map(frappe):
 
 
 def insert_one(frappe,decision):
+    # An accidental restart (even without STOP) must not expand the MVC cohort.
+    if EXISTING_ONLY:raise ApplyError('new_contacts_disabled_by_owner')
     data=decision['data']
     frappe.db.begin()
     try:
@@ -213,6 +220,9 @@ def run(frappe,*,limit=0,retry_issues=False):
             try:
                 current=identities.get(ident)
                 guarded=ident in rules['excluded_ids'] or ident in rules['protected_ids']
+                if EXISTING_ONLY and current is None and not guarded:
+                    record(state,ident,'outside_existing_cohort')
+                    continue
                 result=plan(row,existing_kind=current['kind'] if current else None,
                     excluded=ident in rules['excluded_ids'],protected=ident in rules['protected_ids'],
                     email_frequency=frequencies.get(email(row),0) if not current and not guarded else 0,

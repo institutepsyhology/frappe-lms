@@ -1,7 +1,8 @@
 """Transaction/recovery boundaries; no real accounts or source secrets."""
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout,nullcontext
 import io
 import json
+import sqlite3
 import sys
 from types import SimpleNamespace,ModuleType
 import unittest
@@ -28,6 +29,31 @@ class DB:
 
 
 class ApplicationTests(unittest.TestCase):
+    def test_existing_only_run_skips_unknown_identity_without_invoking_insert(self):
+        state=sqlite3.connect(':memory:')
+        state.execute('CREATE TABLE decisions(source_id TEXT,status TEXT)')
+        fake=SimpleNamespace(local=SimpleNamespace(site=worker.SITE),session=SimpleNamespace(user='Administrator'),
+            conf=SimpleNamespace(encryption_key='SYNTHETIC_ONLY'),
+            db=SimpleNamespace(sql=lambda _:[]),get_site_path=lambda *args:'unused')
+        queue=ModuleType('frappe.utils.background_jobs');queue.get_queue=lambda _:SimpleNamespace(count=0)
+        crypto=ModuleType('cryptography.fernet');crypto.Fernet=lambda _:object()
+        with patch.dict(sys.modules,{'frappe.utils.background_jobs':queue,'cryptography.fernet':crypto}), \
+                patch.object(worker,'private'),patch.object(worker,'policy',return_value={'excluded_ids':set(),'protected_ids':set()}), \
+                patch.object(worker,'worker_lock',return_value=nullcontext()),patch.object(worker,'state_database',return_value=state), \
+                patch.object(worker,'iter_contacts',side_effect=lambda *args:iter([(1,row())])), \
+                patch.object(worker,'target_map',return_value={}),patch.object(worker,'progress',return_value={'status':'completed'}), \
+                patch.object(worker.BASE.__class__,'exists',return_value=False),patch.object(worker,'record') as record, \
+                patch.object(worker,'insert_when_ready') as insert:
+            self.assertEqual(worker.run(fake),{'status':'completed'})
+        self.assertEqual(record.call_args.args[2:4],('outside_existing_cohort',))
+        insert.assert_not_called()
+
+    def test_owner_existing_only_policy_rejects_insert_before_any_database_action(self):
+        db=DB({})
+        with self.assertRaisesRegex(worker.ApplyError,'^new_contacts_disabled_by_owner$'):
+            worker.insert_one(SimpleNamespace(db=db),{'action':'create_user','data':{}})
+        self.assertEqual(db.events,[])
+
     def test_full_queue_waits_without_attempting_or_losing_current_record(self):
         values=iter([200,150,99]);waits=[];delays=[]
         with patch.object(worker,'insert_one',return_value={'kind':'User'}) as insert:
@@ -85,7 +111,7 @@ class ApplicationTests(unittest.TestCase):
 
     def test_new_password_uses_existing_importer_and_disabled_source_is_not_opened(self):
         decision,doc,db,fake,module,received=self.setup_user(ban='1')
-        with patch.dict(sys.modules,{'lms.lms.avo_user_import':module}):result=worker.insert_one(fake,decision)
+        with patch.object(worker,'EXISTING_ONLY',False),patch.dict(sys.modules,{'lms.lms.avo_user_import':module}):result=worker.insert_one(fake,decision)
         self.assertEqual(received,[decision['data']])
         self.assertEqual(result['kind'],'User')
         self.assertEqual(doc.enabled,0)
@@ -95,14 +121,14 @@ class ApplicationTests(unittest.TestCase):
     def test_readback_identity_mismatch_rolls_back_creation(self):
         decision,doc,db,fake,module,received=self.setup_user()
         doc['custom_avo_contact_id']='456'
-        with patch.dict(sys.modules,{'lms.lms.avo_user_import':module}),self.assertRaises(worker.ApplyError):
+        with patch.object(worker,'EXISTING_ONLY',False),patch.dict(sys.modules,{'lms.lms.avo_user_import':module}),self.assertRaises(worker.ApplyError):
             worker.insert_one(fake,decision)
         self.assertEqual(db.events,['begin','rollback'])
 
     def test_missing_verified_support_copy_rolls_back_creation(self):
         decision,doc,db,fake,module,received=self.setup_user()
         db.missing_support=True
-        with patch.dict(sys.modules,{'lms.lms.avo_user_import':module}),self.assertRaises(worker.ApplyError):
+        with patch.object(worker,'EXISTING_ONLY',False),patch.dict(sys.modules,{'lms.lms.avo_user_import':module}),self.assertRaises(worker.ApplyError):
             worker.insert_one(fake,decision)
         self.assertEqual(db.events,['begin','rollback'])
 
