@@ -21,7 +21,27 @@ and the site to my-lk.mastervision.su. All production entry points verify an exa
 published source bundle before accepting/using a key. The new job performs only
 source archival; existing users, permissions and learner sessions are not modified.
 
-The next live gates are source installation/hash checks, a Linux synthetic
-encrypted full pipeline (zero AVO requests/LMS users), local masked key entry,
-real MV progress and observed MVC throughput. A server process start alone does
-not prove that the source accepted a key or that collection has begun.
+The exact published bundle 8256ed1d520cd77d7eddfe5cecd1bb2d99c3c74e was installed
+under the MV site's private directory and all eight source hashes verified.
+The real Linux synthetic pipeline then collected/encrypted/decrypted two fake
+contacts and a page using the existing site key, with zero AVO requests and zero
+LMS users created. Only its explicitly created synthetic files were removed.
+
+The owner entered the MV GET key in the masked local window. A detached server
+worker continued after the SSH/local launcher completed. The subsequent real
+read-back showed 8,692 source contacts in 87 encrypted pages, 88 requests and no
+source error. The first real page decrypted, matched its saved SHA256 and parsed
+to 100 records. Worker RSS was about 140 MiB and the archive about 2.47 MiB.
+No source contact payload was written to the laptop; its local state is only
+nonsecret process/progress metadata. The API key was not persisted.
+
+MVC's observed rate before MV launch was 59 links/20.02 seconds (2.947/second).
+After MV launch it was 58 links/20.02 seconds (2.897/second), with zero failures.
+These short observations show no material slowdown; they are not a guarantee
+against later provider throttling or changing server load. Both original MVC
+processes remained active, and MV began at one request/second on the server.
+
+The MV source contact traversal is still in progress; its final total is not
+known yet. Individual-card link verification follows the raw-resource phase.
+These observations prove encrypted source retention, not completed creation of
+all LMS user cards or activation of the separate legacy-login feature.
