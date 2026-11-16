@@ -33,7 +33,8 @@ def optout(row):
 def email(row):return text(row,'email').lower()
 
 
-def plan(row,*,existing_kind=None,excluded=False,protected=False,email_frequency=0,email_taken=False):
+def plan(row,*,existing_kind=None,excluded=False,protected=False,email_frequency=0,email_taken=False,account=ACCOUNT):
+    if account not in ('mv-centr','mastervision','iomp'):raise PlanError('invalid_account')
     if excluded:return {'action':'excluded'}
     if protected:return {'action':'protected'}
     if existing_kind:
@@ -43,7 +44,7 @@ def plan(row,*,existing_kind=None,excluded=False,protected=False,email_frequency
     if not re.fullmatch('[1-9][0-9]{0,18}',ident):raise PlanError('invalid_source_id')
     address=email(row)
     data={'first_name':text(row,'name'),'middle_name':text(row,'middle_name'),'last_name':text(row,'last_name'),
-        'custom_avo_contact_id':ident,'custom_avo_account':ACCOUNT,'custom_no_marketing_email':optout(row)}
+        'custom_avo_contact_id':ident,'custom_avo_account':account,'custom_no_marketing_email':optout(row)}
     data.update({target:text(row,source) for source,target in SOCIAL.items()})
     phone=text(row,'phone_number')
     if EMAIL.fullmatch(address) and (email_frequency>1 or email_taken):

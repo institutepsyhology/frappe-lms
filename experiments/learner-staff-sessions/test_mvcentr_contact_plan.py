@@ -11,6 +11,12 @@ def row(**changes):
 
 
 class ContactPolicyTests(unittest.TestCase):
+    def test_each_destination_keeps_its_own_account_and_unknown_accounts_fail(self):
+        for account in ('mv-centr','mastervision','iomp'):
+            self.assertEqual(plan(row(),email_frequency=1,account=account)['data']['custom_avo_account'],account)
+        with self.assertRaisesRegex(PlanError,'^invalid_account$'):
+            plan(row(),account='unknown')
+
     def test_existing_profiles_never_receive_profile_or_password_updates(self):
         for kind in ('User','Contact'):
             result=plan(row(name='',password='DIFFERENT',email='different@example.invalid'),existing_kind=kind)

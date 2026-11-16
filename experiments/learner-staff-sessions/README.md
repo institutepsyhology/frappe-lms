@@ -1,8 +1,9 @@
 # MV-Centr API archive and learner-link preservation
 
-These are local read-only collection utilities. They do not import into Frappe,
-change credentials/roles/accesses or redeem personal links. Actual learner/staff
-session isolation remains a separate implementation phase.
+The collection utilities are read-only toward AVO. The separate, explicitly
+started MV/IOMP contact applier below creates local Frappe records from completed
+source captures. Collection alone does not apply contacts, change credentials or
+redeem personal links. Actual learner/staff session isolation remains separate.
 
 ## Confirmed source defect
 
@@ -134,7 +135,42 @@ key backups must cover this directory as well. Raw list personal links remain
 untrusted for authentication. This source archive does not itself create all
 LMS accounts or implement learner/staff session isolation.
 
-## Verification
+## MV/IOMP contact application and owner priority
+
+`apply_server_contacts.py` has only the fixed `mastervision` and `iomp` targets;
+it cannot target MVC. Install the exact published private bundle with
+`install_server_contacts.py --release <SHA> --account <mastervision|iomp>`.
+Run the installed program as the existing site owner from the bench sites
+directory with `--account <account> --apply --limit 20` for a pilot. After an
+independent read-back, `--account <account> --start` starts its detached writer.
+The native application containers and in-memory-key AVO readers stay running.
+
+The contacts resource must be complete, not the entire 26-resource capture.
+`server_contact_reader.py` proves metadata, encrypted envelopes, raw hashes,
+terminal marker, continuous pages, exact counts and ID fingerprints against both
+saved indexes. It reads with short closed cursors; ongoing source commits are
+not pinned by a long SQLite transaction. Full validation precedes any write.
+The invalid list-returned learner links are dropped rather than imported.
+
+New native Users retain their source password plus the verified encrypted
+support copy, have welcome mail disabled and remain Website Users. Existing
+identities/passwords/roles are preserved. Marketing flags are positive-only.
+Social-only/no-email sources become Contacts; shared-email sources are deferred
+without cross-linking people. Source rows and passwords do not enter logs.
+
+Each site's `private/apply-avo-contacts` contains `state.sqlite`, safe aggregate
+`progress.json` and its immutable release. `STOP` pauses that site's writer.
+The default RQ queue must have fewer than 100 pending jobs; a queue-overload race
+retries the same record after rollback. Ten consecutive genuine failures stop
+the writer. Less than 2 GiB free on the server pauses application writes.
+
+Owner priority: finish MV contacts, then MV contact/course/lesson access. IOMP
+continues in parallel and must not delay MV access. IOMP course/lesson migration
+must precede its access synchronization. The old local access database has only
+MVC namespace data; do not substitute it for MV. Contact completion is not proof
+of completed grants or of working authentication from imported personal links.
+
+## Verification commands
 
 Run `python -B -m unittest discover -s experiments/learner-staff-sessions
 -p 'test_*.py'` from the repository root. Fixtures are synthetic and perform no
