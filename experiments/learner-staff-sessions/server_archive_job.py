@@ -1,4 +1,4 @@
-"""Fixed Master Vision server job; the API key travels only via stdin pipes."""
+"""Isolated MV/IOMP server job; the API key travels only via stdin pipes."""
 import argparse
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -10,16 +10,25 @@ import re
 import subprocess
 import sys
 import time
+from types import MappingProxyType
 
-SITE='my-lk.mastervision.su'
-ACCOUNT='mastervision'
+
+class JobError(Exception):pass
+
+
+SERVER_ACCOUNTS=MappingProxyType({
+    'mastervision':('my-lk.mastervision.su','https://shop.mastervision.su'),
+    'iomp':('my-lk.iomp.ru','https://shop.iomp.ru'),
+})
+# A trusted startup selector fixes one account before any core module or key is
+# read. It never comes from the stdin envelope and is inherited by its child.
+ACCOUNT=os.environ.get('AVO_SERVER_ARCHIVE_ACCOUNT','mastervision')
+if ACCOUNT not in SERVER_ACCOUNTS:raise JobError('wrong_account')
+SITE,API_ORIGIN=SERVER_ACCOUNTS[ACCOUNT]
 BASE=Path('/home/frappe/frappe-bench/sites')/SITE/'private'/'avo-api-archive'
 JOB=BASE/'job-20261116'
 SAFE_CODES={'already_running','paused','wrong_account','invalid_key_input','invalid_release',
     'worker_start_failed','worker_stopped','server_job_failed','missing_site_key','unsafe_job_path'}
-
-
-class JobError(Exception):pass
 
 
 RELEASE_FILES=('audit_legacy_links.py','collect_personal_links.py','collect_personal_links_bulk.py',
@@ -97,7 +106,7 @@ def bound_runtime():
     os.environ['AVO_ARCHIVE_ACCOUNT']=ACCOUNT
     from server_archive_sink import PROFILE,runtime_archive
     from private_link_storage import configure_server_cipher
-    if PROFILE.account!=ACCOUNT or PROFILE.site!=SITE or PROFILE.api_origin!='https://shop.mastervision.su':
+    if PROFILE.account!=ACCOUNT or PROFILE.site!=SITE or PROFILE.api_origin!=API_ORIGIN:
         raise JobError('wrong_account')
     _,cipher=runtime_archive()
     configure_server_cipher(cipher,ACCOUNT)

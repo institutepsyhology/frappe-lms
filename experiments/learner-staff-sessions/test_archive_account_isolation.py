@@ -70,6 +70,14 @@ class ProfileIsolationTests(unittest.TestCase):
             'wire_format': 'mastervision-frappe-archive-v1', 'remote_prefix': 'REMOTE:MV-FRAPPE:v1:',
             'crypto_namespace': 'AVO-MV-Learner-Link-v1:', 'label': 'МВ'})
 
+    def test_iomp_profile_is_explicit_and_all_modules_agree(self):
+        result = child(PROFILE_REPORT, 'iomp')
+        self.assertEqual(result, {'account': 'iomp', 'api_origin': 'https://shop.iomp.ru',
+            'shop_host': 'shop.iomp.ru', 'site': 'my-lk.iomp.ru',
+            'page_format': 'iomp-legacy-api-snapshot-v1', 'link_schema': 'iomp-individual-links-v1',
+            'wire_format': 'iomp-frappe-archive-v1', 'remote_prefix': 'REMOTE:IOMP-FRAPPE:v1:',
+            'crypto_namespace': 'AVO-IOMP-Learner-Link-v1:', 'label': 'ИОМП'})
+
     def test_unknown_profile_fails_before_any_worker_import(self):
         result = child('''
 import json
@@ -79,7 +87,7 @@ except Exception as e:
  print(json.dumps({'rejected':str(e)=='wrong_account'}))
 else:
  print(json.dumps({'rejected':False}))
-''', 'iomp')
+''', 'unknown-shop')
         self.assertTrue(result['rejected'])
 
     def test_profile_is_immutable_and_cannot_change_after_environment_mutation(self):

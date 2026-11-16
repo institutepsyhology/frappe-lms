@@ -8,14 +8,25 @@ import re
 import shlex
 import subprocess
 import threading
+from types import MappingProxyType
 
 HERE=Path(__file__).resolve().parent
 WORKSPACE=HERE.parents[2]
 SITE='my-lk.mastervision.su'
 REMOTE_BASE='/home/frappe/frappe-bench/sites/'+SITE+'/private/avo-api-archive'
+ACCOUNTS=MappingProxyType({
+    'mastervision':('my-lk.mastervision.su','https://shop.mastervision.su','МВ','Master Vision'),
+    'iomp':('my-lk.iomp.ru','https://shop.iomp.ru','ИОМП','ИОМП'),
+})
 
 
 class LaunchError(Exception):pass
+
+
+def account_settings(account):
+    if not isinstance(account,str) or account not in ACCOUNTS:
+        raise LaunchError('wrong_account')
+    return ACCOUNTS[account]
 
 
 def validated_key(value):
@@ -26,29 +37,33 @@ def validated_key(value):
     return value
 
 
-def command(release):
+def command(release,account='mastervision'):
+    site,_,_,_=account_settings(account)
     if not isinstance(release,str) or not re.fullmatch('[a-f0-9]{40}',release):
         raise LaunchError('invalid_release')
     bench='/home/frappe/frappe-bench'
+    remote_base=bench+'/sites/'+site+'/private/avo-api-archive'
     remote=shlex.join(['docker','exec','-i','-u','frappe','-w',bench+'/sites',
+        '-e','AVO_SERVER_ARCHIVE_ACCOUNT='+account,
         'company-lms-backend-1',bench+'/env/bin/python','-B',
-        REMOTE_BASE+'/release-'+release+'/server_archive_job.py','--start'])
+        remote_base+'/release-'+release+'/server_archive_job.py','--start'])
     return ['ssh','-o','BatchMode=yes','-o','ConnectTimeout=15','-o','ServerAliveInterval=10',
         '-o','ServerAliveCountMax=2','-o','StrictHostKeyChecking=yes',
         '-o','UserKnownHostsFile='+str(WORKSPACE/'frappe-deploy/known_hosts'),
         '-i',str(Path.home()/'.ssh/codex_timeweb_lms_20261010'),'root@89.223.71.30',remote]
 
 
-def start(release,key):
+def start(release,key,account='mastervision'):
+    site,_,_,_=account_settings(account)
     key=validated_key(key)
     try:
-        result=subprocess.run(command(release),input=json.dumps({'key':key}).encode('utf-8'),
+        result=subprocess.run(command(release,account),input=json.dumps({'key':key}).encode('utf-8'),
             stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=45,
             creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         if len(result.stdout)>4096:raise LaunchError('server_start_uncertain')
         response=json.loads(result.stdout)
         if (result.returncode or not isinstance(response,dict) or response.get('status') not in {'started','starting'}
-                or response.get('site')!=SITE or response.get('account')!='mastervision'
+                or response.get('site')!=site or response.get('account')!=account
                 or response.get('key_saved') is not False or type(response.get('worker_pid')) is not int
                 or response['worker_pid']<=0):
             raise LaunchError('server_start_not_confirmed')
@@ -58,32 +73,33 @@ def start(release,key):
     finally:key=None
 
 
-def graphical(release):
+def graphical(release,account='mastervision'):
+    site,origin,label,name=account_settings(account)
     import tkinter as tk
     from tkinter import ttk,messagebox
     root=tk.Tk();root.withdraw()
-    root.title('МВ — сбор аккаунтов на сервере')
+    root.title(label+' — сбор аккаунтов на сервере')
     frame=ttk.Frame(root,padding=20);frame.grid()
-    ttk.Label(frame,text='Master Vision: отдельный сбор на сервере',font=('',12)).grid(sticky='w')
-    ttk.Label(frame,text='Источник: https://shop.mastervision.su\n'
-        'Сохранение: Frappe МВ — my-lk.mastervision.su\n'
-        'На ноутбук контакты не скачиваются. МВЦ продолжает свой сбор.\n'
+    ttk.Label(frame,text=name+': отдельный сбор на сервере',font=('',12)).grid(sticky='w')
+    ttk.Label(frame,text='Источник: '+origin+'\n'
+        'Сохранение: Frappe '+label+' — '+site+'\n'
+        'На ноутбук контакты не скачиваются. Другие сборщики продолжают работу.\n'
         'Ключ передаётся по защищённому соединению и остаётся только\n'
         'в памяти серверного сборщика; в файлы и журналы не записывается.').grid(sticky='w',pady=10)
-    ttk.Label(frame,text='API KEY GET именно аккаунта МВ (Master Vision):').grid(sticky='w')
+    ttk.Label(frame,text='API KEY GET именно аккаунта '+name+':').grid(sticky='w')
     entry=ttk.Entry(frame,width=70,show='*');entry.grid(sticky='ew',pady=6)
-    label=ttk.Label(frame,text='Готов к запуску.');label.grid(sticky='w',pady=8)
+    status_label=ttk.Label(frame,text='Готов к запуску.');status_label.grid(sticky='w',pady=8)
     messages=queue.Queue();active=False
     def submit():
         nonlocal active
         try:secret=validated_key(entry.get())
         except LaunchError:
-            messagebox.showerror('Проверьте ключ','Нужен API KEY GET МВ, без адреса страницы.',parent=root);return
+            messagebox.showerror('Проверьте ключ','Нужен API KEY GET '+label+', без адреса страницы.',parent=root);return
         entry.delete(0,'end');entry.configure(state='disabled');button.configure(state='disabled')
-        active=True;label.configure(text='Запускаю на сервере МВ…')
+        active=True;status_label.configure(text='Запускаю на сервере '+label+'…')
         def worker():
             nonlocal secret
-            try:messages.put(('ok',start(release,secret)))
+            try:messages.put(('ok',start(release,secret,account)))
             except Exception:messages.put(('error',None))
             finally:secret=None
         threading.Thread(target=worker,daemon=False).start()
@@ -92,15 +108,15 @@ def graphical(release):
         try:
             kind,value=messages.get_nowait();active=False
             if kind=='ok':
-                label.configure(text='Сборщик запущен на сервере. Окно закроется автоматически.')
+                status_label.configure(text='Сборщик запущен на сервере. Окно закроется автоматически.')
                 root.after(2500,root.destroy);return
-            label.configure(text='Запуск не подтверждён. Проверяю причину; ключ не сохранён.')
+            status_label.configure(text='Запуск не подтверждён. Проверяю причину; ключ не сохранён.')
         except queue.Empty:pass
         root.after(150,poll)
     def close():
-        if active:label.configure(text='Ожидаю подтверждения сервера…')
+        if active:status_label.configure(text='Ожидаю подтверждения сервера…')
         else:root.destroy()
-    button=ttk.Button(frame,text='Начать / продолжить сбор МВ на сервере',command=submit)
+    button=ttk.Button(frame,text='Начать / продолжить сбор '+label+' на сервере',command=submit)
     button.grid(sticky='e',pady=6)
     root.protocol('WM_DELETE_WINDOW',close)
     root.update_idletasks()
@@ -114,9 +130,10 @@ def graphical(release):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--release',required=True)
+    parser.add_argument('--account',choices=tuple(ACCOUNTS),default='mastervision')
     args=parser.parse_args()
-    command(args.release)
-    graphical(args.release)
+    command(args.release,args.account)
+    graphical(args.release,args.account)
 
 
 if __name__=='__main__':main()

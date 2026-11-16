@@ -7,12 +7,14 @@ from pathlib import Path
 import re
 import shlex
 import subprocess
+from types import MappingProxyType
 
 HERE=Path(__file__).resolve().parent
 REPO=HERE.parents[1]
 WORKSPACE=HERE.parents[2]
 FILES=('audit_legacy_links.py','collect_personal_links.py','collect_personal_links_bulk.py',
     'legacy_api_snapshot.py','private_link_storage.py','progress_io.py','server_archive_sink.py','server_archive_job.py')
+ACCOUNTS=MappingProxyType({'mastervision':'my-lk.mastervision.su','iomp':'my-lk.iomp.ru'})
 
 # Only public reviewed source enters this bootstrap. No API/site key is provided.
 INSTALLER=r'''
@@ -22,7 +24,11 @@ request=json.loads(sys.stdin.buffer.read(1024*1024))
 assert set(request)=={'revision','files'} and re.fullmatch('[a-f0-9]{40}',request['revision'])
 names={'audit_legacy_links.py','collect_personal_links.py','collect_personal_links_bulk.py','legacy_api_snapshot.py','private_link_storage.py','progress_io.py','server_archive_sink.py','server_archive_job.py'}
 assert set(request['files'])==names
-base=Path('/home/frappe/frappe-bench/sites/my-lk.mastervision.su/private/avo-api-archive')
+sites={'mastervision':'my-lk.mastervision.su','iomp':'my-lk.iomp.ru'}
+account=os.environ.get('AVO_SERVER_ARCHIVE_ACCOUNT','mastervision')
+assert account in sites
+site=sites[account]
+base=Path('/home/frappe/frappe-bench/sites')/site/'private'/'avo-api-archive'
 assert not base.is_symlink()
 base.mkdir(mode=0o700,exist_ok=True);os.chmod(base,0o700)
 folder=base/('release-'+request['revision'])
@@ -46,8 +52,9 @@ else:
  fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
  with os.fdopen(fd,'w') as stream:json.dump(manifest,stream,sort_keys=True);stream.flush();os.fsync(stream.fileno())
 sys.path.insert(0,str(folder));import server_archive_job
+assert server_archive_job.ACCOUNT==account and server_archive_job.SITE==site
 assert server_archive_job.verify_release()==request['revision']
-print(json.dumps({'installed':True,'site':'my-lk.mastervision.su','revision':request['revision'],'files_verified':len(hashes)}))
+print(json.dumps({'installed':True,'site':site,'revision':request['revision'],'files_verified':len(hashes)}))
 '''
 
 
@@ -60,9 +67,12 @@ def payload(revision):
     return {'revision':revision,'files':files}
 
 
-def install(revision):
+def install(revision,account='mastervision'):
+    if not isinstance(account,str) or account not in ACCOUNTS:raise ValueError('wrong_account')
+    site=ACCOUNTS[account]
     bench='/home/frappe/frappe-bench'
     remote=shlex.join(['docker','exec','-i','-u','frappe','-w',bench+'/sites',
+        '-e','AVO_SERVER_ARCHIVE_ACCOUNT='+account,
         'company-lms-backend-1',bench+'/env/bin/python','-B','-c',INSTALLER])
     args=['ssh','-o','BatchMode=yes','-o','ConnectTimeout=15','-o','StrictHostKeyChecking=yes',
         '-o','UserKnownHostsFile='+str(WORKSPACE/'frappe-deploy/known_hosts'),
@@ -71,15 +81,17 @@ def install(revision):
         stderr=subprocess.DEVNULL,timeout=45)
     if result.returncode:raise RuntimeError('server_install_failed')
     report=json.loads(result.stdout)
-    if report.get('installed') is not True or report.get('site')!='my-lk.mastervision.su' or report.get('revision')!=revision:
+    if (report.get('installed') is not True or report.get('site')!=site
+            or report.get('revision')!=revision or report.get('files_verified')!=len(FILES)):
         raise RuntimeError('server_install_unverified')
     return report
 
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--release',required=True)
+    parser.add_argument('--account',choices=tuple(ACCOUNTS),default='mastervision')
     args=parser.parse_args()
-    try:result=install(args.release)
+    try:result=install(args.release,args.account)
     except Exception:result={'installed':False,'error_code':'server_install_failed'}
     print(json.dumps(result))
     return 0 if result.get('installed') else 1

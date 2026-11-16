@@ -41,6 +41,10 @@ PROFILES = MappingProxyType({
         'shop.mastervision.su', 'my-lk.mastervision.su', 'mastervision-legacy-api-snapshot-v1',
         'mastervision-individual-links-v1', 'mastervision-frappe-archive-v1',
         b'REMOTE:MV-FRAPPE:v1:', 'AVO-MV-Learner-Link-v1:', 'МВ'),
+    'iomp': ArchiveProfile('iomp', 'https://shop.iomp.ru',
+        'shop.iomp.ru', 'my-lk.iomp.ru', 'iomp-legacy-api-snapshot-v1',
+        'iomp-individual-links-v1', 'iomp-frappe-archive-v1',
+        b'REMOTE:IOMP-FRAPPE:v1:', 'AVO-IOMP-Learner-Link-v1:', 'ИОМП'),
 })
 PROFILE = PROFILES.get(os.environ.get('AVO_ARCHIVE_ACCOUNT', 'mv-centr'))
 if PROFILE is None:
