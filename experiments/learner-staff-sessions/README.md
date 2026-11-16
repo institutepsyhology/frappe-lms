@@ -107,6 +107,33 @@ to Windows DPAPI. Retain the MVC site's existing encryption key in its protected
 server backups and explicitly include `private/avo-ingest`: default private-file
 backups may cover only `private/files`.
 
+## Parallel Master Vision server job
+
+MVC remains the default immutable process profile, preserving existing formats,
+archive paths and Windows DPAPI encryption. The separate Master Vision worker
+selects `AVO_ARCHIVE_ACCOUNT=mastervision` before imports, fixes the source to
+`https://shop.mastervision.su` and the destination to `my-lk.mastervision.su`, and
+uses distinct archive schemas and encryption binding. Unknown accounts and mixed
+source/target metadata fail closed. A running process cannot switch profiles.
+
+`install_mastervision_archive.py --release <published Git SHA>` installs only
+reviewed source bytes into a versioned private directory on the existing MV
+site volume. It does not add Docker layers or recreate services. The program
+manifest is checked again at startup. `launch_mastervision_archive.py --release
+<SHA>` opens one masked local field for the MV GET key; the key travels through
+SSH stdin and then a pipe to a detached server worker. There are no secret CLI
+arguments/environment variables/files. It remains only in process memory.
+
+The worker stores the encrypted raw API pages and individual-card links directly
+under `my-lk.mastervision.su/private/avo-api-archive/job-20261116`, using the site's
+existing encryption key. No contact data is saved on the laptop. Collection
+starts at one request/second, has its own locks/STOP/progress, and resumes existing
+source checkpoints. The server job survives a laptop/SSH disconnect; a worker or
+container restart requires the owner to enter the API key again. Site encryption
+key backups must cover this directory as well. Raw list personal links remain
+untrusted for authentication. This source archive does not itself create all
+LMS accounts or implement learner/staff session isolation.
+
 ## Verification
 
 Run `python -B -m unittest discover -s experiments/learner-staff-sessions

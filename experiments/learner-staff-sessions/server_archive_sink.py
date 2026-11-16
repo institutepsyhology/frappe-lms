@@ -6,6 +6,7 @@ stdin accepts one bounded request; stdout contains only receipts or fixed codes.
 from __future__ import annotations
 
 import base64
+from collections import namedtuple
 from contextlib import closing
 from datetime import datetime, timezone
 import hashlib
@@ -16,15 +17,41 @@ import re
 import sqlite3
 import stat
 import sys
+from types import MappingProxyType
 from urllib.parse import parse_qsl, urlsplit
 import zlib
 
 
-FORMAT = 'mvc-frappe-archive-v1'
-SITE = 'my-lk.mv-centr.ru'
-API_ORIGIN = 'https://mvcentr.autoweboffice.ru'
-ACCOUNT = 'mv-centr'
-PAGE_FORMAT = 'mvcentr-legacy-api-snapshot-v1'
+class SinkError(Exception):
+    """Only fixed code arguments; never include source values or tracebacks."""
+
+
+# One frozen identity for the lifetime of this interpreter. Account selection is
+# nonsecret startup configuration, never a request field or a mutable GUI value.
+# Keep this registry self-contained: the live MVC sender executes this file alone.
+ArchiveProfile = namedtuple('ArchiveProfile', (
+    'account', 'api_origin', 'shop_host', 'site', 'page_format', 'link_schema',
+    'wire_format', 'remote_prefix', 'crypto_namespace', 'label'))
+PROFILES = MappingProxyType({
+    'mv-centr': ArchiveProfile('mv-centr', 'https://mvcentr.autoweboffice.ru',
+        'shop.mv-centr.ru', 'my-lk.mv-centr.ru', 'mvcentr-legacy-api-snapshot-v1',
+        'mvcentr-individual-links-v1', 'mvc-frappe-archive-v1',
+        b'REMOTE:MVC-FRAPPE:v1:', 'AVO-MVC-Learner-Link-v1:', 'МВЦ'),
+    'mastervision': ArchiveProfile('mastervision', 'https://shop.mastervision.su',
+        'shop.mastervision.su', 'my-lk.mastervision.su', 'mastervision-legacy-api-snapshot-v1',
+        'mastervision-individual-links-v1', 'mastervision-frappe-archive-v1',
+        b'REMOTE:MV-FRAPPE:v1:', 'AVO-MV-Learner-Link-v1:', 'МВ'),
+})
+PROFILE = PROFILES.get(os.environ.get('AVO_ARCHIVE_ACCOUNT', 'mv-centr'))
+if PROFILE is None:
+    raise SinkError('wrong_account')
+
+FORMAT = PROFILE.wire_format
+SITE = PROFILE.site
+API_ORIGIN = PROFILE.api_origin
+ACCOUNT = PROFILE.account
+PAGE_FORMAT = PROFILE.page_format
+SHOP_HOST = PROFILE.shop_host
 MAX_REQUEST = 32 * 1024 * 1024
 MAX_PAYLOAD = 20 * 1024 * 1024
 MAX_PAGE_RAW = 16 * 1024 * 1024
@@ -40,11 +67,7 @@ SAFE_CODES = frozenset(('invalid_request', 'request_too_large', 'invalid_metadat
     'invalid_link', 'invalid_page', 'invalid_page_body', 'page_too_large',
     'private_storage_required', 'invalid_archive', 'source_metadata_conflict',
     'version_conflict', 'archive_busy', 'archive_failed', 'readback_failed',
-    'existing_site_key_required', 'wrong_site'))
-
-
-class SinkError(Exception):
-    """Only fixed code arguments; never include source values or tracebacks."""
+    'existing_site_key_required', 'wrong_site', 'wrong_account'))
 
 
 def canonical_json(value):
@@ -110,7 +133,7 @@ def _metadata(value, kind, snapshot):
         raise SinkError('invalid_metadata')
     if kind == 'links':
         valid = (set(value) == {'schema', 'account', 'origin', 'source_ids_sha256', 'source_count'}
-            and value.get('schema') == 'mvcentr-individual-links-v1'
+            and value.get('schema') == PROFILE.link_schema
             and value.get('account') == ACCOUNT and value.get('origin') == API_ORIGIN
             and _sha(value.get('source_ids_sha256'))
             and isinstance(value.get('source_count'), str)
@@ -145,7 +168,7 @@ def _validate_link(payload, record):
         raise SinkError('invalid_link')
     try:
         parts = urlsplit(url)
-        if (parts.scheme != 'https' or parts.netloc != 'shop.mv-centr.ru'
+        if (parts.scheme != 'https' or parts.netloc != SHOP_HOST
                 or parts.path != '/personal/auth/secure-login' or parts.fragment):
             raise SinkError('invalid_link')
         pairs = parse_qsl(parts.query, keep_blank_values=True, strict_parsing=True,
@@ -375,7 +398,7 @@ def handle_request(request, *, root, cipher):
 
 
 def runtime_archive():
-    """Read the EXISTING MVC site key; never create or print one."""
+    """Read the EXISTING selected site key; never create or print one."""
     import frappe
     from cryptography.fernet import Fernet
     frappe.init(site=SITE)

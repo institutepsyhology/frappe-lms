@@ -36,10 +36,11 @@ from collect_personal_links import NoRedirect, parse_key
 from collect_personal_links_bulk import writer_lock
 from private_link_storage import _crypt
 from progress_io import ProgressWriteError, read_json, write_json
+from server_archive_sink import PROFILE
 
 
-ACCOUNT = 'mv-centr'
-FORMAT = 'mvcentr-legacy-api-snapshot-v1'
+ACCOUNT = PROFILE.account
+FORMAT = PROFILE.page_format
 MAX_BODY = 16 * 1024 * 1024
 FAILURE_LIMIT = 10
 GAPS = ['positions_and_permission_matrices', 'full_lesson_builder_contents',
@@ -541,11 +542,11 @@ def graphical_collect(directory, collect_links=False):
     from tkinter import messagebox, ttk
     root = tk.Tk()
     root.withdraw()
-    root.title('МВЦ — архив доступных данных АВО (только чтение)')
+    root.title(PROFILE.label + ' — архив доступных данных АВО (только чтение)')
     frame = ttk.Frame(root, padding=20)
     frame.grid()
-    ttk.Label(frame, text='Полный обход документированных ресурсов API МВЦ', font=('', 12)).grid(sticky='w')
-    ttk.Label(frame, text='Назначение запросов: https://mvcentr.autoweboffice.ru\n'
+    ttk.Label(frame, text='Полный обход документированных ресурсов API ' + PROFILE.label, font=('', 12)).grid(sticky='w')
+    ttk.Label(frame, text='Назначение запросов: ' + API_ORIGIN + '\n'
         'Контакты (включая пароли), сотрудники, курсы, доступы, счета и другие доступные ресурсы.\n'
         'Ответы сохраняются зашифрованными для текущего пользователя Windows.\n'
         'Только чтение АВО. Во Frappe изменений не будет. Полнота всех разделов не обещается.\n'
@@ -553,7 +554,7 @@ def graphical_collect(directory, collect_links=False):
     if collect_links:
         ttk.Label(frame, text='После основных разделов программа отдельно соберёт персональные ссылки.\n'
                   'Предел — 3 запроса/сек, с автоматическим снижением при ограничении API.').grid(sticky='w', pady=6)
-    ttk.Label(frame, text='API KEY GET МВЦ — только в памяти этого процесса:').grid(sticky='w')
+    ttk.Label(frame, text='API KEY GET ' + PROFILE.label + ' — только в памяти этого процесса:').grid(sticky='w')
     entry = ttk.Entry(frame, width=72, show='*')
     entry.grid(sticky='ew')
     label = ttk.Label(frame, text='Готов к запуску.')
@@ -568,7 +569,7 @@ def graphical_collect(directory, collect_links=False):
         try:
             secret = parse_key(entry.get())
         except Exception:
-            messagebox.showerror('Проверьте ключ', 'Нужен API KEY GET аккаунта МВЦ.', parent=root)
+            messagebox.showerror('Проверьте ключ', 'Нужен API KEY GET аккаунта ' + PROFILE.label + '.', parent=root)
             return
         entry.delete(0, 'end')
         entry.configure(state='disabled')
@@ -599,7 +600,7 @@ def graphical_collect(directory, collect_links=False):
                     result.append(value)
                     active = False
                     text = 'Сбор завершён. Подробности по ресурсам сохранены в progress.json.' if value['status'] == 'completed_with_gaps' else 'Требуется проверка: ' + str(value.get('error_code') or 'internal_failure')
-                    messagebox.showinfo('МВЦ — результат', text, parent=root)
+                    messagebox.showinfo(PROFILE.label + ' — результат', text, parent=root)
         except queue.Empty:
             pass
         if active and current.get('status') == 'collecting_links' and time.monotonic() - last_link_poll >= 1:

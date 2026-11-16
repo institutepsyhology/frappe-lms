@@ -29,9 +29,10 @@ from collect_personal_links import (
 )
 from private_link_storage import StorageError, protect_url, unprotect_url
 from progress_io import ProgressWriteError, read_json, write_json
+from server_archive_sink import PROFILE
 
 
-ACCOUNT = 'mv-centr'
+ACCOUNT = PROFILE.account
 REPOSITORY = Path(__file__).resolve().parents[2]
 MAX_ATTEMPTS = 3
 FAILURE_LIMIT = 10
@@ -165,7 +166,9 @@ def validate_source(database, account):
 
 def private_output(directory, source_database, seed_database=None):
     directory = Path(directory).resolve()
-    if directory == REPOSITORY or REPOSITORY in directory.parents:
+    # Deployed standalone files have no Git repository: their parent layout is
+    # not an authority boundary. Refuse actual repository ancestors instead.
+    if any((parent / '.git').exists() for parent in (directory, *directory.parents)):
         raise BulkError('private_output_required')
     protected_paths = [Path(source_database).resolve()]
     if seed_database is not None:
@@ -222,7 +225,7 @@ def open_output(path, source_fingerprint, total):
     os.close(descriptor)
     db = sqlite3.connect(path)
     try:
-        expected = {'schema': 'mvcentr-individual-links-v1', 'account': ACCOUNT,
+        expected = {'schema': PROFILE.link_schema, 'account': ACCOUNT,
                     'origin': API_ORIGIN, 'source_ids_sha256': source_fingerprint,
                     'source_count': str(total)}
         tables = {row[0] for row in db.execute(
@@ -288,24 +291,24 @@ def open_output(path, source_fingerprint, total):
 
 def validate_remote_receipts(db):
     """An evicted ciphertext must retain a matching durable delivery receipt."""
-    prefix = b'REMOTE:MVC-FRAPPE:v1:'
+    prefix = PROFILE.remote_prefix
     if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='delivery_receipts'").fetchone():
         if not db.execute('SELECT 1 FROM links WHERE substr(url_encrypted,1,?)=? LIMIT 1',
                           (len(prefix),prefix)).fetchone(): return
         raise BulkError('invalid_private_archive')
     invalid=db.execute('''SELECT 1 FROM delivery_receipts r LEFT JOIN links l ON r.version_id=l.version_id
         WHERE l.version_id IS NULL OR length(r.snapshot)<>32 OR r.snapshot GLOB '*[^a-f0-9]*'
-        OR length(r.sha256)<>64 OR r.sha256 GLOB '*[^a-f0-9]*' OR r.target<>'my-lk.mv-centr.ru'
+        OR length(r.sha256)<>64 OR r.sha256 GLOB '*[^a-f0-9]*' OR r.target<>?
         OR l.url_encrypted<>CAST(? || r.snapshot || ':' || l.version_id || ':' || r.sha256 AS BLOB) LIMIT 1''',
-        (prefix.decode('ascii'),)).fetchone()
+        (PROFILE.site,prefix.decode('ascii'))).fetchone()
     if invalid: raise BulkError('invalid_private_archive')
     invalid=db.execute('''SELECT 1 FROM links l LEFT JOIN delivery_receipts r ON r.version_id=l.version_id
         WHERE substr(l.url_encrypted,1,?)=? AND (r.version_id IS NULL
         OR length(r.snapshot)<>32 OR r.snapshot GLOB '*[^a-f0-9]*'
         OR length(r.sha256)<>64 OR r.sha256 GLOB '*[^a-f0-9]*'
-        OR r.target<>'my-lk.mv-centr.ru'
+        OR r.target<>?
         OR l.url_encrypted<>CAST(? || r.snapshot || ':' || l.version_id || ':' || r.sha256 AS BLOB)) LIMIT 1''',
-        (len(prefix),prefix,prefix.decode('ascii'))).fetchone()
+        (len(prefix),prefix,PROFILE.site,prefix.decode('ascii'))).fetchone()
     if invalid: raise BulkError('invalid_private_archive')
 
 
@@ -450,17 +453,17 @@ def graphical_key(total, pending):
     from tkinter import messagebox, ttk
     root = tk.Tk()
     root.withdraw()
-    root.title('МВЦ — полный сбор персональных ссылок')
+    root.title(PROFILE.label + ' — полный сбор персональных ссылок')
     root.resizable(False, False)
     frame = ttk.Frame(root, padding=20)
     frame.grid()
-    ttk.Label(frame, text='Полный сбор: ВСЕ контакты МВЦ', font=('', 12)).grid(sticky='w')
+    ttk.Label(frame, text='Полный сбор: ВСЕ контакты ' + PROFILE.label, font=('', 12)).grid(sticky='w')
     ttk.Label(frame, text=f'В исходнике: {total:,}. Осталось проверить: {pending:,}.\n'
               'Каждая карточка читается отдельно; скорость подстраивается под ограничения API.\n'
               'Это длительный сбор, а не проверка трёх карточек.\n'
               'АВО используется ТОЛЬКО ДЛЯ ЧТЕНИЯ. Во Frappe изменений не будет.\n'
               'Ссылки не открываются; пароли и профили не сохраняются.').grid(sticky='w', pady=10)
-    ttk.Label(frame, text='API KEY GET аккаунта МВЦ (ключ останется только в памяти):').grid(sticky='w')
+    ttk.Label(frame, text='API KEY GET аккаунта ' + PROFILE.label + ' (ключ останется только в памяти):').grid(sticky='w')
     entry = ttk.Entry(frame, width=68, show='*')
     entry.grid(sticky='ew', pady=6)
     result = []
@@ -469,7 +472,7 @@ def graphical_key(total, pending):
         try:
             key = parse_key(entry.get())
         except Exception:
-            messagebox.showerror('Проверьте ключ', 'Нужен API KEY GET именно аккаунта МВЦ.', parent=root)
+            messagebox.showerror('Проверьте ключ', 'Нужен API KEY GET именно аккаунта ' + PROFILE.label + '.', parent=root)
             return
         result.append(key)
         entry.delete(0, 'end')

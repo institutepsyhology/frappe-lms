@@ -25,11 +25,11 @@ from collect_personal_links_bulk import writer_lock, validate_remote_receipts
 from legacy_api_snapshot import FORMAT as SOURCE_FORMAT, unprotect_page
 from private_link_storage import unprotect_url
 from progress_io import read_json, write_json
-from server_archive_sink import SAFE_CODES as REMOTE_CODES
+from server_archive_sink import SAFE_CODES as REMOTE_CODES, PROFILE
 
-FORMAT = 'mvc-frappe-archive-v1'
-SITE = 'my-lk.mv-centr.ru'
-REMOTE_PREFIX = b'REMOTE:MVC-FRAPPE:v1:'
+FORMAT = PROFILE.wire_format
+SITE = PROFILE.site
+REMOTE_PREFIX = PROFILE.remote_prefix
 HERE = Path(__file__).resolve().parent
 WORKSPACE = HERE.parents[2]
 BENCH = '/home/frappe/frappe-bench'
@@ -60,7 +60,7 @@ def open_links(path, snapshot):
         db.execute('PRAGMA foreign_keys=ON')
         db.execute('PRAGMA synchronous=FULL')
         meta = dict(db.execute('SELECT key,value FROM metadata'))
-        if (meta.get('schema') != 'mvcentr-individual-links-v1' or meta.get('account') != 'mv-centr'
+        if (meta.get('schema') != PROFILE.link_schema or meta.get('account') != PROFILE.account
                 or meta.get('origin') != API_ORIGIN): raise DeliveryError('wrong_source')
         db.execute('''CREATE TABLE IF NOT EXISTS delivery_receipts (
             version_id INTEGER PRIMARY KEY REFERENCES links(version_id),snapshot TEXT NOT NULL,
@@ -203,7 +203,7 @@ def directories(job):
     with closing(sqlite3.connect((job/'snapshot.sqlite').as_uri()+'?mode=ro',uri=True)) as db:
         meta = dict(db.execute('SELECT key,value FROM metadata'))
     snapshot = meta.get('snapshot','')
-    if (meta.get('format')!=SOURCE_FORMAT or meta.get('account')!='mv-centr'
+    if (meta.get('format')!=SOURCE_FORMAT or meta.get('account')!=PROFILE.account
             or meta.get('source')!=API_ORIGIN or not re.fullmatch('[a-f0-9]{32}',snapshot)):
         raise DeliveryError('wrong_source')
     links = job/('links-'+snapshot)

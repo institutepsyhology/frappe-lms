@@ -9,10 +9,11 @@ import json
 from pathlib import Path
 import sqlite3
 from urllib.parse import parse_qsl, urlsplit
+from server_archive_sink import PROFILE
 
 
-API_ORIGIN = 'https://mvcentr.autoweboffice.ru'
-SHOP_HOST = 'shop.mv-centr.ru'
+API_ORIGIN = PROFILE.api_origin
+SHOP_HOST = PROFILE.shop_host
 LOGIN_PATH = '/personal/auth/secure-login'
 
 
@@ -90,7 +91,7 @@ def audit(database):
                 collisions += int(previous != source_id)
     total = sum(statuses.values())
     clean = (total > 0 and statuses['verified'] == total and collisions == 0)
-    return {'account': 'mv-centr', 'mode': 'offline_read_only',
+    return {'account': PROFILE.account, 'mode': 'offline_read_only',
             'records_checked': total, 'status_counts': dict(sorted(statuses.items())),
             'token_reused_across_contacts': collisions, 'all_checks_passed': clean,
             'expected_format': {'scheme': 'https', 'host': SHOP_HOST,

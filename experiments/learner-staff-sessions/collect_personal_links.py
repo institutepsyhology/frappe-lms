@@ -19,6 +19,7 @@ from urllib.parse import urlencode, urlsplit, parse_qs, unquote
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from audit_legacy_links import API_ORIGIN, inspect_record
+from server_archive_sink import PROFILE
 from private_link_storage import StorageError, protect_url
 
 
@@ -117,11 +118,11 @@ def graphical_key():
     from tkinter import messagebox, ttk
     root = tk.Tk()
     root.withdraw()
-    root.title('МВЦ: проверка персональных ссылок')
+    root.title(PROFILE.label + ': проверка персональных ссылок')
     root.resizable(False, False)
     frame = ttk.Frame(root, padding=20)
     frame.grid()
-    ttk.Label(frame, text='API KEY GET из настроек АВО МВЦ', font=('', 12)).grid(sticky='w')
+    ttk.Label(frame, text='API KEY GET из настроек АВО ' + PROFILE.label, font=('', 12)).grid(sticky='w')
     ttk.Label(frame, text='Будут прочитаны только 3 отдельные карточки.\n'
               'Пароли и настройки не меняются. Ссылки не открываются.').grid(sticky='w', pady=10)
     ttk.Label(frame, text='Ключ или рабочий API-адрес (не отправляйте его в чат):').grid(sticky='w')
@@ -133,7 +134,7 @@ def graphical_key():
         try:
             key = parse_key(entry.get())
         except (CollectionError, ValueError):
-            messagebox.showerror('Проверьте ключ', 'Нужен ключ GET именно аккаунта МВЦ.', parent=root)
+            messagebox.showerror('Проверьте ключ', 'Нужен ключ GET именно аккаунта ' + PROFILE.label + '.', parent=root)
             return
         result.append(key)
         entry.delete(0, 'end')
@@ -164,7 +165,7 @@ def collect(source_database, output_database, key, limit=3, fetch=read_detail, p
     if source_database == output_database or output_database.exists():
         raise CollectionError('output_must_be_new')
     # Only fixed aggregate metadata leaves this function. Output DB is private.
-    report = {'mode': 'individual_card_preflight', 'account': 'mv-centr',
+    report = {'mode': 'individual_card_preflight', 'account': PROFILE.account,
               'requested': 0, 'verified': 0, 'failed': 0, 'status': 'not_started',
               'source_values_printed': False, 'frappe_changed': False,
               'links_redeemed': False, 'key_stored': False}
