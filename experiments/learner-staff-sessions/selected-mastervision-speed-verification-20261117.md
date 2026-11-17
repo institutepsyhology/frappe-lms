@@ -60,3 +60,15 @@ failures since its latest restart. Both general MV/IOMP jobs remained paused.
 
 These are live-window measurements, not a guaranteed completion deadline. The
 269,196-identity selection is unchanged and both jobs continue in the background.
+
+## Final steady-window measurement
+
+After the final delay removal and recovery, a 332.5-second window added 1,396
+native Users: 4.20/sec or approximately 15,116/hour, about three times the original
+pace. It captured 1,597 more links: 4.80/sec or approximately 17,293/hour, about
+1.6 times the original 3/sec collector setting. At the final check the destination
+had 71,916 source-bound Users plus 5 standalone source Contacts, and 46,545 links.
+The queue was empty, the selected writer was alive, application issues were empty,
+and individual collection had no failures since its latest restart. General jobs
+were still paused. These results and the exact source releases were published and
+the local checkout synchronized without changing unrelated work in progress.
