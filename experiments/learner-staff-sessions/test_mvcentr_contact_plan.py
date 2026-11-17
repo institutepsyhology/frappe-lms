@@ -40,7 +40,26 @@ class ContactPolicyTests(unittest.TestCase):
 
     def test_duplicate_email_never_merges_or_autolinks(self):
         for options in ({'email_frequency':2},{'email_frequency':1,'email_taken':True}):
-            self.assertEqual(plan(row(),**options),{'action':'deferred','reason':'shared_email_requires_identity_guard'})
+            result=plan(row(),**options)
+            self.assertEqual(result['action'],'create_contact')
+            self.assertEqual(result['data']['custom_avo_contact_id'],'123')
+            self.assertEqual(result['data']['custom_avo_source_email'],'person@example.invalid')
+            self.assertEqual(result['data']['email_ids'],[{'email_id':'person@example.invalid','is_primary':1}])
+            self.assertNotIn('user',result['data']);self.assertNotIn('new_password',result['data'])
+
+    def test_source_without_password_is_preserved_as_contact_with_original_email(self):
+        result=plan(row(password=''),email_frequency=1,account='mastervision')
+        self.assertEqual(result['action'],'create_contact')
+        self.assertEqual(result['data']['custom_avo_account'],'mastervision')
+        self.assertEqual(result['data']['email_ids'][0]['email_id'],'person@example.invalid')
+
+    def test_duplicate_email_readback_checks_native_email_and_rejects_foreign_user(self):
+        data=plan(row(),email_frequency=2)['data']
+        saved=dict(data,email_id='person@example.invalid',mobile_no='999999999')
+        self.assertTrue(matches(saved,data))
+        saved['email_ids']=[];self.assertFalse(matches(saved,data))
+        saved['email_ids']=data['email_ids'];saved['user']='foreign@example.invalid'
+        self.assertFalse(matches(saved,data))
 
     def test_password_keeps_literal_whitespace_and_new_source_ban_is_explicit(self):
         result=plan(row(password='  SYNTHETIC_PASSWORD  ',ban='1'),email_frequency=1)

@@ -50,5 +50,13 @@ class ContactResolverTest(unittest.TestCase):
         self.assertEqual(self.m.courses_for_user('member@example.test'), [{'course': 'course-one'}])
         self.w.list_person_courses.assert_called_once_with('User', 'member@example.test', page=1, page_size=200)
 
+    def test_contact_card_preserves_source_email_when_native_primary_email_is_empty(self):
+        self.m.frappe.get_meta=lambda _:types.SimpleNamespace(has_field=lambda _:True)
+        values={'email_id':'','custom_avo_source_email':'original-source-value'}
+        doc=types.SimpleNamespace(doctype='Contact',name='avo-mastervision-contact-42',creation=None,get=values.get)
+        self.assertEqual(self.m._present(doc)['email'],'original-source-value')
+        values['email_id']='edited@example.invalid'
+        self.assertEqual(self.m._present(doc)['email'],'edited@example.invalid')
+
 
 if __name__ == '__main__': unittest.main()

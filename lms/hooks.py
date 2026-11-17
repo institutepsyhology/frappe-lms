@@ -145,6 +145,10 @@ has_permission = {
 # ---------------
 # Override standard doctype classes
 
+extend_doctype_class = {
+	"Contact": ["lms.lms.avo_contact_binding.AvoContactIdentityMixin"],
+}
+
 override_doctype_class = {
 	"Web Template": "lms.overrides.web_template.CustomWebTemplate",
 }

@@ -47,22 +47,18 @@ def plan(row,*,existing_kind=None,excluded=False,protected=False,email_frequency
         'custom_avo_contact_id':ident,'custom_avo_account':account,'custom_no_marketing_email':optout(row)}
     data.update({target:text(row,source) for source,target in SOCIAL.items()})
     phone=text(row,'phone_number')
-    if EMAIL.fullmatch(address) and (email_frequency>1 or email_taken):
-        # Native Contact.set_user auto-links shared emails; keep these explicit
-        # issues until a durable identity guard is installed, not a per-insert hack.
-        return {'action':'deferred','reason':'shared_email_requires_identity_guard'}
+    shared_email=bool(EMAIL.fullmatch(address) and (email_frequency>1 or email_taken))
     password=row.get('password') or ''
     if not isinstance(password,str):raise PlanError('unexpected_field_type')
-    if EMAIL.fullmatch(address) and password:
+    if EMAIL.fullmatch(address) and password and not shared_email:
         data.update(email=address,new_password=password,mobile_no=phone)
         data['first_name']=data['first_name'] or address
         if len(password)>512:raise PlanError('password_too_long')
         if any(len(value)>140 for key,value in data.items() if isinstance(value,str) and key!='new_password'):
             raise PlanError('field_too_long')
         return {'action':'create_user','data':data,'source_banned':bit(row,'ban')}
-    if EMAIL.fullmatch(address):
-        return {'action':'deferred','reason':'source_password_missing'}
     data['doctype']='Contact';data['custom_avo_source_email']=text(row,'email')
+    if EMAIL.fullmatch(address):data['email_ids']=[{'email_id':address,'is_primary':1}]
     if phone:data['phone_nos']=[{'phone':phone,'is_primary_mobile_no':1}]
     if any(len(value)>140 for value in data.values() if isinstance(value,str)) or len(phone)>140:
         raise PlanError('field_too_long')
@@ -71,7 +67,7 @@ def plan(row,*,existing_kind=None,excluded=False,protected=False,email_frequency
 
 def matches(saved,data):
     for key,value in data.items():
-        if key in ('doctype','new_password','phone_nos'):continue
+        if key in ('doctype','new_password','phone_nos','email_ids'):continue
         actual=saved.get(key)
         if key=='custom_no_marketing_email':
             if int(actual or 0)!=value:return False
@@ -79,7 +75,10 @@ def matches(saved,data):
             if html.unescape(str(actual or ''))!=html.unescape(value):return False
         elif str(actual or '')!=str(value):return False
     if data.get('doctype')=='Contact':
-        if saved.get('user') or saved.get('email_id'):return False
+        expected_email=(data.get('email_ids') or [{}])[0].get('email_id','')
+        if saved.get('user') or str(saved.get('email_id') or '')!=expected_email:return False
+        actual_emails=[str(row.get('email_id') or '') for row in saved.get('email_ids') or []]
+        if actual_emails!=([expected_email] if expected_email else []):return False
         expected=(data.get('phone_nos') or [{}])[0].get('phone','')
         if str(saved.get('mobile_no') or '')!=expected:return False
     return True

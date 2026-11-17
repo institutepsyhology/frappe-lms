@@ -1,5 +1,7 @@
 """Synthetic MV/IOMP transaction and queue boundaries; no real contacts."""
 from pathlib import Path
+from contextlib import redirect_stdout
+import io
 import sqlite3
 import sys
 from types import ModuleType,SimpleNamespace
@@ -27,6 +29,13 @@ class DB:
 
 
 class WorkerTests(unittest.TestCase):
+    def test_background_resume_propagates_retry_of_previous_deferred_records(self):
+        with patch.object(sys,'argv',['worker','--account','mastervision','--start','--retry-issues']), \
+                patch.object(worker,'verify_release'),patch.object(worker,'launch',return_value={'status':'starting'}) as launch, \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(worker.main(),0)
+        launch.assert_called_once_with('mastervision',retry_issues=True)
+
     def setup_user(self,account='mastervision',**changes):
         decision=plan(row(**changes),email_frequency=1,account=account)
         db=DB()
@@ -103,6 +112,27 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(result['kind'],'Contact');self.assertEqual(db.events,['begin','commit'])
         self.assertTrue(received[0]['ignore_mandatory']);self.assertNotIn('email_ids',saved)
         self.assertNotIn('user',saved)
+
+    def test_shared_email_requires_durable_guard_and_preserves_separate_source_id(self):
+        decision=plan(row(),account='mastervision',email_frequency=2)
+        db=DB();received=[]
+        module=ModuleType('lms.lms.avo_contact_binding')
+        class Mixin:pass
+        module.AvoContactIdentityMixin=Mixin
+        class BoundContact(Doc,Mixin):pass
+        saved=BoundContact(decision['data'],name='avo-mastervision-contact-123',email_id='person@example.invalid',mobile_no='999999999')
+        saved.insert=lambda **kwargs:received.append(kwargs)
+        fake=SimpleNamespace(local=SimpleNamespace(site=worker.destination('mastervision')),session=SimpleNamespace(user='Administrator'),db=db,get_doc=lambda *args:saved)
+        with patch.dict(sys.modules,{'lms.lms.avo_contact_binding':module}):
+            result=worker.insert_one(fake,decision,'mastervision')
+        self.assertEqual(result['kind'],'Contact');self.assertEqual(db.events,['begin','commit'])
+        self.assertEqual(received[0]['set_name'],'avo-mastervision-contact-123')
+        self.assertEqual(saved['email_ids'][0]['email_id'],'person@example.invalid')
+        self.assertNotIn('user',saved)
+        db.events=[];fake.get_doc=lambda *args:Doc(decision['data'])
+        with patch.dict(sys.modules,{'lms.lms.avo_contact_binding':module}),self.assertRaisesRegex(worker.ApplyError,'^source_identity_guard_not_installed$'):
+            worker.insert_one(fake,decision,'mastervision')
+        self.assertEqual(db.events,['begin','rollback'])
 
     def test_waits_for_free_disk_then_queue_then_inserts_current_record(self):
         free=iter([0,worker.RESERVE,worker.RESERVE]);pending=iter([100,99]);waits=[];delays=[]

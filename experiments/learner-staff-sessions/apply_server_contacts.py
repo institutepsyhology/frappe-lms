@@ -149,6 +149,10 @@ def insert_one(frappe,decision,account):
             kind='User'
         elif decision['action']=='create_contact':
             saved=frappe.get_doc(data)
+            if data.get('email_ids'):
+                from lms.lms.avo_contact_binding import AvoContactIdentityMixin
+                if not isinstance(saved,AvoContactIdentityMixin):
+                    raise ApplyError('source_identity_guard_not_installed')
             saved.insert(set_name='avo-'+account+'-contact-'+ident,ignore_permissions=True,
                 ignore_mandatory=not bool(data['first_name']))
             saved=frappe.get_doc('Contact',saved.name);kind='Contact'
@@ -263,7 +267,7 @@ def run(frappe,account,*,limit=20,retry_issues=False):
             return update('completed_with_issues' if state.execute("SELECT 1 FROM decisions WHERE status IN ('failed','deferred') LIMIT 1").fetchone() else 'completed')
 
 
-def launch(account):
+def launch(account,*,retry_issues=False):
     base=Path('/home/frappe/frappe-bench/sites')/destination(account)/'private/apply-avo-contacts';private(base)
     if (base/'STOP').exists():raise ApplyError('paused')
     # Reject an already running writer; the child also owns worker.lock itself.
@@ -271,7 +275,9 @@ def launch(account):
     log=safe_file(base/'worker.log')
     fd=os.open(log,os.O_WRONLY|os.O_CREAT|os.O_APPEND|os.O_NOFOLLOW,0o600)
     with os.fdopen(fd,'ab',buffering=0) as stream:
-        child=subprocess.Popen([sys.executable,'-B',str(Path(__file__).resolve()),'--account',account,'--apply','--limit','0'],
+        command=[sys.executable,'-B',str(Path(__file__).resolve()),'--account',account,'--apply','--limit','0']
+        if retry_issues:command.append('--retry-issues')
+        child=subprocess.Popen(command,
             stdin=subprocess.DEVNULL,stdout=stream,stderr=stream,start_new_session=True,close_fds=True)
     return {'status':'starting','account':account,'site':destination(account),'worker_pid':child.pid}
 
@@ -286,7 +292,7 @@ def main():
     frappe=None
     try:
         verify_release()
-        if args.start:result=launch(args.account)
+        if args.start:result=launch(args.account,retry_issues=args.retry_issues)
         else:
             import frappe
             frappe.init(site=destination(args.account));frappe.connect();frappe.set_user('Administrator')

@@ -23,7 +23,9 @@ New accounts are Website Users, welcome email disabled, literal source passwords
 retained and new source bans respected. Preserve existing identities, passwords,
 roles, profiles and learning history; apply only positive marketing opt-outs.
 No-email/social-only sources become Contacts without fabricated email or names.
-Shared-email cases are deferred rather than linked to another source person.
+Shared-email and missing-password sources become separate Contacts retaining
+the original email and AVO ID, protected by the durable Contact identity mixin.
+They are neither deferred nor linked to another source person.
 
 Each site's private ledger records source IDs and fixed reasons only. Reconcile
 source identities on restart. Commit and read back each insertion. Wait for RQ

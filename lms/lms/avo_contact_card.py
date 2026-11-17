@@ -35,7 +35,7 @@ def _present(doc):
     value = lambda field: doc.get(field) if meta.has_field(field) else None
     result = {'kind':doc.doctype, 'name':doc.name, 'first_name':value('first_name') or '',
               'middle_name':value('middle_name') or '', 'last_name':value('last_name') or '',
-              'email':value('email') if doc.doctype == 'User' else value('email_id'),
+              'email':value('email') if doc.doctype == 'User' else value('email_id') or value('custom_avo_source_email'),
               'mobile_no':value('mobile_no') or '', 'enabled':bool(value('enabled')) if doc.doctype == 'User' else None,
               'created':str(doc.creation) if doc.creation else None}
     for field in IDENTITY_FIELDS + SOCIAL_FIELDS:

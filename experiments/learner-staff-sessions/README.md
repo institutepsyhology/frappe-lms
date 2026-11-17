@@ -155,8 +155,12 @@ The invalid list-returned learner links are dropped rather than imported.
 New native Users retain their source password plus the verified encrypted
 support copy, have welcome mail disabled and remain Website Users. Existing
 identities/passwords/roles are preserved. Marketing flags are positive-only.
-Social-only/no-email sources become Contacts; shared-email sources are deferred
-without cross-linking people. Source rows and passwords do not enter logs.
+Social-only/no-email sources become Contacts. Shared-email and missing-password
+sources also become separate Contacts with the original email and AVO identity;
+they are not deferred or merged. Native email rows require the durable Contact
+identity mixin. Source rows and passwords do not enter logs. A Contact is not a
+fabricated native User login; its source credentials remain in the encrypted
+archive for the separate learner-authentication phase.
 
 Each site's `private/apply-avo-contacts` contains `state.sqlite`, safe aggregate
 `progress.json` and its immutable release. `STOP` pauses that site's writer.
@@ -169,6 +173,24 @@ continues in parallel and must not delay MV access. IOMP course/lesson migration
 must precede its access synchronization. The old local access database has only
 MVC namespace data; do not substitute it for MV. Contact completion is not proof
 of completed grants or of working authentication from imported personal links.
+
+The Contact guard is installed through `extend_doctype_class`. It binds only an
+exact account/source ID and protects against foreign native queued User contact
+updates, which otherwise select a Contact by email. A small published source
+overlay can be installed with `deploy_contact_binding.py --release <SHA>
+--baseline <previous SHA>` while AVO keys remain in the backend's process memory.
+It verifies source hashes in six app containers, keeps server-only rollback
+copies, patches the live source atomically, and persists the identical read-only
+file mounts in the canonical Compose file. It builds no Docker image/layer and
+does not recreate the backend. Refresh web/RQ processes and clear hook caches
+before resuming contact application. On a later full image deployment, explicitly
+update or remove these versioned file mounts once the image includes the same
+guard; do not leave an old hooks overlay hiding a newer image's hooks.
+
+After changing this policy, pause only the affected contact application workers,
+retain all source collectors, install the new private applier release, and start
+with `--start --retry-issues` to retry earlier deferred identities. Never remove
+another operator's STOP marker or the MVC owner-request stop.
 
 ## Verification commands
 
