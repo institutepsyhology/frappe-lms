@@ -44,3 +44,12 @@ live check confirmed MV: 16,987 Users plus three Contacts; IOMP: 13,084 Users pl
 62 Contacts, with zero deferred and failed decisions. Both application workers
 and the original AVO collectors were alive. These are observations during the
 ongoing migration, not final counts or completed course-access synchronization.
+
+The owner subsequently requested a temporary contact pause. Both MV/IOMP source
+collectors and both application workers stopped gracefully; STOP markers and
+checkpoints are retained, with no data deletion. Final application counters at
+pause: MV 17,571 Users and three Contacts; IOMP 13,610 Users and 63 Contacts.
+Source keys were memory-only and are discarded on exit; source resumption needs
+key entry, while applying already captured records needs no AVO key. MVC retains
+its separate no-new-contacts owner stop. Do not resume any paused worker without
+a new owner instruction.
