@@ -3,6 +3,8 @@
 Installed through ``extend_doctype_class`` for Contact. Native Contacts without
 an AVO identity retain Frappe's existing email-based association behaviour.
 """
+import os
+
 import frappe
 
 
@@ -86,3 +88,18 @@ class AvoContactIdentityMixin:
         # An imported standalone Contact must never claim a different source's
         # User merely because the native email field happens to be identical.
         self.user = exact_user
+
+
+@frappe.whitelist()
+def binding_status():
+    """Prove the active HTTP worker uses the extended Contact controller."""
+    if _field(getattr(frappe, "session", None), "user") != "Administrator":
+        frappe.throw("Not permitted.", frappe.PermissionError)
+
+    from frappe.model.base_document import get_controller
+
+    return {
+        "active": issubclass(get_controller("Contact"), AvoContactIdentityMixin),
+        "pid": os.getpid(),
+        "site": frappe.local.site,
+    }

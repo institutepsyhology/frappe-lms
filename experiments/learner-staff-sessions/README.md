@@ -187,6 +187,12 @@ before resuming contact application. On a later full image deployment, explicitl
 update or remove these versioned file mounts once the image includes the same
 guard; do not leave an old hooks overlay hiding a newer image's hooks.
 
+The live Gunicorn command uses `--preload`: an HUP alone is not activation
+evidence. Call the Administrator-only, metadata-only
+`lms.lms.avo_contact_binding.binding_status` through actual HTTP/MCP and require
+`active: true` from the serving worker before replaying shared-email Contacts.
+A fresh standalone Python process is not proof of the HTTP worker's controller.
+
 After changing this policy, pause only the affected contact application workers,
 retain all source collectors, install the new private applier release, and start
 with `--start --retry-issues` to retry earlier deferred identities. Never remove

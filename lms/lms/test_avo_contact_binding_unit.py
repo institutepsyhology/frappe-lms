@@ -17,6 +17,9 @@ class BindingTest(unittest.TestCase):
         self.users = []
         self.frappe = types.ModuleType("frappe")
         self.frappe.local = types.SimpleNamespace(site="my-lk.mastervision.su")
+        self.frappe.session = types.SimpleNamespace(user="Administrator")
+        self.frappe.PermissionError = PermissionError
+        self.frappe.whitelist = lambda **kwargs: lambda fn: fn
         self.frappe.get_all = self.get_all
         self.frappe.throw = self.throw
         spec = importlib.util.spec_from_file_location(
@@ -48,8 +51,8 @@ class BindingTest(unittest.TestCase):
         return list(self.users)
 
     @staticmethod
-    def throw(message):
-        raise RuntimeError(message)
+    def throw(message, exception=None):
+        raise (exception or RuntimeError)(message)
 
     def contact(self, **changes):
         values = {
@@ -231,6 +234,33 @@ class BindingTest(unittest.TestCase):
             contact.set_user()
         self.assertEqual(str(raised.exception), "AVO contact identity conflict.")
         self.assertNotIn(contact.email_id, str(raised.exception))
+
+    def status(self, controller):
+        base_document = types.ModuleType("frappe.model.base_document")
+        base_document.get_controller = lambda doctype: controller
+        with patch.dict(sys.modules, {"frappe.model.base_document": base_document}):
+            return self.module.binding_status()
+
+    def test_binding_status_reports_actual_controller_and_process_only(self):
+        report = self.status(self.Contact)
+        self.assertEqual(set(report), {"active", "pid", "site"})
+        self.assertIs(report["active"], True)
+        self.assertIsInstance(report["pid"], int)
+        self.assertGreater(report["pid"], 0)
+        self.assertEqual(report["site"], "my-lk.mastervision.su")
+        self.assertEqual(self.queries, [])
+
+    def test_binding_status_detects_stale_controller_without_mixin(self):
+        report = self.status(dict)
+        self.assertIs(report["active"], False)
+
+    def test_binding_status_denies_non_administrator_even_if_staff(self):
+        for name in ("Guest", "staff@example.invalid", None):
+            with self.subTest(name=name), self.assertRaises(PermissionError):
+                self.frappe.session.user = name
+                # No controller import is needed or permitted before this check.
+                self.module.binding_status()
+        self.assertEqual(self.queries, [])
 
 
 if __name__ == "__main__":
