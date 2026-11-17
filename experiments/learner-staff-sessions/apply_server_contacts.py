@@ -328,7 +328,10 @@ def run(frappe,account,*,limit=20,retry_issues=False,selection=None):
                 if handled%20==0:update('applying')
                 if limit and created>=limit:return update('batch_complete')
                 # IOMP yields more time to MV and the single native default worker.
-                time.sleep(0.05 if selected is not None else 0.15 if account=='mastervision' else 0.6)
+                # Selected existing identities need no native-job throttle.
+                # Queue/disk checks still gate every actual write/create.
+                if selected is None or action in ('create_user','create_contact'):
+                    time.sleep(0.05 if selected is not None else 0.15 if account=='mastervision' else 0.6)
             if selected is not None:
                 actual=target_map(frappe,account)
                 missing=selected-set(actual)
