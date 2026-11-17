@@ -1124,9 +1124,10 @@ def get_courses(filters: dict = None, start: int = 0, limit_page_length: int | s
 	remaining = page_length - len(courses)
 
 	if remaining > 0:
+		from lms.lms.access_presentation import visible_course_filters
 		courses = courses + frappe.get_all(
 			"LMS Course",
-			filters=filters,
+			filters=visible_course_filters(filters),
 			fields=fields,
 			or_filters=or_filters,
 			order_by="enrollments desc",
@@ -1136,6 +1137,10 @@ def get_courses(filters: dict = None, start: int = 0, limit_page_length: int | s
 
 	courses = get_enrollment_details(courses)
 	courses = get_course_card_details(courses)
+	from lms.lms.access_presentation import course_notice
+	for course in courses:
+		if course.get('membership'):
+			course.access_state = course_notice(course.name)
 	from lms.lms.avo_course_routes import annotate_course_ids
 	courses = annotate_course_ids(courses)
 	return courses
@@ -1160,11 +1165,12 @@ def get_course_count(filters: dict = None) -> int:
 	self_scoped = is_self_scoped(filters)
 	filters, or_filters, show_featured = update_course_filters(filters)
 	restrict_to_published(filters, self_scoped)
-	total = count_matching("LMS Course", filters, or_filters)
+	from lms.lms.access_presentation import visible_course_filters
+	total = count_matching("LMS Course", visible_course_filters(filters), or_filters)
 	if show_featured:
 		# `update_course_filters` narrowed the query to featured=0 for the live
 		# tab, so the featured rows it leads with are counted separately.
-		total += count_matching("LMS Course", {**filters, "featured": 1}, or_filters)
+		total += count_matching("LMS Course", visible_course_filters({**filters, "featured": 1}), or_filters)
 	return total
 
 
@@ -1294,9 +1300,10 @@ def get_enrollment_details(courses: list) -> list:
 
 def get_featured_courses(filters: dict, or_filters: dict, fields: list, page_length: int) -> list:
 	filters.update({"featured": 1})
+	from lms.lms.access_presentation import visible_course_filters
 	featured_courses = frappe.get_all(
 		"LMS Course",
-		filters=filters,
+		filters=visible_course_filters(filters),
 		fields=fields,
 		or_filters=or_filters,
 		order_by="enrollments desc",
@@ -1374,6 +1381,10 @@ def get_course_details(course: str):
 
 	course_details.instructors = get_instructors("LMS Course", course_details.name)
 	course_details.membership = membership
+	from lms.lms.access_presentation import course_notice
+	course_details.access_state = course_notice(course)
+	if not course_details.access_state['visible']:
+		return {}
 	course_details.rating_count = frappe.db.count("LMS Course Review", {"course": course})
 	course_details.update(get_course_content_stats(course))
 	# course_details.is_instructor = is_instructor(course_details.name)
@@ -1446,6 +1457,9 @@ def get_course_outline(course: str, progress: bool = False) -> list:
 
 	if not can_view_course(course):
 		return []
+	from lms.lms.access_presentation import course_notice
+	if not course_notice(course)['visible']:
+		return []
 
 	chapters = get_outline_chapter(course)
 	if not chapters:
@@ -1476,15 +1490,24 @@ def get_course_outline(course: str, progress: bool = False) -> list:
 	outline = build_outline(chapters, lesson_rows, files_by_name, completed, progress, enforce)
 	from lms.lms.individual_access import mask_inaccessible_outline, policy_applies
 
-	if policy_applies(course):
-		from lms.lms.permissions import can_access_lesson
+	if not can_modify_course(course):
+		from lms.lms.permissions import can_access_lesson, get_locked_lessons
+		locked_names = get_locked_lessons(course)
+		for chapter in outline:
+			for lesson in chapter.lessons:
+				lesson.locked = int(lesson.name in locked_names)
 
 		mask_inaccessible_outline(outline, can_access_lesson)
 	if not can_modify_course(course):
 		from lms.lms.permissions import can_access_lesson
 		hidden = set(frappe.get_all("Course Lesson", filters={"course": course, "hide_title_when_locked": 1}, pluck="name"))
 		for chapter in outline:
+			from lms.lms.access_presentation import is_visible
+			chapter.lessons = [lesson for lesson in chapter.lessons if not lesson.get('locked')
+				or is_visible('Course Lesson', lesson.name)]
 			for lesson in chapter.lessons:
+				if lesson.get('locked'):
+					lesson.access_notice = True
 				if lesson.name in hidden and (lesson.get("locked") or not can_access_lesson(lesson.name)):
 					lesson.title = _("Урок закрыт")
 	return outline
@@ -1745,6 +1768,8 @@ def _gate_redirect(course: str) -> dict:
 def get_lesson(course: str, chapter: int, lesson: int) -> dict:
 	if not guest_access_allowed():
 		return {}
+	if not can_view_course(course):
+		return {}
 
 	ChapterReference = frappe.qb.DocType("Chapter Reference")
 	CourseChapter = frappe.qb.DocType("Course Chapter")
@@ -1799,12 +1824,8 @@ def get_lesson(course: str, chapter: int, lesson: int) -> dict:
 
 	locked, resume = get_lesson_gate(course)
 	if lesson_name in locked:
-		return {
-			"locked": 1,
-			"title": _("Урок закрыт") if frappe.db.get_value("Course Lesson", lesson_name, "hide_title_when_locked") else lesson_details.title,
-			"course_title": frappe.db.get_value("LMS Course", course, "title"),
-			"redirect_to": get_lesson_index(resume) if resume else "1-1",
-		}
+		from lms.lms.access_presentation import lesson_notice
+		return lesson_notice(course, lesson_name)
 
 	membership = get_membership(course)
 	course_info = frappe.db.get_value(
@@ -1822,12 +1843,8 @@ def get_lesson(course: str, chapter: int, lesson: int) -> dict:
 	# access in one pass, so the instructor check isn't computed twice.
 	is_instructor, can_access = resolve_lesson_access(lesson_name)
 	if not can_access:
-		return {
-			"no_preview": 1,
-			"title": _("Урок закрыт") if frappe.db.get_value("Course Lesson", lesson_name, "hide_title_when_locked") else lesson_details.title,
-			"course_title": course_info.title,
-			"disable_self_learning": course_info.disable_self_learning,
-		}
+		from lms.lms.access_presentation import lesson_notice
+		return lesson_notice(course, lesson_name)
 
 	if lesson_details.is_scorm_package:
 		return {
@@ -1836,7 +1853,7 @@ def get_lesson(course: str, chapter: int, lesson: int) -> dict:
 		}
 
 	from lms.lms.individual_access import policy_applies
-	lesson_details.track_personal_visit = bool(membership and not is_instructor and policy_applies(course))
+	lesson_details.track_personal_visit = bool(membership and not is_instructor)
 
 	# instructor_content / instructor_notes are instructor-only (permissions.INSTRUCTOR_FIELDS).
 	# Never leak them to students or preview guests, who also pass the gate above.

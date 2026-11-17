@@ -164,7 +164,7 @@ function changePage(value:number){page.value=value;loadCourses()}
 function changePageSize(){page.value=1;loadCourses()}
 function sortCourses(field:SortField){direction.value=sort.value===field&&direction.value==='asc'?'desc':'asc';sort.value=field;page.value=1;loadCourses()}
 function openCourse(course:Course){if(!course.course)return;selectedCourse.value=course.course;accessOpen.value=true}
-function statusLabel(value:string){return ({Active:'Открыт',Frozen:'Приостановлен',Revoked:'Закрыт',Limited:'Ограничен',Expired:'Срок истёк',Draft:'Черновик','Pending Contact':'Ожидает учётную запись','Pending Course':'Ожидает курс',Applied:'Перенесён',Superseded:'Историческая запись',Unknown:'Статус неизвестен'} as Record<string,string>)[value]||value}
+function statusLabel(value:string){return ({Blocked:'Закрыт блокировкой',Active:'Открыт',Frozen:'Приостановлен',Revoked:'Закрыт',Limited:'Ограничен',Expired:'Срок истёк',Draft:'Черновик','Pending Contact':'Ожидает учётную запись','Pending Course':'Ожидает курс',Applied:'Перенесён',Superseded:'Историческая запись',Unknown:'Статус неизвестен'} as Record<string,string>)[value]||value}
 async function revealPassword(silent=false){
 	if(!isUser.value||!canReadCredentials.value)return
 	const target=recordName.value,token=cardSequence

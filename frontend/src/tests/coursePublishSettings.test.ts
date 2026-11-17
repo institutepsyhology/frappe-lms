@@ -1,3 +1,4 @@
+vi.mock('@/components/Courses/UnavailableAccessSettings.vue', () => ({ default: { template: '<div />' } }))
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import CoursePublishSettings from '@/pages/Courses/CoursePublishSettings.vue'

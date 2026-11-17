@@ -16,6 +16,14 @@ watch(() => props.avoCourseId, async courseId => {
 		if (current!==sequence) return
 		if (!target || target.course_id!==courseId || !/^[1-9]\d{0,19}$/.test(target.lesson_id)) throw new Error('unavailable')
 		await router.replace({name:'AvoLesson',params:{avoCourseId:courseId,avoLessonId:target.lesson_id},query:router.currentRoute.value.query})
-	} catch { if (current===sequence) error.value=true }
+	} catch {
+        if (current!==sequence) return
+        try {
+            const course=await call('lms.lms.avo_course_routes.resolve',{course_id:courseId})
+            if (current!==sequence) return
+            if (!course?.course_name) throw new Error('unavailable')
+            await router.replace({name:'AvoCourse',params:{avoCourseId:courseId},query:router.currentRoute.value.query})
+        } catch { if (current===sequence) error.value=true }
+    }
 },{immediate:true})
 </script>

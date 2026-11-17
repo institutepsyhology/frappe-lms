@@ -1,6 +1,7 @@
 <template>
 	<div class="">
 		<IndividualAccessSettings v-if="doc?.name" :course="doc.name" />
+		<UnavailableAccessSettings v-if="doc?.name" :course="doc.name" />
 		<CollapsibleSection :label="__('Visibility')">
 			<div class="flex flex-col gap-y-4">
 				<BooleanSwitch
@@ -204,6 +205,7 @@ import CollapsibleSection from '@/components/CollapsibleSection.vue'
 import Link from '@/components/Controls/Link.vue'
 import NewMemberModal from '@/components/Modals/NewMemberModal.vue'
 import IndividualAccessSettings from '@/components/Courses/IndividualAccessSettings.vue'
+import UnavailableAccessSettings from '@/components/Courses/UnavailableAccessSettings.vue'
 import { useSettings } from '@/stores/settings'
 import type { CourseFormContext, Resource } from '@/types'
 import { openExternal } from '@/utils/openExternal'

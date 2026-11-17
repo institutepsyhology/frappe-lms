@@ -95,6 +95,8 @@
 				{{ course.short_introduction }}
 			</div>
 
+			<p v-if="course.access_state && !course.access_state.available" class="mt-3 text-sm font-medium text-ink-gray-7">{{ course.access_state.message }}</p>
+
 			<ProgressBar
 				v-if="user && course.membership"
 				:progress="course.membership.progress"

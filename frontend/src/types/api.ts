@@ -59,6 +59,7 @@ export interface Membership {
 export interface CourseDetails
 	extends Omit<LMSCourse, 'instructors' | 'rating'> {
 	price?: string
+	access_state?: {status: string; available: boolean; visible: boolean; retained_access?: boolean; message: string; notice_content?: string; starts_at?: string; ends_at?: string}
 	current_lesson?: string
 	instructors: CourseInstructorInfo[]
 	membership?: Membership | null
@@ -88,6 +89,7 @@ export interface OutlineLesson {
 	icon?: string
 	is_complete?: boolean
 	locked?: 0 | 1
+	access_notice?: boolean
 }
 
 export interface OutlineChapter {

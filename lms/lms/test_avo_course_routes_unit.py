@@ -19,6 +19,7 @@ class AvoRoutesTest(unittest.TestCase):
         self.resume=None;self.membership=False;self.ordered=[{'name':'lesson-a'}]
         f=types.ModuleType('frappe');f.local=types.SimpleNamespace(site='my-lk.mv-centr.ru')
         f.whitelist=lambda **kw:lambda fn:fn
+        f.session=types.SimpleNamespace(user='student')
         f.PermissionError=PermissionError;f.ValidationError=ValueError
         f.throw=lambda message,typ:(_ for _ in ()).throw(typ(message))
         def matches(row,filters):
@@ -48,7 +49,12 @@ class AvoRoutesTest(unittest.TestCase):
         util=types.ModuleType('lms.lms.utils');util.can_view_course=lambda course:self.allow_course;util.guest_access_allowed=lambda:True;util.can_modify_course=lambda course:self.allow_edit
         util.get_membership=lambda course:self.membership;util.get_ordered_lesson_rows=lambda course:self.ordered
         perm=types.ModuleType('lms.lms.permissions');perm.can_access_lesson=lambda lesson:self.allow_lesson;perm.get_lesson_gate=lambda course:(self.locked,self.resume)
-        self.modules=patch.dict(sys.modules,{'frappe':f,'lms.lms.avo_import':imp,'lms.lms.utils':util,'lms.lms.permissions':perm})
+        self.notice_visible=False
+        presentation=types.ModuleType('lms.lms.access_presentation')
+        presentation.course_notice=lambda course:{'visible':True}
+        presentation.is_visible=lambda *args:self.notice_visible
+        perm.publication_allows_lesson=lambda *args:True
+        self.modules=patch.dict(sys.modules,{'lms.lms.access_presentation':presentation,'frappe':f,'lms.lms.avo_import':imp,'lms.lms.utils':util,'lms.lms.permissions':perm})
         self.modules.start();self.addCleanup(self.modules.stop);self.frappe=f
         spec=importlib.util.spec_from_file_location('avo_routes',Path(__file__).with_name('avo_course_routes.py'))
         self.mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(self.mod)
@@ -104,6 +110,16 @@ class AvoRoutesTest(unittest.TestCase):
         self.assertEqual(self.mod.get_lesson_by_source('11','26')['content'],'correct')
         self.allow_lesson=False
         self.assertEqual(self.mod.get_lesson_by_source('11','26'),{'locked':1,'not_found':1})
+
+    def test_visible_locked_source_url_preserves_notice_without_lesson_content(self):
+        self.allow_lesson=False;self.notice_visible=True;self.allow_edit=False
+        self.assertEqual(self.mod.resolve('11','26')['lesson_name'],'lesson-a')
+        utils=sys.modules['lms.lms.utils']
+        utils.get_lesson=lambda **kwargs:{'name':'lesson-a','locked':1,'access_denied':1,'access_message':'Урок пока закрыт'}
+        result=self.mod.get_lesson_by_source('11','26')
+        self.assertTrue(result['access_denied'])
+        self.assertNotIn('content',result)
+        self.assertNotIn('youtube',result)
 
     def test_course_cards_only_receive_unique_ids_from_current_site(self):
         cards=[{'name':'course-a'},{'name':'native-course'}]

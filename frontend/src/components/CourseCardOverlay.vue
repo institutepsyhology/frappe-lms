@@ -9,7 +9,8 @@
 				{{ priceLabel }}
 			</div>
 			<div v-if="!readOnlyMode">
-				<div v-if="course.data?.membership" class="space-y-2 mb-8">
+				<p v-if="course.data?.membership && course.data?.access_state && !course.data.access_state.available && !course.data.access_state.retained_access" class="mb-6 text-sm">{{ course.data.access_state.message }}</p>
+				<div v-else-if="course.data?.membership" class="space-y-2 mb-8">
 					<router-link
 						:to="{
 							name: 'Lesson',

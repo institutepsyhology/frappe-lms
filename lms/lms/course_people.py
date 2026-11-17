@@ -237,26 +237,38 @@ def get_member_access(course: str, member=None, contact=None, enrollment=None):
 
 
 @frappe.whitelist()
-def list_member_lessons(course: str, member=None, grant=None, page=1, page_length=50, enrollment=None):
+def list_member_lessons(course: str, member=None, grant=None, page=1, page_length=50, enrollment=None, assignment_filter="all"):
     _check(course)
     member = _member(course, member, enrollment=enrollment)
     page, page_length, offset = _pagination(page, page_length)
     if not isinstance(grant, str) or not frappe.db.exists('LMS Access Grant', {'name': grant, 'course': course, 'member': member}):
         frappe.throw(_('Access grant does not match the student and course.'), frappe.ValidationError)
-    total = frappe.db.count('Course Lesson', {'course': course})
+    if assignment_filter not in ('all', 'assigned', 'available'):
+        frappe.throw(_('Invalid lesson filter.'), frappe.ValidationError)
+    selection = '' if assignment_filter == 'all' else (' AND r.name IS NOT NULL' if assignment_filter == 'assigned' else ' AND r.name IS NULL')
+    params = {'grant': grant, 'course': course, 'member': member, 'limit': page_length, 'offset': offset}
+    join = " LEFT JOIN `tabLMS Access Grant Lesson` r ON r.lesson=l.name AND r.parent=%(grant)s AND r.parenttype='LMS Access Grant' AND r.parentfield='lessons'"
+    total = int(frappe.db.sql('SELECT COUNT(*) FROM `tabCourse Lesson` l' + join + ' WHERE l.course=%(course)s' + selection, params)[0][0])
     if total and offset >= total:
         page = (total - 1) // page_length + 1
         offset = (page - 1) * page_length
     elif not total:
         page, offset = 1, 0
     rows = frappe.db.sql('''SELECT l.name AS lesson,l.title,r.name AS assignment,r.opening_type,r.opens_at,r.delay_days,
-        r.prerequisite_state,r.manual_open FROM `tabCourse Lesson` l
+        r.prerequisite_state,r.manual_open,v.first_learner_visit_at,v.last_learner_visit_at,
+        cp.status AS completion_status FROM `tabCourse Lesson` l
         LEFT JOIN `tabLMS Access Grant Lesson` r ON r.lesson=l.name AND r.parent=%(grant)s
           AND r.parenttype='LMS Access Grant' AND r.parentfield='lessons'
+        LEFT JOIN `tabLMS Lesson Visit` v ON v.lesson=l.name AND v.course=l.course AND v.member=%(member)s
+        LEFT JOIN `tabLMS Course Progress` cp ON cp.lesson=l.name AND cp.course=l.course AND cp.member=%(member)s
         LEFT JOIN `tabLesson Reference` lr ON lr.lesson=l.name AND lr.parent=l.chapter
         LEFT JOIN `tabChapter Reference` cr ON cr.chapter=l.chapter AND cr.parent=l.course
-        WHERE l.course=%(course)s ORDER BY COALESCE(cr.idx,0),COALESCE(lr.idx,0),l.name
-        LIMIT %(limit)s OFFSET %(offset)s''', {'grant': grant, 'course': course, 'limit': page_length, 'offset': offset}, as_dict=True)
+        WHERE l.course=%(course)s''' + selection + ''' ORDER BY COALESCE(cr.idx,0),COALESCE(lr.idx,0),l.name
+        LIMIT %(limit)s OFFSET %(offset)s''', dict(params, offset=offset), as_dict=True)
+    from lms.lms.access_presentation import lesson_state
+    for row in rows:
+        state = lesson_state(course, row.lesson, member)
+        row.update(effective_available=bool(state.get("available")), access_reason=state.get("message"), opens_at_effective=state.get("opens_at"))
     return {'rows': rows, 'total': total, 'page': page, 'page_length': page_length}
 
 
@@ -277,6 +289,35 @@ def change_lesson_assignment(course: str, grant: str, lesson: str, assigned, mem
     elif not enabled:
         lessons = [name for name in lessons if name != lesson]
     return set_grant_assigned_lessons(grant, lessons)
+
+
+@frappe.whitelist(methods=['POST'])
+def change_lesson_assignments(course: str, grant: str, lessons, assigned, member=None, enrollment=None):
+    """Assign or remove selected lessons in one transaction."""
+    _check(course, 'write')
+    member = _member(course, member, enrollment=enrollment)
+    if isinstance(lessons, str):
+        lessons = frappe.parse_json(lessons)
+    if (not isinstance(lessons, list) or not lessons or len(lessons) > 5000
+            or any(not isinstance(x, str) or not x for x in lessons) or len(set(lessons)) != len(lessons)):
+        frappe.throw(_('Provide a valid list of lessons.'), frappe.ValidationError)
+    if type(assigned) not in (int, bool, str) or assigned not in (0, 1, '0', '1', False, True):
+        frappe.throw(_('Choose whether to assign the lesson.'), frappe.ValidationError)
+    document = frappe.get_doc('LMS Access Grant', grant, for_update=True)
+    if document.course != course or document.member != member:
+        frappe.throw(_('Access grant does not match the student and course.'), frappe.ValidationError)
+    for lesson in lessons:
+        if frappe.db.get_value('Course Lesson', lesson, 'course') != course:
+            frappe.throw(_('Every lesson must belong to the selected course.'), frappe.ValidationError)
+    current = [row.lesson for row in document.lessons]
+    selected = set(lessons)
+    if assigned in (1, '1', True):
+        existing = set(current)
+        current.extend(lesson for lesson in lessons if lesson not in existing)
+    else:
+        current = [lesson for lesson in current if lesson not in selected]
+    from lms.lms.access_actions import set_grant_assigned_lessons
+    return set_grant_assigned_lessons(grant, current)
 
 
 @frappe.whitelist(methods=['POST'])

@@ -45,6 +45,36 @@ class CoursePeopleTests(unittest.TestCase):
     def tearDown(self):
         self.modpatch.stop()
 
+    def test_bulk_assignments_validate_and_preserve_other_lessons(self):
+        self.mod._check = Mock()
+        self.mod._member = Mock(return_value='student')
+        self.fr.get_doc = Mock(return_value=Row(course='course', member='student', lessons=[Row(lesson='old')]))
+        self.fr.db.get_value = Mock(return_value='course')
+        actions = types.ModuleType('lms.lms.access_actions')
+        actions.set_grant_assigned_lessons = Mock(return_value={'ok': True})
+        with patch.dict(sys.modules, {'lms.lms.access_actions': actions}):
+            self.mod.change_lesson_assignments('course', 'grant', ['new'], 1)
+            actions.set_grant_assigned_lessons.assert_called_with('grant', ['old', 'new'])
+            self.mod.change_lesson_assignments('course', 'grant', ['old'], 0)
+            actions.set_grant_assigned_lessons.assert_called_with('grant', [])
+            self.fr.db.get_value.return_value = 'another-course'
+            with self.assertRaises(ValueError):
+                self.mod.change_lesson_assignments('course', 'grant', ['bad'], 1)
+            with self.assertRaises(ValueError):
+                self.mod.change_lesson_assignments('course', 'grant', ['same', 'same'], 1)
+
+    def test_bulk_assignment_denies_unauthorized_and_mismatched_grants(self):
+        self.mod._check = Mock(side_effect=PermissionError)
+        self.fr.get_doc = Mock()
+        with self.assertRaises(PermissionError):
+            self.mod.change_lesson_assignments('course', 'grant', ['lesson'], 1)
+        self.fr.get_doc.assert_not_called()
+        self.mod._check = Mock()
+        self.mod._member = Mock(return_value='student')
+        self.fr.get_doc.return_value = Row(course='course', member='someone-else', lessons=[])
+        with self.assertRaises(ValueError):
+            self.mod.change_lesson_assignments('course', 'grant', ['lesson'], 1)
+
     def test_default_is_bounded_fifty_with_total_over_two_thousand(self):
         result=self.mod.list_students('course')
         self.assertEqual((result['total'],result['page_length'],result['page']),(3001,50,1))
@@ -129,6 +159,25 @@ class CoursePeopleTests(unittest.TestCase):
         self.fr.db.exists.side_effect=lambda doctype,*a,**kw: doctype!='LMS Access Grant'
         with self.assertRaises(ValueError):self.mod.list_member_lessons('course','student','foreign-grant')
         self.fr.db.sql.assert_not_called()
+
+    def test_lesson_filters_count_and_page_the_same_student_selection(self):
+        self.mod._member = Mock(return_value='student')
+        presentation = types.ModuleType('lms.lms.access_presentation')
+        presentation.lesson_state = lambda *a: {'available': False, 'message': 'Ждёт расписания', 'opens_at': '2026-12-01 10:00:00'}
+        row = Row(lesson='lesson', first_learner_visit_at=None, last_learner_visit_at=None)
+        self.fr.db.sql.side_effect = lambda query, params, **kw: [[1]] if query.startswith('SELECT COUNT') else [Row(row)]
+        with patch.dict(sys.modules, {'lms.lms.access_presentation': presentation}):
+            for mode, clause in [('assigned', 'r.name IS NOT NULL'), ('available', 'r.name IS NULL')]:
+                result = self.mod.list_member_lessons('course', 'student', 'grant', assignment_filter=mode)
+                query, params = self.fr.db.sql.call_args.args
+                self.assertIn(clause, query)
+                self.assertEqual(params['member'], 'student')
+                self.assertFalse(result['rows'][0]['effective_available'])
+                self.assertIsNone(result['rows'][0]['first_learner_visit_at'])
+                self.assertEqual(result['rows'][0]['opens_at_effective'], '2026-12-01 10:00:00')
+                self.assertNotIn('v.creation', query)
+        with self.assertRaises(ValueError):
+            self.mod.list_member_lessons('course', 'student', 'grant', assignment_filter='invalid')
 
     def test_remove_closes_all_grants_then_removes_only_enrollment(self):
         self.fr.db.get_value.side_effect=lambda doctype,*a,**kw: 'opaque-enrollment' if doctype=='LMS Enrollment' else None

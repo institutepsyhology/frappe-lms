@@ -95,12 +95,12 @@
 						"
 					>
 						<component
-							:is="inlineSelect || lesson.locked ? 'div' : 'router-link'"
+							:is="inlineSelect || (lesson.locked && !lesson.access_notice) ? 'div' : 'router-link'"
 							:to="
-								inlineSelect || lesson.locked ? undefined : lessonRoute(lesson)
+								inlineSelect || (lesson.locked && !lesson.access_notice) ? undefined : lessonRoute(lesson)
 							"
 							:class="
-								lesson.locked
+								lesson.locked && !lesson.access_notice
 									? 'cursor-not-allowed opacity-60'
 									: inlineSelect
 									? 'cursor-pointer'
@@ -315,7 +315,7 @@ function lessonRoute(lesson: OutlineLesson): RouteLocationRaw {
 }
 
 function onLessonClick(lesson: OutlineLesson) {
-	if (lesson.locked) return
+	if (lesson.locked && !lesson.access_notice) return
 	if (!props.inlineSelect) return
 	emit('select-lesson', {
 		chapterNumber: lesson.number.split('-')[0],

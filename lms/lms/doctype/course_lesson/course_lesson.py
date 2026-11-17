@@ -53,6 +53,7 @@ class CourseLesson(Document):
 				frappe.throw(_("Publish the lesson using its publication controls."), frappe.PermissionError)
 		self.content = sanitize_editorjs(self.content)
 		self.instructor_content = sanitize_editorjs(self.instructor_content)
+		self.access_notice_content = sanitize_editorjs(self.get('access_notice_content'))
 
 	def on_update(self):
 		self.validate_quiz_id()

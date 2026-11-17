@@ -223,3 +223,15 @@ describe('ChapterRow locked lesson', () => {
 		expect(wrapper.emitted('select-lesson')).toBeUndefined()
 	})
 })
+
+
+it('links a locked lesson to its access notice while preserving the lock indicator', () => {
+    const wrapper = mountRow({
+        ...chapter, idx: 1,
+        lessons: [{ name: 'LOCKED-NOTICE', title: 'Archive lesson', number: '1-1', locked: 1, access_notice: true }],
+    })
+    const link = wrapper.get('a')
+    expect(link.classes()).not.toContain('cursor-not-allowed')
+    expect(wrapper.find('.lucide-lock-keyhole').exists()).toBe(true)
+    wrapper.unmount()
+})

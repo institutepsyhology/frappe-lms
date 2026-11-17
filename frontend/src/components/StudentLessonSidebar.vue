@@ -54,15 +54,15 @@
 							<li v-for="lesson in chapter.lessons || []" :key="lesson.name">
 								<component
 									:is="
-										lesson.locked
+										lesson.locked && !lesson.access_notice
 											? 'div'
 											: inlineSelect
 											? 'button'
 											: 'router-link'
 									"
-									:type="!lesson.locked && inlineSelect ? 'button' : undefined"
+									:type="(!lesson.locked || lesson.access_notice) && inlineSelect ? 'button' : undefined"
 									:to="
-										lesson.locked || inlineSelect
+										(lesson.locked && !lesson.access_notice) || inlineSelect
 											? undefined
 											: {
 													name: 'Lesson',
@@ -76,7 +76,7 @@
 									"
 									class="flex w-full items-center gap-3 rounded ps-9 pe-3 py-2 text-start text-sm leading-5 text-ink-gray-8 hover:bg-surface-gray-2"
 									:class="[
-										lesson.locked
+										lesson.locked && !lesson.access_notice
 											? 'cursor-not-allowed opacity-60'
 											: inlineSelect
 											? 'cursor-pointer'
@@ -217,7 +217,7 @@ function isActive(number) {
 }
 
 function onLessonClick(lesson) {
-	if (lesson.locked) return
+	if (lesson.locked && !lesson.access_notice) return
 	emit('select-lesson', {
 		chapterNumber: lesson.number.split('-')[0],
 		lessonNumber: lesson.number.split('-')[1],
