@@ -31,6 +31,8 @@ class LMSCourse(Document):
 		self.validate_amount_and_currency()
 		self.image = validate_image(self.image)
 		self.validate_card_gradient()
+		from lms.lms.utils import sanitize_editorjs
+		self.access_notice_content = sanitize_editorjs(self.get('access_notice_content'))
 
 	def validate_published(self):
 		if not self.published:

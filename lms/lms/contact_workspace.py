@@ -283,6 +283,7 @@ def _course_rows(doc):
     policies = {row.course: row for row in frappe.get_all('LMS Access Policy', filters={'course': ['in', ids]},
         fields=['course', 'default_personal_end_type', 'default_personal_end_at', 'default_personal_end_days',
                 'global_end_type', 'global_end_at'], limit_page_length=0)} if ids else {}
+    from lms.lms.access_blocks import is_blocked
     result = []
     for key, group in grouped.items():
         course = group['course']
@@ -310,7 +311,7 @@ def _course_rows(doc):
             'starts_at': str(start) if start else None, 'ends_at': str(end) if end else None,
             'end_unknown': unknown, 'enrolled_at': str(enrollment.creation) if enrollment else None,
             'progress': enrollment.get('progress') if enrollment else None,
-            'status': selected.get('status') if selected else source.get('sync_status') if source else 'Unknown',
+            'status': 'Blocked' if member and course and is_blocked(member, course) else selected.get('status') if selected else source.get('sync_status') if source else 'Unknown',
             'grant_count': len(ordered_grants), 'archive_only': not member or not selected,
             'source_type': origin['kind'], 'source_label': origin['label'],
             'source_event_at': str(origin['issued_at']) if origin.get('issued_at') else None,

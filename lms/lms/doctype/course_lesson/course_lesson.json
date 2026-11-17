@@ -33,7 +33,9 @@
   "column_break_15",
   "file_type",
   "column_break_syza",
-  "help"
+  "help",
+  "show_when_unavailable",
+  "access_notice_content"
  ],
  "fields": [
   {
@@ -190,6 +192,18 @@
    "fieldtype": "Check",
    "label": "Is SCORM Package",
    "read_only": 1
+  },
+  {
+   "fieldname": "show_when_unavailable",
+   "fieldtype": "Check",
+   "label": "Show When Unavailable",
+   "default": "1"
+  },
+  {
+   "fieldname": "access_notice_content",
+   "fieldtype": "Long Text",
+   "label": "Unavailable Access Message",
+   "ignore_xss_filter": 1
   }
  ],
  "index_web_pages_for_search": 1,

@@ -93,3 +93,19 @@ describe('StudentLessonSidebar locked lesson', () => {
 		expect(wrapper.emitted('select-lesson')).toBeUndefined()
 	})
 })
+
+
+it('allows opening a locked lesson notice without showing it as completed', async () => {
+    const lesson = outline[0].lessons[2] as any
+    lesson.access_notice = true
+    const wrapper = mountSidebar()
+    try {
+        const row = wrapper.findAll('li li')[2]
+        expect(row.find('a').exists()).toBe(true)
+        expect(row.find('.cursor-not-allowed').exists()).toBe(false)
+        expect(row.find('.sr-only').text()).toBe('Locked')
+        await row.get('a').trigger('click')
+        expect(wrapper.emitted('select-lesson')?.[0]).toEqual([{ chapterNumber: '1', lessonNumber: '3' }])
+        expect(lesson.is_complete).toBe(0)
+    } finally { wrapper.unmount(); delete lesson.access_notice }
+})

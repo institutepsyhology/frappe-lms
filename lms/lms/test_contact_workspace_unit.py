@@ -77,7 +77,10 @@ class WorkspaceTests(unittest.TestCase):
             {'kind': 'unknown', 'label': 'Способ выдачи не записан', 'actor': None, 'issued_at': None})
         utils = types.ModuleType('frappe.utils')
         utils.validate_email_address = lambda value, **kw: value if '@' in value else None
-        self.patch = patch.dict(sys.modules, {'frappe': f, 'frappe.utils': utils,
+        self.blocked = False
+        blocks = types.ModuleType('lms.lms.access_blocks')
+        blocks.is_blocked = lambda member, course: self.blocked
+        self.patch = patch.dict(sys.modules, {'lms.lms.access_blocks': blocks, 'frappe': f, 'frappe.utils': utils,
             'lms.lms.avo_contact_card': legacy, 'lms.lms.staff_authority': authority,
             'lms.lms.credential_profiles': credential, 'lms.lms.support_credentials': support,
             'lms.lms.individual_access': access, 'lms.lms.course_people': people})
@@ -160,6 +163,15 @@ class WorkspaceTests(unittest.TestCase):
         self.assertFalse(row['can_edit'])
         ledger_query = next(query for kind, query in self.queries if kind == 'AVO Course Access')
         self.assertEqual(ledger_query['filters'], {'account': 'mv-centr', 'source_contact_id': '42'})
+
+    def test_effective_course_block_is_displayed_as_closed(self):
+        self.allow.add(('course_access', 'read', 'course-one'))
+        self.rows['LMS Access Grant'] = [Row(name='g', course='course-one', status='Active', creation='2026-11-15', starts_at='2026-11-16', personal_end_type='Unlimited', course_end_type='Unlimited')]
+        self.rows['LMS Course'] = [Row(name='course-one', title='Course One')]
+        self.blocked = True
+        self.assertEqual(self.m.list_person_courses('User', self.user.name)['rows'][0]['status'], 'Blocked')
+        self.blocked = False
+        self.assertEqual(self.m.list_person_courses('User', self.user.name)['rows'][0]['status'], 'Active')
 
     def test_explicit_new_issuance_has_its_actual_actor_and_time(self):
         self.allow.add(('course_access', 'read', 'course-one'))

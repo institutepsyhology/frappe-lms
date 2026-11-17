@@ -59,12 +59,21 @@ def _permitted(course, lesson=None):
     from lms.lms.utils import can_view_course, guest_access_allowed
     if not guest_access_allowed() or not can_view_course(course):
         return False
+    from lms.lms.access_presentation import course_notice, is_visible
+    if not course_notice(course)['visible']:
+        return False
     if lesson:
-        from lms.lms.permissions import can_access_lesson, get_lesson_gate
+        from lms.lms.permissions import can_access_lesson, get_lesson_gate, publication_allows_lesson
+        row = frappe.db.get_value('Course Lesson', lesson,
+            ['course', 'is_draft', 'publication_audience', 'lesson_published_at'], as_dict=True)
+        if not row or not publication_allows_lesson(lesson, row, frappe.session.user):
+            from lms.lms.utils import can_modify_course
+            if not can_modify_course(course):
+                return False
         if not can_access_lesson(lesson):
-            return False
+            return is_visible('Course Lesson', lesson)
         locked, _ = get_lesson_gate(course)
-        return lesson not in locked
+        return lesson not in locked or is_visible('Course Lesson', lesson)
     return True
 
 

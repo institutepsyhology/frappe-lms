@@ -2402,6 +2402,10 @@ def track_video_watch_duration(lesson: str, videos: list):
 	if not can_access_lesson(lesson):
 		frappe.throw(_("You do not have access to this lesson."), frappe.PermissionError)
 
+	from lms.lms.visit_tracking import learner_activity_allowed
+	if not learner_activity_allowed():
+		return
+
 	if not isinstance(videos, list):
 		videos = json.loads(videos)
 

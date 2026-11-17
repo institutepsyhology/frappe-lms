@@ -39,9 +39,11 @@
 			<button type="button" class="rounded bg-ink-gray-9 px-4 py-2 text-white" :disabled="busy" @click="save">Сохранить настройки урока</button>
 		</div>
 	</details>
+	<UnavailableAccessSettings :course="course" :lesson="lesson" />
 </template>
 <script setup lang="ts">
 import { call, toast } from 'frappe-ui'
+import UnavailableAccessSettings from '@/components/Courses/UnavailableAccessSettings.vue'
 import { computed, inject, reactive, ref, watch } from 'vue'
 import type { SessionUser } from '@/types'
 type Rule = { opening_type: string; opens_at: string | null; delay_days: number; not_before_at: string | null; lesson_ends_at: string | null; always_open: boolean; prerequisite_type: string; prerequisite_lesson: string | null; prerequisite_assignment: string | null }

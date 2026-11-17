@@ -111,6 +111,11 @@ def run():
             'email_ids': [{'email_id': prefix + '-linked@example.invalid', 'is_primary': 1}]})
         if frappe.get_meta('Contact').has_field('custom_avo_account'):
             contact.custom_avo_account = 'mv-centr'
+            # The installed identity guard requires a complete matching identity.
+            source_id = str(int(uuid.uuid4().hex[:10], 16))
+            contact.custom_avo_contact_id = source_id
+            frappe.db.set_value('User', members[0], {'custom_avo_account': 'mv-centr',
+                'custom_avo_contact_id': source_id}, update_modified=False)
         contact.insert(ignore_permissions=True)
         policy = frappe.get_doc({'doctype': 'LMS Access Policy', 'course': course.name, 'enabled': 1,
             'default_personal_end_type': 'Unlimited', 'global_end_type': 'Unlimited',

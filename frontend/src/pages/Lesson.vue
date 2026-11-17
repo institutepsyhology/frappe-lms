@@ -51,7 +51,8 @@
 		</div>
 
 		<div class="grid md:grid-cols-[70%,30%] sm:h-[94vh]">
-			<div v-if="lesson.data.no_preview" class="sm:border-e">
+			<div v-if="lesson.data.access_denied" class="sm:border-e p-5"><AccessNotice :message="lesson.data.access_message" :content="lesson.data.notice_content" /></div>
+			<div v-else-if="lesson.data.no_preview" class="sm:border-e">
 				<div class="shadow rounded-md w-3/4 mt-10 mx-auto text-center p-4">
 					<div class="flex items-center justify-center mt-4 gap-x-2">
 						<span class="lucide-lock-keyhole size-4 text-ink-gray-5" />
@@ -426,6 +427,7 @@ import {
 } from '@/utils/lessonProgress'
 import EditorJS from '@editorjs/editorjs'
 import LessonContent from '@/components/LessonContent.vue'
+import AccessNotice from '@/components/AccessNotice.vue'
 import CourseInstructors from '@/components/CourseInstructors.vue'
 import ProgressBar from '@/components/ProgressBar.vue'
 import Discussions from '@/components/Discussions.vue'

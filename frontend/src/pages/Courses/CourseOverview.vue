@@ -85,6 +85,7 @@
 					</div>
 				</section>
 
+				<AccessNotice v-if="course.data.access_state && !course.data.access_state.available" :message="course.data.access_state.message" :content="course.data.access_state.notice_content" />
 				<section>
 					<div class="flex items-baseline justify-between gap-4 mb-4">
 						<h2 class="text-3xl-semibold text-ink-gray-9">
@@ -164,6 +165,7 @@ import CourseInstructors from '@/components/CourseInstructors.vue'
 import CourseCreatorCard from '@/components/CourseCreatorCard.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import RelatedCourses from '@/components/RelatedCourses.vue'
+import AccessNotice from '@/components/AccessNotice.vue'
 
 const props = defineProps<{
 	course: Resource<CourseDetails | null>
