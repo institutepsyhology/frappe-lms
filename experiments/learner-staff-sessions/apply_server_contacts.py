@@ -15,7 +15,9 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
+from types import SimpleNamespace
 
 from mvcentr_contact_plan import plan,email,EMAIL,matches,PlanError
 
@@ -123,7 +125,55 @@ def target_map(frappe,account):
     return result
 
 
-def insert_one(frappe,decision,account):
+@contextmanager
+def inline_contact_creation(frappe,user,account):
+    """Run this private import's native mirror in its creation transaction.
+
+    Only the single-threaded selected MV writer opts in. All User hooks still
+    run; exactly one known enqueue is replaced with the same native function.
+    Other jobs keep their normal queue/after-commit semantics.
+    """
+    if (account!='mastervision' or frappe.local.site!=destination(account)
+            or frappe.session.user!='Administrator' or threading.active_count()!=1
+            or user.get('doctype')!='User' or user.get('user_type')!='Website User'
+            or user.get('custom_avo_account')!=account):
+        raise ApplyError('inline_worker_required')
+    original=frappe.enqueue;missing=object();previous=getattr(frappe.local,'job',missing)
+    method_name='frappe.core.doctype.user.user.create_contact';seen=0
+
+    def enqueue(method,*args,**kwargs):
+        nonlocal seen
+        if method!=method_name or kwargs.get('user') is not user:
+            return original(method,*args,**kwargs)
+        if (args or set(kwargs)!={'user','ignore_mandatory','now','enqueue_after_commit'}
+                or kwargs['ignore_mandatory'] is not True or kwargs['now'] not in (None,False)
+                or kwargs['enqueue_after_commit'] is not True or seen):
+            raise ApplyError('native_contact_hook_changed')
+        seen+=1
+        # The identity mixin uses this trusted context to reject a foreign
+        # email-matched Contact before any changed profile can be persisted.
+        frappe.local.job=SimpleNamespace(method=method_name,kwargs={'user':user})
+        try:
+            lookup=frappe.get_attr('frappe.contacts.doctype.contact.contact.get_contact_name')
+            if lookup(user.email):raise ApplyError('native_contact_already_exists')
+            frappe.get_attr(method_name)(user=user,ignore_mandatory=True)
+            matches=frappe.get_all('Contact',filters={'email_id':user.email},
+                fields=['name','user','email_id'],limit_page_length=2)
+            saved=matches[0] if len(matches)==1 else None
+            if not saved or saved.get('user')!=user.name or saved.get('email_id')!=user.email:
+                raise ApplyError('native_contact_readback_mismatch')
+        finally:
+            if previous is missing:del frappe.local.job
+            else:frappe.local.job=previous
+
+    frappe.enqueue=enqueue
+    try:
+        yield
+        if seen!=1:raise ApplyError('native_contact_hook_missing')
+    finally:frappe.enqueue=original
+
+
+def insert_one(frappe,decision,account,*,inline_contacts=False):
     if frappe.local.site!=destination(account) or frappe.session.user!='Administrator':raise ApplyError('wrong_operator')
     data=decision['data']
     if data.get('custom_avo_account')!=account:raise ApplyError('source_identity_mismatch')
@@ -138,7 +188,9 @@ def insert_one(frappe,decision,account):
             from lms.lms.support_credentials import store_new_user_password
             saved=frappe.get_doc({'doctype':'User',**data,'user_type':'Website User','send_welcome_email':0})
             saved.flags.ignore_password_policy=True
-            _insert_imported_user(saved)
+            if inline_contacts:
+                with inline_contact_creation(frappe,saved,account):_insert_imported_user(saved)
+            else:_insert_imported_user(saved)
             store_new_user_password(saved.name,data['new_password'])
             if decision['source_banned']:frappe.db.set_value('User',saved.name,'enabled',0,update_modified=False)
             saved=frappe.get_doc('User',saved.name)
@@ -171,10 +223,10 @@ def wait_ready(*,pending,free,stopped,waiting,pause=time.sleep):
         return
 
 
-def insert_ready(frappe,decision,account,*,pending,free,stopped,waiting,pause=time.sleep):
+def insert_ready(frappe,decision,account,*,pending,free,stopped,waiting,pause=time.sleep,inline_contacts=False):
     for attempt in range(10):
         wait_ready(pending=pending,free=free,stopped=stopped,waiting=waiting,pause=pause)
-        try:return insert_one(frappe,decision,account)
+        try:return insert_one(frappe,decision,account,inline_contacts=inline_contacts)
         except Exception as error:
             if type(error).__name__!='QueueOverloaded':raise
             if attempt==9:raise ApplyError('queue_retry_limit') from None
@@ -310,7 +362,8 @@ def run(frappe,account,*,limit=20,retry_issues=False,selection=None):
                     elif action=='deferred':status='deferred';reason=decision['reason']
                     else:
                         identities[ident]=insert_ready(frappe,decision,account,pending=lambda:queue.count,
-                            free=lambda:shutil.disk_usage(base).free,stopped=stopped,waiting=update)
+                            free=lambda:shutil.disk_usage(base).free,stopped=stopped,waiting=update,
+                            inline_contacts=selected is not None)
                         status='created_user' if action=='create_user' else 'created_contact'
                         if selected is not None and fresh_optout(folder,ident):
                             apply_optout(frappe,account,ident);identities[ident]['blocked']=True
