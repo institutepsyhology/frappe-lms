@@ -17,7 +17,6 @@ import subprocess
 import sys
 import threading
 import time
-from types import SimpleNamespace
 
 from mvcentr_contact_plan import plan,email,EMAIL,matches,PlanError
 
@@ -152,13 +151,20 @@ def inline_contact_creation(frappe,user,account):
         seen+=1
         # The identity mixin uses this trusted context to reject a foreign
         # email-matched Contact before any changed profile can be persisted.
-        frappe.local.job=SimpleNamespace(method=method_name,kwargs={'user':user})
+        frappe.local.job=frappe._dict(method=method_name,kwargs={'user':user})
         try:
             lookup=frappe.get_attr('frappe.contacts.doctype.contact.contact.get_contact_name')
             if lookup(user.email):raise ApplyError('native_contact_already_exists')
             frappe.get_attr(method_name)(user=user,ignore_mandatory=True)
             matches=frappe.get_all('Contact',filters={'email_id':user.email},
                 fields=['name','user','email_id'],limit_page_length=2)
+            if not matches:
+                # Native create_contact swallows DuplicateEntryError when its
+                # name derived from a person's name collides. Preserve every
+                # native Contact hook, with an explicit source-bound name.
+                numeric_contact_mirror(frappe,user,account)
+                matches=frappe.get_all('Contact',filters={'email_id':user.email},
+                    fields=['name','user','email_id'],limit_page_length=2)
             saved=matches[0] if len(matches)==1 else None
             if not saved or saved.get('user')!=user.name or saved.get('email_id')!=user.email:
                 raise ApplyError('native_contact_readback_mismatch')
@@ -171,6 +177,19 @@ def inline_contact_creation(frappe,user,account):
         yield
         if seen!=1:raise ApplyError('native_contact_hook_missing')
     finally:frappe.enqueue=original
+
+
+def numeric_contact_mirror(frappe,user,account):
+    ident=user.get('custom_avo_contact_id')
+    if (account!='mastervision' or type(ident) is not str
+            or not re.fullmatch('[1-9][0-9]{0,18}',ident) or int(ident)>=2**63):
+        raise ApplyError('source_identity_mismatch')
+    contact=frappe.get_doc({'doctype':'Contact','first_name':user.first_name,'last_name':user.last_name,
+        'user':user.name,'gender':user.gender})
+    contact.add_email(user.email,is_primary=True)
+    if user.phone:contact.add_phone(user.phone,is_primary_phone=True)
+    if user.mobile_no:contact.add_phone(user.mobile_no,is_primary_mobile_no=True)
+    contact.insert(set_name='avo-'+account+'-user-'+ident,ignore_permissions=True,ignore_mandatory=True)
 
 
 def insert_one(frappe,decision,account,*,inline_contacts=False):

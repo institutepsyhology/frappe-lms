@@ -9,15 +9,21 @@ from test_apply_server_contacts import Doc,WorkerTests
 METHOD='frappe.core.doctype.user.user.create_contact'
 
 
+class Job(dict):
+    __getattr__=dict.get
+
+
 class InlineTests(unittest.TestCase):
     def setup_case(self):
         user=Doc(doctype='User',user_type='Website User',custom_avo_account='mastervision',
-            name='test@example.invalid',email='test@example.invalid')
+            custom_avo_contact_id='123',name='test@example.invalid',email='test@example.invalid',
+            first_name='Test',last_name='Person',gender=None,phone='123',mobile_no='999')
         original=Mock();native=Mock()
         lookup=Mock(return_value=None)
         fake=SimpleNamespace(local=SimpleNamespace(site=worker.destination('mastervision')),
             session=SimpleNamespace(user='Administrator'),enqueue=original,
             get_attr=Mock(side_effect=lambda method:native if method==METHOD else lookup),
+            _dict=Job,
             get_all=Mock(return_value=[{'name':'synthetic-contact','user':user.name,'email_id':user.email}]))
         return user,fake,original,native
 
@@ -93,6 +99,21 @@ class InlineTests(unittest.TestCase):
             with worker.inline_contact_creation(fake,user,'mastervision'):self.enqueue(fake,user)
         native.assert_called_once()
 
+    def test_native_translation_context_supports_mapping_access(self):
+        user,fake,original,native=self.setup_case()
+        native.side_effect=lambda **kwargs:self.assertIsNone(fake.local.job.get('lang'))
+        with worker.inline_contact_creation(fake,user,'mastervision'):self.enqueue(fake,user)
+
+    def test_native_name_collision_uses_source_bound_contact_name(self):
+        user,fake,original,native=self.setup_case()
+        mirror=SimpleNamespace(add_email=Mock(),add_phone=Mock(),insert=Mock())
+        fake.get_doc=Mock(return_value=mirror)
+        fake.get_all.side_effect=[[],[{'name':'numeric','user':user.name,'email_id':user.email}]]
+        with worker.inline_contact_creation(fake,user,'mastervision'):self.enqueue(fake,user)
+        mirror.insert.assert_called_once_with(set_name='avo-mastervision-user-123',ignore_permissions=True,ignore_mandatory=True)
+        mirror.add_email.assert_called_once_with(user.email,is_primary=True)
+        self.assertEqual(mirror.add_phone.call_count,2)
+
     def test_foreign_user_enqueue_is_never_intercepted(self):
         user,fake,original,native=self.setup_case();foreign=object()
         with self.assertRaisesRegex(worker.ApplyError,'^native_contact_hook_missing$'):
@@ -104,10 +125,11 @@ class InlineTests(unittest.TestCase):
         for fail in ('mirror','password'):
             decision,db,fake,modules,calls=helper.setup_user()
             original=Mock();fake.enqueue=original
+            fake._dict=Job
             fake.get_attr=lambda method:(lambda **kwargs:None) if method==METHOD else lambda _:None
             fake.get_all=lambda *args,**kwargs:[{'name':'mirror','user':db.doc.name,'email_id':db.doc.email}]
             def insert(doc):
-                if fail=='mirror':fake.get_all=lambda *args,**kwargs:[]
+                if fail=='mirror':fake.get_all=lambda *args,**kwargs:[{'user':'foreign','email_id':db.doc.email}]
                 self.enqueue(fake,doc)
             modules['lms.lms.avo_user_import']._insert_imported_user=insert
             if fail=='password':modules['lms.lms.support_credentials'].store_new_user_password=lambda *_:(_ for _ in ()).throw(ValueError('synthetic'))
