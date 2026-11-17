@@ -34,7 +34,7 @@ class WorkerTests(unittest.TestCase):
                 patch.object(worker,'verify_release'),patch.object(worker,'launch',return_value={'status':'starting'}) as launch, \
                 redirect_stdout(io.StringIO()):
             self.assertEqual(worker.main(),0)
-        launch.assert_called_once_with('mastervision',retry_issues=True)
+        launch.assert_called_once_with('mastervision',retry_issues=True,selection=None)
 
     def setup_user(self,account='mastervision',**changes):
         decision=plan(row(**changes),email_frequency=1,account=account)

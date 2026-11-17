@@ -21,7 +21,7 @@ from mvcentr_contact_plan import plan,email,EMAIL,matches,PlanError
 
 SITES={'mastervision':'my-lk.mastervision.su','iomp':'my-lk.iomp.ru'}
 RESERVE=2*1024**3
-RELEASE_FILES=frozenset(('apply_server_contacts.py','server_contact_reader.py','mvcentr_contact_plan.py','server_archive_sink.py'))
+RELEASE_FILES=frozenset(('apply_server_contacts.py','server_contact_reader.py','mvcentr_contact_plan.py','server_archive_sink.py','selected_mastervision_links.py'))
 
 
 class ApplyError(Exception):pass
@@ -197,7 +197,54 @@ def apply_optout(frappe,account,ident):
     except BaseException:frappe.db.rollback();raise
 
 
-def run(frappe,account,*,limit=20,retry_issues=False):
+def validate_selection(value):
+    """Bind a private ID-only selection to its exact, canonical contents."""
+    if type(value) is not dict or set(value)!={'ids','manifest'}:raise ApplyError('invalid_selection')
+    ids=value['ids'];manifest=value['manifest']
+    if (type(ids) is not list or not ids or len(ids)>1000000
+            or any(type(i) is not int or not 0<i<2**63 for i in ids)
+            or ids!=sorted(set(ids)) or type(manifest) is not dict
+            or manifest.get('format')!='mastervision-contact-selection-v1'
+            or manifest.get('account')!='mastervision' or manifest.get('union_count')!=len(ids)):
+        raise ApplyError('invalid_selection')
+    digest=hashlib.sha256()
+    for ident in ids:digest.update((str(ident)+'\n').encode('ascii'))
+    if manifest.get('fingerprint')!=digest.hexdigest():raise ApplyError('invalid_selection')
+    return set(map(str,ids)),digest.hexdigest()
+
+
+def selection_path(fingerprint):
+    if type(fingerprint) is not str or not re.fullmatch('[a-f0-9]{64}',fingerprint):raise ApplyError('invalid_selection')
+    return Path('/home/frappe/frappe-bench/sites')/SITES['mastervision']/'private/selected-contacts'/fingerprint
+
+
+def read_selection(account,fingerprint):
+    if account!='mastervision':raise ApplyError('wrong_account')
+    folder=selection_path(fingerprint)
+    if folder.is_symlink():raise ApplyError('unsafe_path')
+    path=safe_file(folder/'selection.json')
+    if path.stat().st_size>32*1024**2:raise ApplyError('invalid_selection')
+    value=json.loads(path.read_text())
+    ids,digest=validate_selection(value)
+    if digest!=fingerprint:raise ApplyError('invalid_selection')
+    return ids,folder
+
+
+def fresh_optout(folder,ident):
+    """A fresh API flag must survive creation from an older source snapshot."""
+    path=safe_file(folder/'individual/profiles.sqlite')
+    if not path.exists():return False
+    with closing(sqlite3.connect(path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
+        # Initialization precedes every fresh request. No table means the
+        # collector has not yet saved any profile, so it will set the flag itself.
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_optouts'").fetchone():return False
+        metadata=dict(db.execute('SELECT key,value FROM metadata'))
+        if metadata.get('account')!='mastervision' or metadata.get('selection')!=folder.name:
+            raise ApplyError('profile_identity_mismatch')
+        return db.execute('SELECT 1 FROM source_optouts WHERE source_id=?',(int(ident),)).fetchone() is not None
+
+
+def run(frappe,account,*,limit=20,retry_issues=False,selection=None):
     site=destination(account)
     if frappe.local.site!=site or frappe.session.user!='Administrator':raise ApplyError('wrong_operator')
     from cryptography.fernet import Fernet
@@ -206,19 +253,30 @@ def run(frappe,account,*,limit=20,retry_issues=False):
     if not frappe.conf.encryption_key:raise ApplyError('existing_site_key_required')
     cipher=Fernet(frappe.conf.encryption_key.encode())
     job=Path(frappe.get_site_path('private','avo-api-archive','job-20261116'))
-    base=Path(frappe.get_site_path('private','apply-avo-contacts'));private(base)
-    with lock(base):
-        frequencies=Counter();source_count=0
+    general=Path(frappe.get_site_path('private','apply-avo-contacts'));private(general)
+    selected=None
+    if selection:
+        selected,folder=read_selection(account,selection)
+        if (folder/'STOP').exists():raise Paused()
+        base=folder/'application';private(base)
+    else:base=general
+    # A selected task has a separate ledger/STOP, but must never overlap a
+    # general writer. It does not remove or bypass that writer's owner STOP.
+    with lock(general):
+        frequencies=Counter();source_count=0;selected_seen=set()
         # Full validation before the first production change. Only IDs/counts,
         # never passwords or row bodies, are retained beyond a source page.
         for row in iter_contacts(job,cipher,account):
+            if (base/'STOP').exists() or selected is not None and (folder/'STOP').exists():raise Paused()
             source_count+=1
+            if selected is not None and row['id_contact'] in selected:selected_seen.add(row['id_contact'])
             try:address=email(row)
             except PlanError:continue
             if EMAIL.fullmatch(address):frequencies[address]+=1
         with closing(sqlite3.connect((job/'snapshot.sqlite').resolve().as_uri()+'?mode=ro',uri=True)) as source:
             snapshot=dict(source.execute('SELECT key,value FROM metadata'))['snapshot']
-        with closing(open_state(base,account,snapshot)) as state:
+        if selected is not None and selected_seen!=selected:raise ApplyError('selection_missing_source')
+        with closing(open_state(base,account,snapshot+(':'+selection if selection else ''))) as state:
             identities=target_map(frappe,account)
             taken={str(x[0]).strip().lower() for x in frappe.db.sql('''SELECT email FROM tabUser
                 UNION SELECT email_id FROM tabContact
@@ -226,21 +284,26 @@ def run(frappe,account,*,limit=20,retry_issues=False):
             done={ident for ident,status in state.execute('SELECT source_id,status FROM decisions')
                 if not retry_issues or status not in ('deferred','failed')}
             queue=get_queue('default');failures=0;created=0;handled=0
-            stopped=lambda:(base/'STOP').exists()
-            update=lambda status:progress(base,state,status,account,source_count=source_count)
+            stopped=lambda:(base/'STOP').exists() or selected is not None and (folder/'STOP').exists()
+            update=lambda status:progress(base,state,status,account,source_count=source_count,
+                selection_fingerprint=selection,selection_count=len(selected) if selected is not None else source_count)
             update('applying')
             for row in iter_contacts(job,cipher,account):
                 if stopped():return update('paused')
                 ident=row['id_contact']
-                if ident in done:continue
+                if selected is not None and ident not in selected:continue
                 try:
                     current=identities.get(ident)
+                    fresh=selected is not None and fresh_optout(folder,ident)
+                    # Crash recovery must replay a captured positive flag even
+                    # if native creation or an earlier ledger write committed.
+                    if ident in done and not (fresh and current and not current['blocked']):continue
                     decision=plan(row,account=account,existing_kind=current['kind'] if current else None,
                         email_frequency=frequencies.get(email(row),0) if not current else 0,
                         email_taken=email(row) in taken if not current else False)
                     action=decision['action'];reason=None
                     if action=='existing':
-                        if decision['optout'] and not current['blocked']:
+                        if (decision['optout'] or fresh) and not current['blocked']:
                             wait_ready(pending=lambda:queue.count,free=lambda:shutil.disk_usage(base).free,stopped=stopped,waiting=update)
                             apply_optout(frappe,account,ident);current['blocked']=True;status='existing_optout_set'
                         else:status='existing_preserved'
@@ -249,6 +312,8 @@ def run(frappe,account,*,limit=20,retry_issues=False):
                         identities[ident]=insert_ready(frappe,decision,account,pending=lambda:queue.count,
                             free=lambda:shutil.disk_usage(base).free,stopped=stopped,waiting=update)
                         status='created_user' if action=='create_user' else 'created_contact'
+                        if selected is not None and fresh_optout(folder,ident):
+                            apply_optout(frappe,account,ident);identities[ident]['blocked']=True
                         if action=='create_user':taken.add(decision['data']['email'])
                         created+=1
                     record(state,ident,status,reason);failures=0
@@ -263,20 +328,32 @@ def run(frappe,account,*,limit=20,retry_issues=False):
                 if handled%20==0:update('applying')
                 if limit and created>=limit:return update('batch_complete')
                 # IOMP yields more time to MV and the single native default worker.
-                time.sleep(0.15 if account=='mastervision' else 0.6)
+                time.sleep(0.05 if selected is not None else 0.15 if account=='mastervision' else 0.6)
+            if selected is not None:
+                actual=target_map(frappe,account)
+                missing=selected-set(actual)
+                if missing:return progress(base,state,'completed_with_issues',account,
+                    missing_contacts=len(missing),selection_count=len(selected),selection_fingerprint=selection)
             return update('completed_with_issues' if state.execute("SELECT 1 FROM decisions WHERE status IN ('failed','deferred') LIMIT 1").fetchone() else 'completed')
 
 
-def launch(account,*,retry_issues=False):
+def launch(account,*,retry_issues=False,selection=None):
     base=Path('/home/frappe/frappe-bench/sites')/destination(account)/'private/apply-avo-contacts';private(base)
-    if (base/'STOP').exists():raise ApplyError('paused')
+    if selection:
+        _,folder=read_selection(account,selection)
+        output=folder/'application';private(output)
+        if (folder/'STOP').exists() or (output/'STOP').exists():raise ApplyError('paused')
+    else:
+        output=base
+        if (base/'STOP').exists():raise ApplyError('paused')
     # Reject an already running writer; the child also owns worker.lock itself.
     with lock(base):pass
-    log=safe_file(base/'worker.log')
+    log=safe_file(output/'worker.log')
     fd=os.open(log,os.O_WRONLY|os.O_CREAT|os.O_APPEND|os.O_NOFOLLOW,0o600)
     with os.fdopen(fd,'ab',buffering=0) as stream:
         command=[sys.executable,'-B',str(Path(__file__).resolve()),'--account',account,'--apply','--limit','0']
         if retry_issues:command.append('--retry-issues')
+        if selection:command.extend(['--selection',selection])
         child=subprocess.Popen(command,
             stdin=subprocess.DEVNULL,stdout=stream,stderr=stream,start_new_session=True,close_fds=True)
     return {'status':'starting','account':account,'site':destination(account),'worker_pid':child.pid}
@@ -287,18 +364,21 @@ def main():
     parser.add_argument('--account',required=True,choices=tuple(SITES))
     parser.add_argument('--apply',action='store_true');parser.add_argument('--start',action='store_true')
     parser.add_argument('--limit',type=int,default=20);parser.add_argument('--retry-issues',action='store_true')
+    parser.add_argument('--selection',help='Private Master Vision selection fingerprint; never a file path.')
     args=parser.parse_args()
     if args.apply==args.start or args.limit<0:raise SystemExit('explicit_action_required')
     frappe=None
     try:
         verify_release()
-        if args.start:result=launch(args.account,retry_issues=args.retry_issues)
+        if args.start:result=launch(args.account,retry_issues=args.retry_issues,selection=args.selection)
         else:
             import frappe
             frappe.init(site=destination(args.account));frappe.connect();frappe.set_user('Administrator')
             # Native import errors may contain source values. Never print them.
             with open(os.devnull,'w') as quiet,redirect_stdout(quiet):
-                result=run(frappe,args.account,limit=args.limit,retry_issues=args.retry_issues)
+                result=run(frappe,args.account,limit=args.limit,retry_issues=args.retry_issues,selection=args.selection)
+    except Paused:
+        result={'status':'paused','account':args.account,'site':destination(args.account)}
     except Exception as error:
         result={'status':'stopped','account':args.account,'site':destination(args.account),
             'error_code':error.args[0] if isinstance(error,ApplyError) else type(error).__name__}

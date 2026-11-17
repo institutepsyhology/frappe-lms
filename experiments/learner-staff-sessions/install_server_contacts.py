@@ -12,7 +12,7 @@ HERE=Path(__file__).resolve().parent
 REPO=HERE.parents[1]
 WORKSPACE=HERE.parents[2]
 SITES={'mastervision':'my-lk.mastervision.su','iomp':'my-lk.iomp.ru'}
-FILES=('apply_server_contacts.py','server_contact_reader.py','mvcentr_contact_plan.py','server_archive_sink.py')
+FILES=('apply_server_contacts.py','server_contact_reader.py','mvcentr_contact_plan.py','server_archive_sink.py','selected_mastervision_links.py')
 
 INSTALLER=r'''
 import base64,hashlib,json,os,re,sys
@@ -22,7 +22,7 @@ assert set(request)=={'account','revision','files'} and re.fullmatch('[a-f0-9]{4
 sites={'mastervision':'my-lk.mastervision.su','iomp':'my-lk.iomp.ru'}
 assert request['account'] in sites
 site=sites[request['account']]
-names={'apply_server_contacts.py','server_contact_reader.py','mvcentr_contact_plan.py','server_archive_sink.py'}
+names={'apply_server_contacts.py','server_contact_reader.py','mvcentr_contact_plan.py','server_archive_sink.py','selected_mastervision_links.py'}
 assert set(request['files'])==names
 base=Path('/home/frappe/frappe-bench/sites')/site/'private/apply-avo-contacts'
 assert not base.is_symlink()
