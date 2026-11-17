@@ -74,9 +74,24 @@ class InlineTests(unittest.TestCase):
             if case=='site':fake.local.site='my-lk.mv-centr.ru'
             if case=='actor':fake.session.user='not-admin@example.invalid'
             if case=='user_type':user['user_type']='System User'
-            with patch.object(worker.threading,'active_count',return_value=2 if case=='thread' else 1),self.assertRaises(worker.ApplyError):
+            owner=worker.threading.main_thread()
+            with patch.object(worker.threading,'current_thread',return_value=object() if case=='thread' else owner),self.assertRaises(worker.ApplyError):
                 with worker.inline_contact_creation(fake,user,account):pass
             self.assertIs(fake.enqueue,original);native.assert_not_called()
+
+    def test_background_thread_enqueue_retains_native_semantics(self):
+        user,fake,original,native=self.setup_case()
+        with worker.inline_contact_creation(fake,user,'mastervision'):
+            with patch.object(worker.threading,'current_thread',return_value=object()):self.enqueue(fake,user)
+            native.assert_not_called()
+            self.enqueue(fake,user)
+        native.assert_called_once();original.assert_called_once()
+
+    def test_cache_listener_does_not_disable_main_thread_import(self):
+        user,fake,original,native=self.setup_case()
+        with patch.object(worker.threading,'active_count',return_value=2):
+            with worker.inline_contact_creation(fake,user,'mastervision'):self.enqueue(fake,user)
+        native.assert_called_once()
 
     def test_foreign_user_enqueue_is_never_intercepted(self):
         user,fake,original,native=self.setup_case();foreign=object()

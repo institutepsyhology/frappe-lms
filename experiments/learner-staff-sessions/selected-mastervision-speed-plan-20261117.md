@@ -5,7 +5,7 @@ near its 100-job import gate; 97 of 98 pending jobs are native User.create_conta
 mirrors. One worker serves short/default while long is idle. Source-ID lookups
 already use indexes; adding another index would not address this bottleneck.
 
-Replace only the selected, single-threaded MV import's known create_contact enqueue
+Replace only the selected MV import main thread's known create_contact enqueue
 with the same native function inside the User creation transaction. Preserve User
 lifecycle hooks, native Contact identity validation, current-hash verification,
 encrypted support-password storage, read-back, per-ID commit/recovery, opt-outs,
@@ -30,3 +30,8 @@ measure sustained post-change import/link deltas and queue depth. Keep productio
 source data and status ledgers private. Record measured results, not a promised
 multiplier. If native read-back fails, roll back that record and revert the private
 writer release; source collection remains independent.
+
+Live Frappe initialization starts a Redis PubSubWorkerThread for cache invalidation.
+It is not a second importer. Bind interception to its owner main thread and delegate
+every background-thread call to the original enqueue function; a total-thread-count
+guard would incorrectly reject this normal framework listener before writing.

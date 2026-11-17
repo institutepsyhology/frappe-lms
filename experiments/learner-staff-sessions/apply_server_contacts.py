@@ -129,21 +129,21 @@ def target_map(frappe,account):
 def inline_contact_creation(frappe,user,account):
     """Run this private import's native mirror in its creation transaction.
 
-    Only the single-threaded selected MV writer opts in. All User hooks still
+    Only the selected MV writer's main thread opts in. All User hooks still
     run; exactly one known enqueue is replaced with the same native function.
     Other jobs keep their normal queue/after-commit semantics.
     """
     if (account!='mastervision' or frappe.local.site!=destination(account)
-            or frappe.session.user!='Administrator' or threading.active_count()!=1
+            or frappe.session.user!='Administrator' or threading.current_thread() is not threading.main_thread()
             or user.get('doctype')!='User' or user.get('user_type')!='Website User'
             or user.get('custom_avo_account')!=account):
         raise ApplyError('inline_worker_required')
     original=frappe.enqueue;missing=object();previous=getattr(frappe.local,'job',missing)
-    method_name='frappe.core.doctype.user.user.create_contact';seen=0
+    method_name='frappe.core.doctype.user.user.create_contact';seen=0;owner=threading.current_thread()
 
     def enqueue(method,*args,**kwargs):
         nonlocal seen
-        if method!=method_name or kwargs.get('user') is not user:
+        if threading.current_thread() is not owner or method!=method_name or kwargs.get('user') is not user:
             return original(method,*args,**kwargs)
         if (args or set(kwargs)!={'user','ignore_mandatory','now','enqueue_after_commit'}
                 or kwargs['ignore_mandatory'] is not True or kwargs['now'] not in (None,False)
