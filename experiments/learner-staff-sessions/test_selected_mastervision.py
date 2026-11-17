@@ -78,6 +78,7 @@ class SelectionTests(ServerPlatformTest):
             initial={'123':{'kind':'User','blocked':False}} if replay else {}
             with patch.dict(sys.modules,{'server_contact_reader':reader,'frappe.utils.background_jobs':jobs}), \
                     patch.object(worker,'read_selection',return_value=({'123','125'},folder)), \
+                    patch.object(worker,'captured_optouts',return_value={'123'} if replay else set()), \
                     patch.object(worker,'lock') as lock,patch.object(worker,'target_map',side_effect=[initial,result_map]), \
                     patch.object(worker,'fresh_optout',side_effect=lambda folder,ident:replay and ident=='123'), \
                     patch.object(worker.shutil,'disk_usage',return_value=SimpleNamespace(free=worker.RESERVE)), \
@@ -132,6 +133,7 @@ class ProfileTests(ServerPlatformTest):
                 links.save_profile(db,cipher,'a'*64,123,detail,'key',lambda *_:None,optout=False)
             self.assertTrue(worker.fresh_optout(folder,'123'))
             self.assertFalse(worker.fresh_optout(folder,'125'))
+            self.assertEqual(worker.captured_optouts(folder),{'123'})
             other=Path(directory)/('b'*64);other.mkdir();(folder/'individual').rename(other/'individual')
             with self.assertRaises(worker.ApplyError):worker.fresh_optout(other,'123')
 

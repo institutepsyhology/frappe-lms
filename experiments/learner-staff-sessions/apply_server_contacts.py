@@ -296,6 +296,18 @@ def fresh_optout(folder,ident):
         return db.execute('SELECT 1 FROM source_optouts WHERE source_id=?',(int(ident),)).fetchone() is not None
 
 
+def captured_optouts(folder):
+    """One startup replay set; completed IDs need no per-record DB reopen."""
+    path=safe_file(folder/'individual/profiles.sqlite')
+    if not path.exists():return set()
+    with closing(sqlite3.connect(path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
+        if not db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_optouts'").fetchone():return set()
+        metadata=dict(db.execute('SELECT key,value FROM metadata'))
+        if metadata.get('account')!='mastervision' or metadata.get('selection')!=folder.name:
+            raise ApplyError('profile_identity_mismatch')
+        return {str(row[0]) for row in db.execute('SELECT source_id FROM source_optouts')}
+
+
 def run(frappe,account,*,limit=20,retry_issues=False,selection=None):
     site=destination(account)
     if frappe.local.site!=site or frappe.session.user!='Administrator':raise ApplyError('wrong_operator')
@@ -335,6 +347,7 @@ def run(frappe,account,*,limit=20,retry_issues=False,selection=None):
                 UNION SELECT email_id FROM `tabContact Email` WHERE parenttype='Contact' ''') if x[0]}
             done={ident for ident,status in state.execute('SELECT source_id,status FROM decisions')
                 if not retry_issues or status not in ('deferred','failed')}
+            replay_optouts=captured_optouts(folder) if selected is not None else set()
             queue=get_queue('default');failures=0;created=0;handled=0
             stopped=lambda:(base/'STOP').exists() or selected is not None and (folder/'STOP').exists()
             update=lambda status:progress(base,state,status,account,source_count=source_count,
@@ -346,6 +359,7 @@ def run(frappe,account,*,limit=20,retry_issues=False,selection=None):
                 if selected is not None and ident not in selected:continue
                 try:
                     current=identities.get(ident)
+                    if ident in done and not (ident in replay_optouts and current and not current['blocked']):continue
                     fresh=selected is not None and fresh_optout(folder,ident)
                     # Crash recovery must replay a captured positive flag even
                     # if native creation or an earlier ledger write committed.
@@ -381,10 +395,9 @@ def run(frappe,account,*,limit=20,retry_issues=False,selection=None):
                 if handled%20==0:update('applying')
                 if limit and created>=limit:return update('batch_complete')
                 # IOMP yields more time to MV and the single native default worker.
-                # Selected existing identities need no native-job throttle.
+                # Selected native mirrors are inline: no RQ production delay.
                 # Queue/disk checks still gate every actual write/create.
-                if selected is None or action in ('create_user','create_contact'):
-                    time.sleep(0.05 if selected is not None else 0.15 if account=='mastervision' else 0.6)
+                if selected is None:time.sleep(0.15 if account=='mastervision' else 0.6)
             if selected is not None:
                 actual=target_map(frappe,account)
                 missing=selected-set(actual)
