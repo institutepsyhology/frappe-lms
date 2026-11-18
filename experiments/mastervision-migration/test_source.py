@@ -2,6 +2,10 @@
 import base64
 import copy
 import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 import zlib
@@ -286,6 +290,33 @@ class LessonTests(unittest.TestCase):
             source.Config(origin='https://shop.mv-centr.ru')
         with patch.object(source,'ACCOUNT','mv-centr'):
             with self.assertRaisesRegex(source.Review,'wrong_account_origin'):source.parse_catalog(catalog())
+
+    def test_iomp_editor_rejects_mastervision_links(self):
+        origin = 'https://shop.iomp.ru'
+        config = source.Config('iomp', origin)
+        tree = [leaf()]
+        tree[0]['links']['update'] = origin + tree[0]['links']['update']
+        manifest = source.parse_course(course(tree), 7, config=config)
+        self.assertEqual(manifest['lesson_ids'], [11])
+        page = lesson().replace('href="/shop/', f'href="{origin}/shop/', 1)
+        payload = source.parse_lesson(page, 7, 11, 'Course', 'Lesson 11', config=config)['payload']
+        self.assertEqual((payload['account'], payload['source_origin']), ('iomp', origin))
+        with self.assertRaisesRegex(source.Review, 'source_identity_mismatch'):
+            source.parse_course(course(tree), 7)
+        with self.assertRaisesRegex(source.Review, 'source_identity_mismatch'):
+            source.parse_lesson(page.replace(origin, source.ORIGIN), 7, 11,
+                                'Course', 'Lesson 11', config=config)
+
+    def test_iomp_editor_pipe_reads_utf8_independently_of_console_encoding(self):
+        parser = Path(__file__).resolve().parents[1] / 'avo-iomp' / 'parse_editor.py'
+        title = 'Записи мастер-класса'
+        html = course().replace('Course &amp; title', title)
+        request = json.dumps({'kind': 'course', 'course_id': 7, 'html': html},
+                             ensure_ascii=False).encode('utf-8')
+        result = subprocess.run([sys.executable, '-B', str(parser)], input=request,
+                                capture_output=True, check=True, timeout=10,
+                                env={**os.environ, 'PYTHONIOENCODING': 'cp1251'})
+        self.assertEqual(json.loads(result.stdout)['result']['title'], title)
 
     def test_wrong_hidden_course_and_excessive_html_depth_rejected(self):
         with self.assertRaisesRegex(source.Review,'identity_mismatch'):

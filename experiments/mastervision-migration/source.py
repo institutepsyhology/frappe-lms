@@ -1,4 +1,4 @@
-"""Read-only Master Vision source parsing; never execute JS.
+"""Read-only source parsing for Master Vision and the separate IOMP editor.
 
 The transport must verify the response URL/origin before supplying HTML: a page
 containing only relative URLs cannot itself prove which host returned it.
@@ -31,7 +31,9 @@ class Config:
     origin: str = ORIGIN
 
     def __post_init__(self):
-        if self.account != 'mastervision' or self.origin != 'https://shop.mastervision.su':
+        if (self.account, self.origin) not in {
+            ('mastervision', 'https://shop.mastervision.su'), ('iomp', 'https://shop.iomp.ru'),
+        }:
             raise Review('wrong_account_origin')
 
 
@@ -129,10 +131,10 @@ def _id(value):
     return value
 
 
-def _url(value, path=None, ident=None):
+def _url(value, path=None, ident=None, *, origin=ORIGIN):
     if not isinstance(value, str) or not value or any(ord(c) < 32 for c in value): raise Review('source_identity_mismatch')
-    url = urlsplit(urljoin(ORIGIN, value))
-    if url.scheme + '://' + url.netloc != ORIGIN or (path and url.path != path): raise Review('source_identity_mismatch')
+    url = urlsplit(urljoin(origin, value))
+    if url.scheme + '://' + url.netloc != origin or (path and url.path != path): raise Review('source_identity_mismatch')
     if ident is not None and parse_qs(url.query).get('id') != [str(ident)]: raise Review('source_identity_mismatch')
     return url.geturl()
 
@@ -142,11 +144,11 @@ def _one(items, code='source_structure_error'):
     return items[0]
 
 
-def _cover_url(value):
+def _cover_url(value, *, origin=ORIGIN):
     # A confirmed image field may point to AVO's CDN; it is data, not an
     # account-navigation URL. The caller still controls any later download.
     if not isinstance(value, str) or not value or any(ord(c) < 32 for c in value): raise Review('course_cover_unrecognized')
-    url = urlsplit(urljoin(ORIGIN, value))
+    url = urlsplit(urljoin(origin, value))
     if url.scheme != 'https' or not url.hostname or url.username or url.password: raise Review('course_cover_unrecognized')
     return url.geturl()
 
@@ -239,12 +241,12 @@ def _json_shape(value, depth=0):
     elif type(value) is float and not math.isfinite(value): raise Review('source_type_unrecognized')
 
 
-def parse_course(html, course_id):
+def parse_course(html, course_id, *, config=Config()):
     _id(course_id); root = _page(html)
     form = _one([f for f in root.nodes('form') if any(n.attrs.get('name') == 'TrainingForm[id_training]' for n in f.nodes('input'))])
     settings = _settings(form)
     if _field(settings, 'TrainingForm[id_training]') != str(course_id): raise Review('source_identity_mismatch')
-    if form.attrs.get('action'): _url(form.attrs['action'], COURSE, course_id)
+    if form.attrs.get('action'): _url(form.attrs['action'], COURSE, course_id, origin=config.origin)
     title = _field(settings, 'TrainingForm[training]')
     if not isinstance(title, str) or not title.strip(): raise Review('course_title_unconfirmed')
     trees = []
@@ -263,7 +265,7 @@ def parse_course(html, course_id):
                 ident = _id(value['id_training_lessons'])
                 if type(value.get('id_training')) is not int or value['id_training'] != course_id: raise Review('source_identity_mismatch')
                 link = value.get('links', {}).get('update') if isinstance(value.get('links'), dict) else None
-                _url(link, LESSON, ident)
+                _url(link, LESSON, ident, origin=config.origin)
                 name = value.get('training_lessons')
                 if not isinstance(name, str) or not name.strip(): raise Review('lesson_title_unconfirmed')
                 lessons.append({'id': ident, 'title': name, 'raw': value})
@@ -279,10 +281,10 @@ def parse_course(html, course_id):
         name = row['attrs'].get('name', '')
         if (name.startswith('TrainingForm[') and name.endswith(']') and name[len('TrainingForm['):-1] in cover_names
                 and row.get('value') and row['attrs'].get('type') != 'file'):
-            covers.add(_cover_url(row['value']))
+            covers.add(_cover_url(row['value'], origin=config.origin))
     for image in form.nodes('img'):
         if image.attrs.get('id') in {'TrainingForm_' + key for key in cover_names} and image.attrs.get('src'):
-            covers.add(_cover_url(image.attrs['src']))
+            covers.add(_cover_url(image.attrs['src'], origin=config.origin))
     # Confirmed Yii crop widget: its current image belongs to the course's
     # image field only when both appear in the same editor-form table row.
     image_rows = [row for row in form.nodes('tr') if any(
@@ -294,14 +296,14 @@ def parse_course(html, course_id):
         if len(image_rows) != 1 or len(widgets) != 1: raise Review('course_cover_ambiguous')
         images = list(widgets[0].nodes('img'))
         if len(images) > 1: raise Review('course_cover_ambiguous')
-        if images: covers.add(_cover_url(images[0].attrs.get('src')))
+        if images: covers.add(_cover_url(images[0].attrs.get('src'), origin=config.origin))
     if len(covers) > 1: raise Review('course_cover_ambiguous')
     return {'course_id': course_id, 'title': title, 'lesson_ids': ids, 'lessons': lessons,
             'settings': settings, 'cover_url': next(iter(covers), None), 'tree': tree,
             'empty_reason': 'empty_course_tree' if not ids else None}
 
 
-def parse_lesson(html, course_id, lesson_id, course_title, lesson_title):
+def parse_lesson(html, course_id, lesson_id, course_title, lesson_title, *, config=Config()):
     _id(course_id); _id(lesson_id); root = _page(html)
     if any(not isinstance(x, str) or not x.strip() for x in (course_title, lesson_title)): raise Review('invalid_title')
     form = _one([f for f in root.nodes('form') if any(n.attrs.get('name') == 'TrainingLessons[training_lessons]' for n in f.nodes('input'))])
@@ -309,12 +311,12 @@ def parse_lesson(html, course_id, lesson_id, course_title, lesson_title):
     if _field(settings, 'TrainingLessons[training_lessons]') != lesson_title: raise Review('lesson_title_changed')
     links = [a for a in root.nodes('a') if urlsplit(a.attrs.get('href', '')).path == COURSE]
     if not links: raise Review('course_identity_unconfirmed')
-    for anchor in links: _url(anchor.attrs.get('href'), COURSE, course_id)
+    for anchor in links: _url(anchor.attrs.get('href'), COURSE, course_id, origin=config.origin)
     own = [row.get('value') for row in settings if row['attrs'].get('name') == 'TrainingLessons[id_training_lessons]']
     if own and own != [str(lesson_id)]: raise Review('source_identity_mismatch')
     parent = [row.get('value') for row in settings if row['attrs'].get('name') == 'TrainingLessons[id_training]']
     if parent and parent != [str(course_id)]: raise Review('source_identity_mismatch')
-    if form.attrs.get('action'): _url(form.attrs['action'], LESSON, lesson_id)
+    if form.attrs.get('action'): _url(form.attrs['action'], LESSON, lesson_id, origin=config.origin)
     elif not own: raise Review('lesson_identity_unconfirmed')
     scripts = [s.text() for s in root.nodes('script') if not s.attrs.get('src')]
     # A malformed second initializer must never be silently ignored just
@@ -350,7 +352,7 @@ def parse_lesson(html, course_id, lesson_id, course_title, lesson_title):
     if children_defaulted: decoded['children'] = []
     if not isinstance(decoded['children'], list): raise Review('ape_root_unrecognized')
     validate(decoded)
-    result = {'payload': {'account': ACCOUNT, 'source_origin': ORIGIN, 'course_id': course_id,
+    result = {'payload': {'account': config.account, 'source_origin': config.origin, 'course_id': course_id,
             'lesson_id': lesson_id, 'course_title': course_title, 'lesson_title': lesson_title,
             'format': 'ape', 'ape': decoded}, 'settings': settings}
     if children_defaulted: result['ape_root_children_defaulted'] = True
