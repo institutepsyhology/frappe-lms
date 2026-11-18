@@ -78,6 +78,21 @@ def lesson_images(payload):
     return images
 
 
+def normalize_avatar_label(payload):
+    """Recognize the labelled variant of the standard AVO avatar in IOMP."""
+    course, lesson = payload['course_id'], payload['lesson_id']
+    pending = [payload['ape']]
+    while pending:
+        node = pending.pop()
+        pending.extend(node.get('children', []))
+        fields = node.get('fields', {})
+        if node.get('name') != 'image' or fields.get('html') != 'Изображение':
+            continue
+        candidate_fields = {key: value for key, value in fields.items() if key != 'html'}
+        if omit_placeholder_node({**node, 'fields': candidate_fields}, ACCOUNT, course, lesson):
+            node['fields'] = candidate_fields
+
+
 def read_capture(directory):
     path = Path(directory).resolve(strict=True)
     if not path.is_relative_to(ARCHIVE.resolve(strict=True)):
@@ -100,6 +115,8 @@ def read_capture(directory):
                 source_id(payload['lesson_id']), payload['course_title']) != (ACCOUNT, ORIGIN, cid, ident, meta['title']):
             raise Stop('source_account_mismatch')
         payload.update(course_id=cid, lesson_id=ident)
+        if payload['format'] == 'ape':
+            normalize_avatar_label(payload)
         records.append(payload)
     return cid, meta, records
 

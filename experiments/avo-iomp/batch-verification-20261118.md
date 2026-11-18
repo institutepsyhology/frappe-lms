@@ -40,3 +40,17 @@ background process was active. A server filesystem check reported 8.22 GiB free.
 Direct read-back of courses 5, 6 and 7 confirmed unpublished drafts, local covers
 and self-enrollment disabled. This checkpoint does not cover playback, all 317
 courses, or access grants. There was no server software deployment.
+
+The owner confirmed that the standard avatar and the generic greeting should
+be omitted. The IOMP import now recognizes the exact standard image with its
+default `Изображение` label. It prepares a copy of the parsed payload and leaves
+the archived source intact. The existing source fingerprint and exact greeting
+checks still guard omissions. A regression test confirmed that a teaching image
+with the same default label and a custom caption are preserved.
+
+Rechecking courses 3, 31, 33, and 37 cleared eight avatar-related issues. Course
+33 passed preflight and was imported with all 39 lessons in source order as
+drafts. IOMP read-back confirmed disabled self-enrollment and found no avatar
+or generic greeting in lessons 500 and 516, with their two and four video
+choices respectively and timing HTML retained. The latest batch journal now
+lists 44 unresolved lessons in 11 courses.
