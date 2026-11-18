@@ -173,7 +173,7 @@ def _probe(node):
     return node.opening + ''.join(_probe(child) for child in node.children) + node.closing
 
 
-def normalize_inline_images(ape, validate_static):
+def normalize_inline_images(ape, validate_static, *, selected_paths=None):
     """Return copied APE and metadata-only transformations using original paths."""
     if not callable(validate_static): raise Review('inline_image_validator_invalid')
     if not isinstance(ape, dict) or ape.get('name') != 'page' or not isinstance(ape.get('children'), list): raise Review('inline_image_source_invalid')
@@ -189,6 +189,8 @@ def normalize_inline_images(ape, validate_static):
         if ident in occupied: raise Review('inline_image_id_collision')
         occupied.add(ident); return ident
     def split(node,path):
+        if selected_paths is not None and tuple(path) not in selected_paths:
+            return [node]
         fields = node.get('fields',{}); markup = fields.get('html') if isinstance(fields,dict) else None
         if node.get('name') not in ('text','code','header') or not isinstance(markup,str) or not re.search(r'<\s*img\b',markup,re.I): return [node]
         header = node['name'] == 'header'

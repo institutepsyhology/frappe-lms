@@ -3,11 +3,13 @@
 import hashlib
 import json
 import re
+from urllib.parse import urlsplit
 
+from avatar_placeholders import _decoded_safe_path
 from importer import Review
 from lms.lms.avo_html_fragment import make_html_block
-from normalize_inline_images import normalize_inline_images
-from normalize_legacy_html_decorations import _has_content_style
+from lms.lms.avo_transform import plan_import
+from normalize_inline_images import Document, normalize_inline_images
 
 
 # Reviewed digests cover styles, field values and any children. AVO may assign a
@@ -20,7 +22,74 @@ REVIEWED_NODES = {
     ('65', '481'): 'e367cffeea36098c8ceae4ea664ed4b915a251ab12e6e47bff50147dedf9d6f6',
 }
 IMAGE_URL_DIGEST = 'e8d170a9df9a146462ed0017cf561efc8d75cbf4c918ec3f3788f56dc40bf7fc'
-INLINE_IMAGE_COURSES = frozenset(str(course) for course in range(101, 109))
+# This is the AVO text block's reviewed responsive formatting, without a
+# visibility condition, background image, caption or authored widget.
+ORDINARY_TEXT_STYLE = '46aa4ff69168b62acda60f1101ff957c67267fa24fc17dbcba2a498f22b4a6ed'
+IMAGE_TAG = re.compile(r'<\s*img\b', re.I)
+IMAGE_PARAGRAPH = re.compile(r'<p>\s*(?:<strong>\s*)?<img\b[^<>]*>(?:\s*</strong>)?\s*</p>', re.I)
+PROSE_TAGS = frozenset('p br strong b i em u a ul ol li img'.split())
+
+
+def _digest(value):
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _walk(node, path=()):
+    yield path, node
+    for index, child in enumerate(node.get('children', [])):
+        yield from _walk(child, (*path, index))
+
+
+def _ordinary_image(url):
+    address = urlsplit(url)
+    return (address.scheme == 'https' and '?' not in url and '#' not in url
+            and (address.netloc == 'shop.iomp.ru' or re.fullmatch(r'f[0-9]+\.autoweboffice\.(?:ru|com)', address.netloc))
+            and _decoded_safe_path(address.path) and re.search(r'\.(?:jpe?g|png|webp)$', address.path, re.I))
+
+
+def _ordinary_pair(node, html):
+    fields = node.get('fields', {})
+    if (node.get('name') != 'text' or node.get('children') or set(fields) - {'anchor', 'html'}
+            or fields.get('anchor') or set(node) - {'id', 'name', 'fields', 'style', 'children'}
+            or (node.get('style') and _digest(node['style']) != ORDINARY_TEXT_STYLE)
+            or len(html) > 200000 or len(IMAGE_PARAGRAPH.findall(html)) != 2
+            or set(re.findall(r'</?([a-zA-Z][\w:-]*)\b', html.lower())) - PROSE_TAGS):
+        return False
+    try:
+        images = Document(html).images
+        return len(images) == 2 and all(
+            not set(image.attrs) - {'src', 'alt', 'width', 'height', 'style'}
+            and not re.search(r'(?:float|margin)\s*:', image.attrs.get('style', ''), re.I)
+            and _ordinary_image(image.attrs['src']) for image in images
+        )
+    except (Review, ValueError, UnicodeError, RecursionError):
+        return False
+
+
+def _split_selected(root, expected_images):
+    updated, changes = normalize_inline_images(root, make_html_block, selected_paths=expected_images)
+    if {tuple(change['path']): change['images'] for change in changes} != expected_images:
+        raise Review('iomp_inline_image_selection_changed')
+    return updated
+
+
+def _normalize_unsupported_pairs(payload):
+    root = payload['ape']
+    selected = {}
+    try:
+        for path, node in _walk(root):
+            html = node.get('fields', {}).get('html')
+            if isinstance(html, str) and IMAGE_TAG.search(html) and _ordinary_pair(node, html):
+                probe = {**payload, 'ape': {**root, 'children': [node]}}
+                issues = set(plan_import(probe)['issues'])
+                if issues - {'empty_lesson'} == {'unsafe_or_unrecognized_html'}:
+                    selected[path] = 2
+        if selected and 'unsafe_or_unrecognized_html' in plan_import(payload)['issues']:
+            payload['ape'] = _split_selected(root, selected)
+    except (Review, ValueError, RecursionError):
+        # Leave the source intact for the normal import review.
+        return
 
 
 def reviewed_image_url(value):
@@ -35,27 +104,15 @@ def normalize_iomp_material(payload):
     ):
         return
     identity = (payload.get('course_id'), payload.get('lesson_id'))
-    if identity[0] in INLINE_IMAGE_COURSES:
-        root = payload['ape']
-        updated, changes = normalize_inline_images(root, make_html_block)
-        for change in changes:
-            source = root
-            for index in change['path']:
-                source = source['children'][index]
-            if source.get('name') != 'text' or _has_content_style(source.get('style')):
-                raise Review('iomp_inline_image_context_requires_review')
-        if changes:
-            payload['ape'] = updated
-        return
     expected = REVIEWED_NODES.get(identity)
     if expected is None:
+        _normalize_unsupported_pairs(payload)
         return
     root = payload['ape']
     children = root['children']
     for index, node in enumerate(children):
         material = {key: value for key, value in node.items() if key != 'id'}
-        raw = json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
-        if hashlib.sha256(raw).hexdigest() != expected:
+        if _digest(material) != expected:
             continue
         if identity in {('52', '336'), ('65', '481')}:
             del children[index]
@@ -66,8 +123,6 @@ def normalize_iomp_material(payload):
             make_html_block(markup)
             node['fields']['html'] = markup
         else:
-            updated, changes = normalize_inline_images(root, make_html_block)
-            if len(changes) != 1 or changes[0]['path'] != [index] or changes[0]['images'] != 1:
-                raise Review('iomp_inline_image_selection_changed')
-            payload['ape'] = updated
-        return
+            payload['ape'] = _split_selected(root, {(index,): 1})
+        break
+    _normalize_unsupported_pairs(payload)
