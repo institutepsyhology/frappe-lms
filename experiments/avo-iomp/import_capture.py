@@ -21,6 +21,9 @@ from covers import _local_public_url
 from importer import DIAGNOSTIC, IOMP_BINDING, Importer, MCPClient, Review, Stop, source_id
 from lms.lms.avo_transform import IMAGE_KEY, omit_placeholder_node, omit_placeholder_section, plan_import
 from normalize_review import EXCLUDED_LESSONS, normalize_review
+from normalize_iomp_material import normalize_iomp_material, reviewed_image_url
+from normalize_reviewed_vk import normalize_reviewed_vk
+from jpeg_cover import prepare_jpeg_upload
 
 
 ACCOUNT, ORIGIN, SITE, SERVER = IOMP_BINDING
@@ -43,9 +46,10 @@ def fetch_image(value):
         return raw, _inspect(raw, mime)
     url = urlsplit(urljoin(ORIGIN, value))
     host = url.hostname or ''
-    if (url.scheme != 'https' or url.netloc != host or url.query or url.fragment or
-            (host != 'shop.iomp.ru' and not re.fullmatch(r'f[0-9]+\.autoweboffice\.(?:ru|com)', host)) or
-            not re.search(r'\.(?:png|jpe?g|webp)$', url.path, re.I)):
+    ordinary_image = (not url.query and not url.fragment
+                      and (host == 'shop.iomp.ru' or re.fullmatch(r'f[0-9]+\.autoweboffice\.(?:ru|com)', host))
+                      and re.search(r'\.(?:png|jpe?g|webp)$', url.path, re.I))
+    if url.scheme != 'https' or url.netloc != host or not (ordinary_image or reviewed_image_url(url.geturl())):
         raise Review('asset_host_requires_review')
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
     try:
@@ -138,7 +142,9 @@ def read_capture(directory):
         payload.update(course_id=cid, lesson_id=ident)
         if payload['format'] == 'ape':
             normalize_avatar_label(payload)
+            normalize_reviewed_vk(payload)
             normalize_review(payload)
+            normalize_iomp_material(payload)
         records.append(payload)
     return cid, meta, records
 
@@ -159,8 +165,7 @@ def checked_course(client, name, cid):
     return course
 
 
-def cover_file(client, name, cid, raw, extension):
-    digest = hashlib.sha256(raw).hexdigest()
+def cover_file(client, name, cid, raw, extension, digest):
     filename = f'avo-iomp-course-{cid}-{digest[:16]}.{extension}'
     filters = [['attached_to_doctype', '=', 'LMS Course'], ['attached_to_name', '=', name],
                ['attached_to_field', '=', 'image'], ['file_name', '=', filename]]
@@ -192,15 +197,13 @@ def finish_course(client, name, cid, cover):
     if not before.get('image') and cover:
         try:
             raw, extension = fetch_image(cover)
+            digest = hashlib.sha256(raw).hexdigest()
+            if extension == 'jpg':
+                raw = prepare_jpeg_upload(raw)
         except Review as error:
             cover_issue = diagnostic(error)
         else:
-            # JPEG storage can apply EXIF and change the byte checksum. Until the
-            # exact transformation is verified here, leave JPEG covers for review.
-            if extension == 'jpg':
-                cover_issue = 'jpeg_cover_requires_readback'
-            else:
-                updates['image'] = cover_file(client, name, cid, raw, extension)
+            updates['image'] = cover_file(client, name, cid, raw, extension, digest)
     if before.get('disable_self_learning') != 1:
         updates['disable_self_learning'] = 1
     if updates:
@@ -235,6 +238,9 @@ def preflight_source(payloads):
 def main(directory, *, defer_final_lesson=None):
     cid = None
     try:
+        course_dir = Path(directory).resolve().parent
+        if course_dir.parent == ARCHIVE.resolve() and re.fullmatch(r'course-[1-9][0-9]{0,9}', course_dir.name):
+            cid = course_dir.name.removeprefix('course-')
         cid, meta, payloads = read_capture(directory)
         excluded = [str(ident) for ident in meta['lesson_ids'] if str(ident) in EXCLUDED_LESSONS]
         if not payloads:

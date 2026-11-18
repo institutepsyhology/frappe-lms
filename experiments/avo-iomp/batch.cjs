@@ -45,7 +45,9 @@ function priorCapture(courseId) {
 }
 
 function importCourse(capture) {
-  const processResult = spawnSync('py', ['-3', '-B', path.join(__dirname, 'import_capture.py'), capture.directory], {
+  const interpreter = process.env.IOMP_PYTHON;
+  const processResult = spawnSync(interpreter || 'py', [...(interpreter ? [] : ['-3']), '-B',
+    path.join(__dirname, 'import_capture.py'), capture.directory], {
     encoding: 'utf8', windowsHide: true, maxBuffer: 1024 * 1024,
   });
   if (processResult.status !== 0 || !processResult.stdout) throw new Error('frappe_result_uncertain');
@@ -55,7 +57,22 @@ function importCourse(capture) {
   return result;
 }
 
-async function run({ mode, after, limit }) {
+function selectCourses(catalog, previous, { mode, after, limit, ids }) {
+  const ready = catalog.filter(row => {
+    const last = previous.get(row.id);
+    if (mode === '--retry-courses') {
+      return ids.has(row.id) && (last?.status === 'review' || (last?.status === 'imported' && last.cover_issue));
+    }
+    if (row.id <= after) return false;
+    if (mode === '--retry-review') return last?.status === 'review';
+    return !['imported', 'excluded', 'review', ...(mode === '--capture-only' ? ['captured'] : [])].includes(last?.status);
+  });
+  if (ids && ready.length !== ids.size) throw new Error('requested_courses_not_pending_review');
+  return { ready, selected: ready.slice(0, limit) };
+}
+
+async function run(options) {
+  const { mode } = options;
   fs.mkdirSync(ARCHIVE, { recursive: true });
   const lock = fs.openSync(LOCK, 'wx');
   fs.writeFileSync(lock, JSON.stringify({ pid: process.pid, mode }));
@@ -69,13 +86,7 @@ async function run({ mode, after, limit }) {
     browser = await openBrowser();
     const catalog = await readCatalog(browser);
     writeJson(path.join(ARCHIVE, 'batch-catalog.json'), { account: 'iomp', origin: 'https://shop.iomp.ru', courses: catalog });
-    const ready = catalog.filter(row => {
-      const status = previous.get(row.id)?.status;
-      if (row.id <= after) return false;
-      if (mode === '--retry-review') return status === 'review';
-      return !['imported', 'excluded', 'review', ...(mode === '--capture-only' ? ['captured'] : [])].includes(status);
-    });
-    const selected = ready.slice(0, limit);
+    const { ready, selected } = selectCourses(catalog, previous, options);
     event({ status: 'started', mode, catalog_count: catalog.length, batch_count: selected.length });
     let consecutive = 0;
     for (const row of selected) {
@@ -122,14 +133,22 @@ async function run({ mode, after, limit }) {
   }
 }
 
-const [mode, after = '2', limit = '317', extra] = process.argv.slice(2);
-if (!['--capture-only', '--apply', '--retry-review'].includes(mode) || !/^\d{1,10}$/.test(after) ||
-    !/^\d{1,3}$/.test(limit) || Number(limit) < 1 || extra !== undefined) {
-  console.error('Usage: node batch.cjs --capture-only|--apply|--retry-review [AFTER_ID] [COURSE_LIMIT]');
-  process.exitCode = 1;
-} else {
-  run({ mode, after: Number(after), limit: Number(limit) }).catch(error => {
+function parseOptions(args) {
+  const [mode, after = '2', limit = '317', extra] = args;
+  if (mode === '--retry-courses' && args.length === 2 && /^(?:[1-9]\d{0,9})(?:,[1-9]\d{0,9})*$/.test(after)) {
+    const ids = after.split(',').map(Number);
+    if (new Set(ids).size === ids.length) return { mode, ids: new Set(ids), limit: ids.length };
+  }
+  if (['--capture-only', '--apply', '--retry-review'].includes(mode) && /^\d{1,10}$/.test(after) &&
+      /^\d{1,3}$/.test(limit) && Number(limit) >= 1 && extra === undefined) return { mode, after: Number(after), limit: Number(limit) };
+  throw new Error('invalid_batch_arguments');
+}
+
+if (require.main === module) {
+  Promise.resolve().then(() => run(parseOptions(process.argv.slice(2)))).catch(error => {
     console.error(JSON.stringify({ status: 'batch_not_started', code: diagnostic(error) }));
     process.exitCode = 1;
   });
 }
+
+module.exports = { parseOptions, selectCourses };

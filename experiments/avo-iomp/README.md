@@ -39,3 +39,19 @@ label returned `legacy_player_pair_unresolved` and `ready=false`. No real
 IOMP lesson or access grant was created by these checks. An IOMP example passed
 local conversion using a placeholder for its image, with both original video
 URLs retained in one pair. Actual image transfer and playback remain unverified.
+
+## Resuming an IOMP import
+
+`node experiments/avo-iomp/batch.cjs --apply 100 317` processes pending courses
+above source ID 100. To revisit particular review items or missing covers, use
+`--retry-courses 44,48` with the current pending IDs. Both modes use the same
+exclusive lock, preserve course order and verify drafts against the IOMP site.
+Each course outcome is recorded in the private capture archive. Set `IOMP_PYTHON`
+to a Python executable with Pillow for JPEG covers. The importer applies EXIF
+orientation before upload and checks the saved file size and checksum.
+
+On 19 November 2026, stored material in IOMP drafts 243, 263 and 342 was
+compared with the source. The comparisons covered the two handbook links, the
+labelled YouTube and VK players with their presentation, and the reading list
+with its illustration, video blocks and audio link. These checks covered
+persisted content and ordering. They did not exercise video playback.

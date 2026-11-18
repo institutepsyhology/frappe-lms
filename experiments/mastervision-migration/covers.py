@@ -128,7 +128,7 @@ def _files(client, filters):
     return rows
 
 
-def _stripped_jpeg_metadata(raw):
+def strip_jpeg_for_storage(raw):
     """Match installed Frappe strip_exif_data exactly, including orientation.
 
     A JPEG without EXIF must retain its original bytes. No approximate pixel
@@ -149,11 +149,17 @@ def _stripped_jpeg_metadata(raw):
                     image.close(); image = converted
                 output = io.BytesIO()
                 image.save(output, format='jpeg', exif=b'')
-                content = output.getvalue()
+                return output.getvalue()
             finally:
                 image.close()
     except Exception:
         raise Stop('cover_file_readback_invalid') from None
+
+
+def _stripped_jpeg_metadata(raw):
+    content = strip_jpeg_for_storage(raw)
+    if content is None:
+        return None
     return len(content), hashlib.md5(content, usedforsecurity=False).hexdigest()
 
 
