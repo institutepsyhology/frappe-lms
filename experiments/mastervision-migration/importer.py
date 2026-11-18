@@ -19,6 +19,8 @@ ACCOUNT = "mastervision"
 ORIGIN = "https://shop.mastervision.su"
 SITE = "my-lk.mastervision.su"
 SERVER_NAME = "my_lk_mastervision_su"
+IOMP_BINDING = ("iomp", "https://shop.iomp.ru", "my-lk.iomp.ru", "my_lk_iomp_ru")
+IMPORT_BINDINGS = {(ACCOUNT, ORIGIN, SITE, SERVER_NAME), IOMP_BINDING}
 METHOD = "lms.lms.avo_import.import_lesson"
 DIAGNOSTIC = re.compile(r"[a-z0-9_]{1,80}")
 
@@ -34,7 +36,9 @@ class Review(Exception):
         self.problems = [] if problems is None else problems
 
 
-def authentication(workspace=None):
+def authentication(workspace=None, *, site=SITE):
+    if site not in {binding[2] for binding in IMPORT_BINDINGS}:
+        raise Stop("wrong_frappe_site")
     roots = [Path(workspace)] if workspace is not None else Path(__file__).resolve().parents
     helper = next((root / "frappe-mcp/headers.py" for root in roots
                    if (root / "frappe-mcp/headers.py").is_file()), None)
@@ -43,23 +47,25 @@ def authentication(workspace=None):
     spec = importlib.util.spec_from_file_location("mastervision_mcp_headers", helper)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.authenticated_headers(SITE), module.NoRedirect
+    return module.authenticated_headers(site), module.NoRedirect
 
 
 class MCPClient:
-    site, account = SITE, ACCOUNT
+    account, origin, site, server_name = ACCOUNT, ORIGIN, SITE, SERVER_NAME
 
     def __init__(self, workspace=None):
+        if (self.account, self.origin, self.site, self.server_name) not in IMPORT_BINDINGS:
+            raise Stop("wrong_frappe_site")
         self.auth, self.n, self.persistent = {}, 0, None
         try:
-            self.auth, no_redirect = authentication(workspace)
+            self.auth, no_redirect = authentication(workspace, site=self.site)
             if not isinstance(self.auth, dict) or set(self.auth) != {"Cookie"}:
                 raise Stop("authentication_invalid")
-            self.persistent = PersistentHTTPS()
+            self.persistent = PersistentHTTPS(site=self.site)
             self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), no_redirect(), self.persistent)
             init = self.rpc("initialize", {"protocolVersion": "2025-11-25", "capabilities": {},
-                                          "clientInfo": {"name": "mastervision-draft-import", "version": "1.0"}})
-            if init.get("serverInfo", {}).get("name") != SERVER_NAME:
+                                          "clientInfo": {"name": f"{self.account}-draft-import", "version": "1.0"}})
+            if init.get("serverInfo", {}).get("name") != self.server_name:
                 raise Stop("wrong_frappe_site")
         except Stop:
             if self.persistent: self.persistent.close()
@@ -74,7 +80,7 @@ class MCPClient:
         self.n += 1
         data = json.dumps({"jsonrpc": "2.0", "id": self.n, "method": method, "params": params},
                           ensure_ascii=True, allow_nan=False).encode()
-        req = urllib.request.Request("https://" + SITE + "/api/v2/mcp", data=data,
+        req = urllib.request.Request("https://" + self.site + "/api/v2/mcp", data=data,
             headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream", **self.auth})
         arguments = params.get('arguments', {}) if isinstance(params, dict) else {}
         readonly = method == 'initialize' or (method == 'tools/call' and isinstance(params, dict) and
@@ -121,7 +127,7 @@ class MCPClient:
     def close(self):
         try:
             if self.auth:
-                req = urllib.request.Request("https://" + SITE + "/api/method/logout", data=b"{}",
+                req = urllib.request.Request("https://" + self.site + "/api/method/logout", data=b"{}",
                                              headers={"Content-Type": "application/json", **self.auth})
                 with self.opener.open(req, timeout=15) as response:
                     response.read(1024 * 1024)
@@ -160,26 +166,31 @@ def has_images(payload):
 
 
 class Importer:
+    account, origin, site = ACCOUNT, ORIGIN, SITE
+
     def __init__(self, client):
         self.client = client
         self.check_site()
 
     def check_site(self):
-        if getattr(self.client, "site", None) != SITE or getattr(self.client, "account", None) != ACCOUNT:
+        binding = (self.account, self.origin, self.site)
+        if binding not in {allowed[:3] for allowed in IMPORT_BINDINGS} or (
+                getattr(self.client, "account", None), getattr(self.client, "site", None)
+        ) != (self.account, self.site):
             raise Stop("wrong_frappe_site")
 
     def outline(self, course_id):
         self.check_site()
         data = self.client.call("list_documents", {"doctype": "LMS Course",
             "fields": ["name", "published", "custom_avo_account", "custom_avo_id", "custom_lms_id"],
-            "filters": [["custom_avo_account", "=", ACCOUNT], ["custom_avo_id", "=", course_id]], "limit": 3})
+            "filters": [["custom_avo_account", "=", self.account], ["custom_avo_id", "=", course_id]], "limit": 3})
         rows = data.get("documents")
         if not isinstance(rows, list) or data.get("has_next_page") is not False or len(rows) > 1:
             raise Review("ambiguous_course")
         if not rows:
             return {"ids": [], "course": None, "by_id": {}}
         row = rows[0]
-        if not isinstance(row, dict) or row.get("custom_avo_account") != ACCOUNT or row.get("custom_avo_id") != course_id or row.get("custom_lms_id") != course_id:
+        if not isinstance(row, dict) or row.get("custom_avo_account") != self.account or row.get("custom_avo_id") != course_id or row.get("custom_lms_id") != course_id:
             raise Review("target_course_identity_invalid")
         name = row.get("name")
         if not isinstance(name, str) or not name or row.get("published") != 0:
@@ -214,7 +225,7 @@ class Importer:
         for lesson_name in names:
             row = by_name[lesson_name]
             ident = source_id(row.get("custom_avo_id"))
-            if row.get("custom_avo_account") != ACCOUNT or row.get("custom_lms_id") != ident or row.get("course") != name or row.get("chapter") != chapter["name"] or row.get("is_draft") != 1 or row.get("include_in_preview") != 0 or ident in by_id:
+            if row.get("custom_avo_account") != self.account or row.get("custom_lms_id") != ident or row.get("course") != name or row.get("chapter") != chapter["name"] or row.get("is_draft") != 1 or row.get("include_in_preview") != 0 or ident in by_id:
                 raise Review("existing_lesson_not_safe")
             ids.append(ident)
             by_id[ident] = row
@@ -222,7 +233,7 @@ class Importer:
 
     def preview(self, payload, images):
         value = self.client.call("call_method", {"method": METHOD, "args": {"payload": payload, "images": images, "dry_run": True}}).get("result")
-        if not isinstance(value, dict) or value.get("account") != ACCOUNT or value.get("course_id") != source_id(payload["course_id"]) or value.get("lesson_id") != source_id(payload["lesson_id"]) or value.get("dry_run") is not True:
+        if not isinstance(value, dict) or value.get("account") != self.account or value.get("course_id") != source_id(payload["course_id"]) or value.get("lesson_id") != source_id(payload["lesson_id"]) or value.get("dry_run") is not True:
             raise Stop("preview_identity_invalid")
         issues, warnings = diagnostics(value.get("issues")), diagnostics(value.get("warnings"))
         if value.get("ready") is False:
@@ -252,7 +263,7 @@ class Importer:
         for payload in payloads:
             if not isinstance(payload, dict):
                 raise Review("invalid_payloads")
-            if (payload.get("account"), payload.get("source_origin")) != (ACCOUNT, ORIGIN):
+            if (payload.get("account"), payload.get("source_origin")) != (self.account, self.origin):
                 raise Stop("source_account_mismatch")
             cid, lid = source_id(payload.get("course_id")), source_id(payload.get("lesson_id"))
             if any(not isinstance(payload.get(k), str) or not payload[k].strip() or len(payload[k]) > 512 for k in ("course_title", "lesson_title")) or payload.get("format") not in {"ape", "preview"}:
@@ -306,7 +317,7 @@ class Importer:
                         raise Stop("journal_unavailable") from None
                 try:
                     result = self.client.call("call_method", {"method": METHOD, "args": {"payload": payload, "images": image_sets[ident], "dry_run": False}}).get("result")
-                    if not isinstance(result, dict) or result.get("action") != "created" or result.get("account") != ACCOUNT or result.get("course_id") != course or result.get("lesson_id") != ident or result.get("dry_run") is not False:
+                    if not isinstance(result, dict) or result.get("action") != "created" or result.get("account") != self.account or result.get("course_id") != course or result.get("lesson_id") != ident or result.get("dry_run") is not False:
                         raise Stop("write_result_uncertain")
                     verified, _ = self.preview(payload, image_sets[ident])
                     if verified["action"] != "already_imported" or self.outline(course)["ids"] != ids[:len(existing) + len(created) + 1]:
@@ -325,6 +336,6 @@ class Importer:
                 raise Stop("final_order_mismatch") from None
             if final["ids"] != ids:
                 raise Stop("final_order_mismatch")
-        return {"account": ACCOUNT, "course_id": course,
+        return {"account": self.account, "course_id": course,
                 "status": "already_present" if existing == ids else "created" if apply else "ready",
                 "lesson_ids": ids, "existing_lesson_ids": existing, "created_lesson_ids": created, "warnings": warnings}

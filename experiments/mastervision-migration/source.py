@@ -170,7 +170,7 @@ def _field(settings, name):
     return _one([row.get('value') for row in settings if row['attrs'].get('name') == name], 'editor_field_unconfirmed')
 
 
-def parse_catalog(html, page=1):
+def parse_catalog(html, page=1, *, config=Config()):
     _id(page); root = _page(html)
     grid = _one([x for x in root.nodes() if x.attrs.get('id') == 'training-grid'])
     summary = _one([x for x in grid.nodes() if 'summary' in x.attrs.get('class', '').split()]).text()
@@ -182,7 +182,7 @@ def parse_catalog(html, page=1):
             links = [a for a in row.nodes('a') if urlsplit(a.attrs.get('href', '')).path == COURSE]
             # A row may repeat its edit link as an icon; all must name one course.
             if not links: raise Review('catalog_row_unrecognized')
-            urls = [_url(a.attrs.get('href'), COURSE) for a in links]
+            urls = [_url(a.attrs.get('href'), COURSE, origin=config.origin) for a in links]
             ids = [parse_qs(urlsplit(u).query).get('id', []) for u in urls]
             if any(len(v) != 1 or not re.fullmatch(r'[1-9][0-9]*', v[0]) for v in ids): raise Review('source_identity_mismatch')
             ident = _id(int(ids[0][0]))
@@ -195,7 +195,8 @@ def parse_catalog(html, page=1):
         raise Review('catalog_range_mismatch')
     next_url = None
     if end < total:
-        links = {_url(a.attrs.get('href'), CATALOG) for a in grid.nodes('a') if 'Следующая' in a.text()}
+        links = {_url(a.attrs.get('href'), CATALOG, origin=config.origin)
+                 for a in grid.nodes('a') if 'Следующая' in a.text()}
         next_url = _one(list(links), 'catalog_next_unconfirmed')
         if parse_qs(urlsplit(next_url).query).get('TrainingSearch_page') != [str(page + 1)]: raise Review('catalog_next_unconfirmed')
     return {'total': total, 'start': start, 'end': end, 'courses': courses, 'next_url': next_url}

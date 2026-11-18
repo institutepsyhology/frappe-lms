@@ -13,35 +13,38 @@ import urllib.request
 
 SITE = "my-lk.mastervision.su"
 ERROR_URL = "https://" + SITE + "/api/v2/mcp"
+ALLOWED_SITES = {SITE, "my-lk.iomp.ru"}
 
 
 class PersistentHTTPS(urllib.request.HTTPSHandler):
-    """A single sequential HTTPS connection to Master Vision on port 443.
+    """A single sequential HTTPS connection to an explicitly bound site on port 443.
 
     connection_factory has the HTTPSConnection(host, port, timeout=, context=)
     signature.  Injecting it and clock allows tests without network access.
     Instances are not intended for concurrent requests.
     """
 
-    def __init__(self, connection_factory=None, clock=None, idle_timeout=20.0):
+    def __init__(self, connection_factory=None, clock=None, idle_timeout=20.0, *, site=SITE):
         super().__init__()
+        if site not in ALLOWED_SITES:
+            raise ValueError("persistent_https_site_invalid")
         if not isinstance(idle_timeout, (int, float)) or not 0 < idle_timeout <= 20:
             raise ValueError("persistent_https_idle_timeout_invalid")
         self._factory = connection_factory or http.client.HTTPSConnection
+        self._site = site
         self._clock = clock or time.monotonic
         self._idle_timeout = idle_timeout
         self._connection = None
         self._active = None
         self._last_used = None
 
-    @staticmethod
-    def _validate(req):
+    def _validate(self, req):
         url = req.full_url
         try:
             parsed = urllib.parse.urlsplit(url)
             valid = (isinstance(url, str) and not any(ord(c) <= 32 or ord(c) == 127 for c in url)
-                     and parsed.scheme == "https" and parsed.netloc == SITE
-                     and not parsed.fragment and req.host == SITE
+                     and parsed.scheme == "https" and parsed.netloc == self._site
+                     and not parsed.fragment and req.host == self._site
                      and not getattr(req, "_tunnel_host", None) and not req.has_proxy())
         except (ValueError, TypeError, AttributeError):
             valid = False
@@ -55,7 +58,7 @@ class PersistentHTTPS(urllib.request.HTTPSHandler):
             if (lowered in seen or not isinstance(value, str)
                     or "\r" in value or "\n" in value
                     or lowered == "proxy-authorization"
-                    or lowered == "host" and value != SITE
+                    or lowered == "host" and value != self._site
                     or lowered == "transfer-encoding"):
                 raise urllib.error.URLError("persistent_https_headers_rejected")
             seen.add(lowered)
@@ -102,14 +105,14 @@ class PersistentHTTPS(urllib.request.HTTPSHandler):
         connection = self._connection
         try:
             if connection is None:
-                connection = self._factory(SITE, 443, timeout=timeout, context=self._context)
+                connection = self._factory(self._site, 443, timeout=timeout, context=self._context)
                 self._connection = connection
             else:
                 connection.timeout = timeout
                 if connection.sock is not None:
                     connection.sock.settimeout(timeout)
             headers = dict(req.header_items())
-            headers["Host"] = SITE
+            headers["Host"] = self._site
             connection.request(req.get_method(), req.selector or "/", body=req.data, headers=headers)
             response = connection.getresponse()
         except (OSError, http.client.HTTPException):
@@ -119,7 +122,7 @@ class PersistentHTTPS(urllib.request.HTTPSHandler):
             self._discard(connection)
             response.close()
             # Raising here bypasses urllib's redirect handlers, including 30x.
-            raise urllib.error.HTTPError(ERROR_URL, response.status,
+            raise urllib.error.HTTPError("https://" + self._site + "/api/v2/mcp", response.status,
                                          "persistent_https_http_failed", response.headers, None)
         response.code = response.status
         response.msg = response.reason

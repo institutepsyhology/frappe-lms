@@ -8,6 +8,7 @@ const { loadPlaywright } = require('../mastervision-migration/login.cjs');
 const { COURSE_PATH, ORIGIN, PROFILE, isCourseEditor } = require('./login.cjs');
 
 const LESSON_PATH = '/shop/training/traininglessons/admin/update';
+const CATALOG_PATH = '/shop/training/admin/admin';
 const ARCHIVE = path.resolve(__dirname, '../../../exports/lesson-content/iomp/captured');
 const MAX_HTML_BYTES = 32 * 1024 * 1024;
 
@@ -25,7 +26,11 @@ function writeJson(file, data) {
 async function readEditor(browser, url, fields) {
   const response = await browser.request.get(url, { maxRedirects: 0, timeout: 45000 });
   try {
-    if (!response.ok() || response.url() !== url) throw new Error('editor_session_or_response_invalid');
+    const status = response.status();
+    if (response.url() !== url || status === 401 || status === 403 || (status >= 300 && status < 400)) {
+      throw new Error('editor_session_or_response_invalid');
+    }
+    if (!response.ok()) throw new Error('editor_http_error');
     const contentType = response.headers()['content-type'] || '';
     const bytes = await response.body();
     if (!/^text\/html\b/i.test(contentType) || bytes.length > MAX_HTML_BYTES) throw new Error('editor_response_invalid');
@@ -46,42 +51,76 @@ function courseIdentity(course) {
   return JSON.stringify([course.course_id, course.title, course.lessons.map(({ id, title }) => [id, title])]);
 }
 
-async function run(courseId, limit) {
-  const courseUrl = editorUrl(COURSE_PATH, courseId);
+async function openBrowser() {
   if (!fs.existsSync(path.join(PROFILE, 'Local State'))) throw new Error('iomp_login_required');
-  const browser = await loadPlaywright().chromium.launchPersistentContext(PROFILE, {
+  return loadPlaywright().chromium.launchPersistentContext(PROFILE, {
     channel: 'msedge', headless: true, chromiumSandbox: true,
   });
-  try {
-    const courseRequest = { kind: 'course', course_id: courseId };
-    const course = await readEditor(browser, courseUrl, courseRequest);
-    if (!isCourseEditor(courseUrl, course.course_id) || course.course_id !== courseId) throw new Error('course_id_mismatch');
-    const directory = path.join(ARCHIVE, `course-${courseId}`, new Date().toISOString().replace(/[:.]/g, '-'));
-    fs.mkdirSync(directory, { recursive: true });
-    writeJson(path.join(directory, 'course.json'), course);
-    const saved = [];
-    const issues = [];
-    for (const lesson of course.lessons.slice(0, limit)) {
-      try {
-        const capture = await readEditor(browser, editorUrl(LESSON_PATH, lesson.id), {
-          kind: 'lesson', course_id: courseId, lesson_id: lesson.id,
-          course_title: course.title, lesson_title: lesson.title,
-        });
-        writeJson(path.join(directory, `lesson-${lesson.id}.json`), capture);
-        saved.push(lesson.id);
-      } catch (error) {
-        const code = diagnostic(error);
-        issues.push({ lesson_id: lesson.id, code });
-        if (code === 'editor_session_or_response_invalid') break;
-      }
+}
+
+async function readCatalog(browser) {
+  let url = `${ORIGIN}${CATALOG_PATH}?lg=ru`;
+  let total = null;
+  const courses = new Map();
+  for (let page = 1; url; page += 1) {
+    const target = new URL(url);
+    if (target.origin !== ORIGIN || target.pathname !== CATALOG_PATH ||
+        target.username || target.password || target.hash || page > 1000) throw new Error('catalog_url_invalid');
+    const chunk = await readEditor(browser, url, { kind: 'catalog', page });
+    if (total === null) total = chunk.total;
+    if (chunk.total !== total || chunk.start !== courses.size + 1 || chunk.end > 20000) {
+      throw new Error('catalog_changed_during_capture');
     }
-    const latest = await readEditor(browser, courseUrl, courseRequest);
-    const status = {
-      account: 'iomp', course_id: courseId, lesson_ids: course.lesson_ids, saved, issues,
-      outline_verified: courseIdentity(course) === courseIdentity(latest),
-    };
-    writeJson(path.join(directory, 'capture-status.json'), status);
-    console.log(JSON.stringify({ ...status, directory }));
+    for (const entry of chunk.courses) {
+      if (courses.has(entry.id)) throw new Error('catalog_duplicate_course');
+      courses.set(entry.id, entry);
+    }
+    url = chunk.next_url;
+  }
+  if (courses.size !== total) throw new Error('catalog_incomplete');
+  return [...courses.values()].sort((a, b) => a.id - b.id);
+}
+
+async function captureCourse(browser, courseId, limit) {
+  const courseUrl = editorUrl(COURSE_PATH, courseId);
+  const courseRequest = { kind: 'course', course_id: courseId };
+  const course = await readEditor(browser, courseUrl, courseRequest);
+  if (!isCourseEditor(courseUrl, course.course_id) || course.course_id !== courseId) throw new Error('course_id_mismatch');
+  const directory = path.join(ARCHIVE, `course-${courseId}`, new Date().toISOString().replace(/[:.]/g, '-'));
+  fs.mkdirSync(directory, { recursive: true });
+  writeJson(path.join(directory, 'course.json'), course);
+  const saved = [];
+  const issues = [];
+  let consecutive = 0;
+  for (const lesson of course.lessons.slice(0, limit)) {
+    try {
+      const capture = await readEditor(browser, editorUrl(LESSON_PATH, lesson.id), {
+        kind: 'lesson', course_id: courseId, lesson_id: lesson.id,
+        course_title: course.title, lesson_title: lesson.title,
+      });
+      writeJson(path.join(directory, `lesson-${lesson.id}.json`), capture);
+      saved.push(lesson.id);
+      consecutive = 0;
+    } catch (error) {
+      const code = diagnostic(error);
+      issues.push({ lesson_id: lesson.id, code });
+      if (authLost(code)) throw error;
+      if (++consecutive >= 10) break;
+    }
+  }
+  const latest = await readEditor(browser, courseUrl, courseRequest);
+  const status = {
+    account: 'iomp', course_id: courseId, lesson_ids: course.lesson_ids, saved, issues,
+    outline_verified: courseIdentity(course) === courseIdentity(latest),
+  };
+  writeJson(path.join(directory, 'capture-status.json'), status);
+  return { ...status, directory };
+}
+
+async function run(courseId, limit) {
+  const browser = await openBrowser();
+  try {
+    console.log(JSON.stringify(await captureCourse(browser, courseId, limit)));
   } finally {
     await browser.close();
   }
@@ -91,13 +130,21 @@ function diagnostic(error) {
   return /^[a-z_]{1,100}$/.test(error?.message || '') ? error.message : 'capture_failed';
 }
 
-const [courseId, limit = '5', extra] = process.argv.slice(2);
-if (!/^[1-9][0-9]{0,9}$/.test(courseId || '') || !/^(?:[1-9]|10)$/.test(limit) || extra !== undefined) {
-  console.error('Usage: node capture_course.cjs COURSE_ID [LIMIT 1-10]');
-  process.exitCode = 1;
-} else {
-  run(Number(courseId), Number(limit)).catch(error => {
-    console.error(JSON.stringify({ error: diagnostic(error) }));
-    process.exitCode = 1;
-  });
+function authLost(code) {
+  return ['editor_session_or_response_invalid', 'source_auth_error', 'iomp_login_required'].includes(code);
 }
+
+if (require.main === module) {
+  const [courseId, limit = '5', extra] = process.argv.slice(2);
+  if (!/^[1-9][0-9]{0,9}$/.test(courseId || '') || !/^(?:[1-9]|10)$/.test(limit) || extra !== undefined) {
+    console.error('Usage: node capture_course.cjs COURSE_ID [LIMIT 1-10]');
+    process.exitCode = 1;
+  } else {
+    run(Number(courseId), Number(limit)).catch(error => {
+      console.error(JSON.stringify({ error: diagnostic(error) }));
+      process.exitCode = 1;
+    });
+  }
+}
+
+module.exports = { ARCHIVE, authLost, captureCourse, diagnostic, openBrowser, readCatalog, writeJson };

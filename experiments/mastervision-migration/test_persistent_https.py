@@ -105,6 +105,21 @@ class Tests(unittest.TestCase):
                 opener.open(self.request(url))
         self.assertEqual(factory.calls, [])
 
+    def test_iomp_connection_rejects_mastervision_destination(self):
+        factory = Factory([response()])
+        site = 'my-lk.iomp.ru'
+        handler, opener = self.opener(factory, site=site)
+        try:
+            with self.assertRaisesRegex(urllib.error.URLError, 'destination_rejected'):
+                opener.open(self.request(mod.ERROR_URL))
+            self.assertEqual(factory.calls, [])
+            with opener.open(self.request(f'https://{site}/api/v2/mcp')) as result:
+                result.read()
+            self.assertEqual(factory.calls[0][:2], (site, 443))
+            self.assertEqual(factory.connections[0].requests[0][3]['Host'], site)
+        finally:
+            handler.close()
+
     def test_host_proxy_and_length_injections_rejected_before_connection(self):
         factory = Factory()
         handler, _ = self.opener(factory)

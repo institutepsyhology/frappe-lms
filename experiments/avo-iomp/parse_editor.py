@@ -7,7 +7,7 @@ import sys
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'mastervision-migration'))
-from source import Config, Review, parse_course, parse_lesson
+from source import Config, Review, parse_catalog, parse_course, parse_lesson
 
 
 CONFIG = Config('iomp', 'https://shop.iomp.ru')
@@ -20,12 +20,13 @@ def editor_settings(rows, prefix):
 
 def main():
     request = json.loads(sys.stdin.buffer.read().decode('utf-8'))
-    course_id = request['course_id']
-    if request['kind'] == 'course':
-        result = parse_course(request['html'], course_id, config=CONFIG)
+    if request['kind'] == 'catalog':
+        result = parse_catalog(request['html'], request['page'], config=CONFIG)
+    elif request['kind'] == 'course':
+        result = parse_course(request['html'], request['course_id'], config=CONFIG)
         result['settings'] = editor_settings(result['settings'], 'TrainingForm[')
     elif request['kind'] == 'lesson':
-        result = parse_lesson(request['html'], course_id, request['lesson_id'],
+        result = parse_lesson(request['html'], request['course_id'], request['lesson_id'],
                               request['course_title'], request['lesson_title'], config=CONFIG)
         result['settings'] = editor_settings(result['settings'], 'TrainingLessons[')
     else:
