@@ -1,9 +1,9 @@
 'use strict';
 
-const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
 const { ARCHIVE, authLost, captureCourse, diagnostic, openBrowser, readCatalog, writeJson } = require('./capture_course.cjs');
+const { startImportWorker } = require('./import_worker.cjs');
 
 const JOURNAL = path.join(ARCHIVE, 'batch-events.jsonl');
 const REVIEW_LOG = path.join(ARCHIVE, 'batch-review.jsonl');
@@ -44,22 +44,12 @@ function priorCapture(courseId) {
   return null;
 }
 
-function importCourse(capture) {
-  const interpreter = process.env.IOMP_PYTHON;
-  const processResult = spawnSync(interpreter || 'py', [...(interpreter ? [] : ['-3']), '-B',
-    path.join(__dirname, 'import_capture.py'), capture.directory], {
-    encoding: 'utf8', windowsHide: true, maxBuffer: 1024 * 1024,
-  });
-  if (processResult.status !== 0 || !processResult.stdout) throw new Error('frappe_result_uncertain');
-  const result = JSON.parse(processResult.stdout);
-  if (result.account !== 'iomp' || result.course_id !== String(capture.course_id) ||
-      !['imported', 'excluded', 'review', 'stopped'].includes(result.status)) throw new Error('frappe_result_uncertain');
-  return result;
-}
-
 function selectCourses(catalog, previous, { mode, after, limit, ids }) {
   const ready = catalog.filter(row => {
     const last = previous.get(row.id);
+    if (mode === '--resume-empty') {
+      return ids.has(row.id) && last?.status === 'stopped' && last.code === 'mcp_authentication_failed';
+    }
     if (mode === '--retry-courses') {
       return ids.has(row.id) && (last?.status === 'review' || (last?.status === 'imported' && last.cover_issue));
     }
@@ -76,11 +66,12 @@ async function run(options) {
   fs.mkdirSync(ARCHIVE, { recursive: true });
   const lock = fs.openSync(LOCK, 'wx');
   fs.writeFileSync(lock, JSON.stringify({ pid: process.pid, mode }));
-  let browser;
+  let browser, worker;
   try {
     if (fs.existsSync(STOP)) throw new Error('paused_by_owner');
     const previous = recentEvents();
-    if ([...previous.values()].some(row => row.status === 'write_started' || row.status === 'stopped')) {
+    if ([...previous.values()].some(row => row.status === 'write_started' || (row.status === 'stopped' &&
+        !(mode === '--resume-empty' && options.ids.has(row.course_id) && row.code === 'mcp_authentication_failed')))) {
       throw new Error('prior_frappe_result_requires_review');
     }
     browser = await openBrowser();
@@ -114,19 +105,24 @@ async function run(options) {
         continue;
       }
       event({ course_id: row.id, status: 'write_started', lessons: capture.saved.length });
-      const result = importCourse(capture);
+      worker ??= startImportWorker();
+      const result = await worker.importCourse(capture, mode === '--resume-empty');
       const { course_id, account, ...details } = result;
       event({ course_id: row.id, ...details });
       if (result.status === 'stopped') throw new Error('frappe_result_uncertain');
       consecutive = result.status === 'review' ? consecutive + 1 : 0;
       if (consecutive >= REVIEW_LIMIT) throw new Error('ten_consecutive_reviews');
     }
+    if (worker && !await worker.close()) throw new Error('frappe_result_uncertain');
     event({ status: 'batch_finished', batch_count: selected.length, pending_count: ready.length - selected.length });
   } catch (error) {
     event({ status: 'batch_stopped', code: diagnostic(error) });
     process.exitCode = 1;
   } finally {
-    try { if (browser) await browser.close(); } finally {
+    try {
+      if (worker) await worker.close();
+      if (browser) await browser.close();
+    } finally {
       fs.closeSync(lock);
       fs.unlinkSync(LOCK);
     }
@@ -135,6 +131,9 @@ async function run(options) {
 
 function parseOptions(args) {
   const [mode, after = '2', limit = '317', extra] = args;
+  if (mode === '--resume-empty' && args.length === 2 && /^[1-9]\d{0,9}$/.test(after)) {
+    return { mode, ids: new Set([Number(after)]), limit: 1 };
+  }
   if (mode === '--retry-courses' && args.length === 2 && /^(?:[1-9]\d{0,9})(?:,[1-9]\d{0,9})*$/.test(after)) {
     const ids = after.split(',').map(Number);
     if (new Set(ids).size === ids.length) return { mode, ids: new Set(ids), limit: ids.length };

@@ -55,3 +55,21 @@ compared with the source. The comparisons covered the two handbook links, the
 labelled YouTube and VK players with their presentation, and the reading list
 with its illustration, video blocks and audio link. These checks covered
 persisted content and ordering. They did not exercise video playback.
+
+The batch keeps one IOMP MCP session in memory and processes courses serially.
+After a recorded login failure, `--resume-empty COURSE_ID` requires an empty
+destination for that course, its source lesson IDs and its expected attachments.
+Uncertain writes still require reconciliation.
+
+Course 91 has 62 MP3 attachments across ten lessons. The supervised importer
+copies them directly from AVO to IOMP private storage, verifies bytes and
+size, then binds each File to its saved draft lesson. A retry validates existing
+attachments. The corresponding lessons of course 116 reuse the same audio
+after verifying every source reference in order and matching each private File.
+Each course retains its original lesson IDs. LMS serves a shared file to a
+learner with access to a lesson that contains it.
+
+On 19 November 2026 all 64 drafts of course 91 and all 62 private bindings
+were verified. Two actual media links returned the requested byte range
+to an administrator and denied it to an anonymous visitor. Access as an
+enrolled student was not tested on the unpublished course.

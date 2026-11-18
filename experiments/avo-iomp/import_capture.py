@@ -1,6 +1,7 @@
 """Verify and import one complete capture as an unpublished IOMP course."""
 
 import base64
+from contextlib import closing
 import hashlib
 import json
 from pathlib import Path
@@ -24,6 +25,8 @@ from normalize_review import EXCLUDED_LESSONS, normalize_review
 from normalize_iomp_material import normalize_iomp_material, reviewed_image_url
 from normalize_reviewed_vk import normalize_reviewed_vk
 from jpeg_cover import prepare_jpeg_upload
+from course_audio import prepare_course_audio, sync_course_audio
+from shared_course_audio import prepare_shared_audio, verify_shared_audio, verify_shared_destination
 
 
 ACCOUNT, ORIGIN, SITE, SERVER = IOMP_BINDING
@@ -235,7 +238,20 @@ def preflight_source(payloads):
         raise Review('course_needs_review', problems)
 
 
-def main(directory, *, defer_final_lesson=None):
+def verify_empty_destination(client, cid, lesson_ids):
+    checks = [('LMS Course', {'custom_avo_account': ACCOUNT, 'custom_avo_id': cid}),
+              ('File', {'file_name': ['like', f'avo-iomp-course-{cid}-%']}),
+              ('File', {'file_name': ['like', f'avo-iomp-{cid}-%']})]
+    for offset in range(0, len(lesson_ids), 100):
+        checks.append(('Course Lesson', {'custom_avo_account': ACCOUNT,
+                      'custom_avo_id': ['in', lesson_ids[offset:offset + 100]]}))
+    for doctype, filters in checks:
+        result = client.call('list_documents', {'doctype': doctype, 'fields': ['name'], 'filters': filters, 'limit': 1})
+        if result.get('documents') != [] or result.get('has_next_page') is not False:
+            raise Stop('course_prior_write_requires_reconciliation')
+
+
+def main(directory, *, defer_final_lesson=None, require_empty=False, client_scope=None):
     cid = None
     try:
         course_dir = Path(directory).resolve().parent
@@ -247,6 +263,8 @@ def main(directory, *, defer_final_lesson=None):
             if excluded:
                 return {'status': 'excluded', 'course_id': cid, 'excluded_lesson_ids': excluded}
             raise Review('empty_source_course')
+        audio = prepare_course_audio(payloads)
+        shared_audio = prepare_shared_audio(payloads)
         deferred = []
         try:
             preflight_source(payloads)
@@ -257,20 +275,27 @@ def main(directory, *, defer_final_lesson=None):
                 raise
             deferred = error.problems
             payloads = payloads[:-1]
-        client = IompClient(WORKSPACE)
-        try:
+        with (client_scope() if client_scope is not None else closing(IompClient(WORKSPACE))) as client:
             importer = IompImporter(client)
+            if require_empty:
+                verify_empty_destination(client, cid, [str(i) for i in meta['lesson_ids']])
+            sync_course_audio('prepare', audio)
+            verify_shared_audio(importer, shared_audio)
             report = importer.import_course(payloads, apply=True, images_for_lesson=lesson_images)
             outcome = importer.outline(cid)
+            sync_course_audio('attach', audio)
+            verify_shared_destination(importer, shared_audio)
             metadata = finish_course(client, outcome['course'], cid, meta['cover_url'])
             result = {'status': 'imported', 'course_id': cid, 'lessons': len(outcome['ids']),
                       'created': len(report['created_lesson_ids']), 'warnings': report['warnings'],
                       'excluded_lesson_ids': excluded, **metadata}
+            if audio:
+                result['verified_audio_files'] = len(audio)
+            if shared_audio:
+                result['reused_audio_files'] = sum(map(len, shared_audio.values()))
             if deferred:
                 result.update(status='review', code='final_lesson_deferred', issues=deferred)
             return result
-        finally:
-            client.close()
     except Review as error:
         return {'status': 'review', 'course_id': cid, 'code': diagnostic(error), 'issues': error.problems}
     except Exception as error:
@@ -284,6 +309,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('directory')
     parser.add_argument('--defer-final-lesson', help='ID of a known empty final lesson to leave for review')
+    parser.add_argument('--require-empty', action='store_true')
     args = parser.parse_args()
-    print(json.dumps({'account': ACCOUNT, **main(args.directory, defer_final_lesson=args.defer_final_lesson)},
+    print(json.dumps({'account': ACCOUNT, **main(args.directory, defer_final_lesson=args.defer_final_lesson,
+                                                require_empty=args.require_empty)},
                      ensure_ascii=True))

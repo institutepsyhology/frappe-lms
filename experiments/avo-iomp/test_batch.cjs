@@ -27,3 +27,11 @@ test('automatic import still skips earlier outcomes and honors the limit', () =>
     assert.throws(() => parseOptions(args));
   }
 });
+
+test('empty-destination recovery is limited to a recorded failed login', () => {
+  const options = parseOptions(['--resume-empty', '4']);
+  const stop = code => new Map([[4, { status: 'stopped', code }]]);
+  assert.deepEqual(selectCourses(catalog, stop('mcp_authentication_failed'), options).selected, [{ id: 4 }]);
+  assert.throws(() => selectCourses(catalog, stop('write_result_uncertain'), options));
+  assert.throws(() => selectCourses(catalog, previous, options));
+});
