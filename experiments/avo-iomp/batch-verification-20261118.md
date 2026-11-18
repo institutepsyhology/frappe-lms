@@ -109,8 +109,8 @@ The IOMP normalizer restored the missing HTTPS scheme on 12 Google Drive
 file buttons and omitted empty presentation buttons. Lesson 779 was last
 in the current outline and had an empty video field and no other importable
 materials. The import used `--defer-final-lesson 779` to save the verified
-prefix and record the remaining lesson under review. A later standard
-import can append 779 once it passes preflight.
+prefix and record the remaining lesson under review. The owner subsequently
+excluded lesson 779, and the IOMP exclusion policy now includes it.
 
 Frappe returned 35 drafts for course 74 with the exact expected AVO IDs.
 Each contains a Rutube video, with 39 YouTube/Rutube pairs in total. Courses
