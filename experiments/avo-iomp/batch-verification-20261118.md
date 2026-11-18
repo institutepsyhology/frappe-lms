@@ -91,3 +91,8 @@ lesson issues remained in that batch. The stored draft of lesson 2230 has one
 YouTube/Rutube pair. The next batch of 30 began at 18:28 Moscow time, starting
 from course 38. Before that launch, available space was 7.95 GiB on the server
 and 2.68 GiB on the local drive. The selected MV contact transfer was active.
+
+The batch starting from course 38 finished at 18:45 Moscow time. It added 22
+courses and 141 lessons, with eight courses recorded for review. The next
+30-course batch was launched starting from course 69 after checking free
+space of 7.91 GiB on the server and 2.63 GiB locally.
