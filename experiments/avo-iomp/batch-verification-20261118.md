@@ -96,3 +96,24 @@ The batch starting from course 38 finished at 18:45 Moscow time. It added 22
 courses and 141 lessons, with eight courses recorded for review. The next
 30-course batch was launched starting from course 69 after checking free
 space of 7.91 GiB on the server and 2.63 GiB locally.
+
+## Targeted retry of courses 74, 93, and 96
+
+The owner excluded 45 lesson IDs in course 74 and added Rutube links to the
+remaining lessons. The list in AVO had become shorter between captures.
+The full new capture confirmed 39 lessons in their current order. Of the
+45 excluded IDs, 42 were already absent and 811, 812, and 813 remained in
+the source outline. All 45 are covered by the IOMP exclusion policy.
+
+The IOMP normalizer restored the missing HTTPS scheme on 12 Google Drive
+file buttons and omitted empty presentation buttons. Lesson 779 was last
+in the current outline and had an empty video field and no other importable
+materials. The import used `--defer-final-lesson 779` to save the verified
+prefix and record the remaining lesson under review. A later standard
+import can append 779 once it passes preflight.
+
+Frappe returned 35 drafts for course 74 with the exact expected AVO IDs.
+Each contains a Rutube video, with 39 YouTube/Rutube pairs in total. Courses
+93 and 96 were imported with 133 and 37 lessons respectively, in source
+order. Read-back confirmed one pair in lesson 1736 and two each in 1273 and
+1655. All three courses are unpublished. Five targeted unit tests passed.

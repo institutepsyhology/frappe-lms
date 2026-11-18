@@ -97,6 +97,9 @@ def normalize_avatar_label(payload):
 def refreshed_lessons(path, course_id, lesson_ids):
     refreshed = {}
     for receipt in sorted((path.parent / 'refreshed').glob('*/refresh-status.json')):
+        # A full capture supersedes earlier partial captures, including their outlines.
+        if receipt.parent.name < path.name:
+            continue
         row = json.loads(receipt.read_text(encoding='utf-8'))
         if (row.get('account'), row.get('course_id'), row.get('lesson_ids')) != (ACCOUNT, int(course_id), lesson_ids):
             raise Stop('refreshed_outline_mismatch')
@@ -229,7 +232,7 @@ def preflight_source(payloads):
         raise Review('course_needs_review', problems)
 
 
-def main(directory):
+def main(directory, *, defer_final_lesson=None):
     cid = None
     try:
         cid, meta, payloads = read_capture(directory)
@@ -238,16 +241,28 @@ def main(directory):
             if excluded:
                 return {'status': 'excluded', 'course_id': cid, 'excluded_lesson_ids': excluded}
             raise Review('empty_source_course')
-        preflight_source(payloads)
+        deferred = []
+        try:
+            preflight_source(payloads)
+        except Review as error:
+            if (len(payloads) < 2 or payloads[-1]['lesson_id'] != defer_final_lesson
+                    or len(error.problems) != 1 or error.problems[0]['lesson_id'] != defer_final_lesson
+                    or 'empty_lesson' not in error.problems[0]['codes']):
+                raise
+            deferred = error.problems
+            payloads = payloads[:-1]
         client = IompClient(WORKSPACE)
         try:
             importer = IompImporter(client)
             report = importer.import_course(payloads, apply=True, images_for_lesson=lesson_images)
             outcome = importer.outline(cid)
             metadata = finish_course(client, outcome['course'], cid, meta['cover_url'])
-            return {'status': 'imported', 'course_id': cid, 'lessons': len(outcome['ids']),
-                    'created': len(report['created_lesson_ids']), 'warnings': report['warnings'],
-                    'excluded_lesson_ids': excluded, **metadata}
+            result = {'status': 'imported', 'course_id': cid, 'lessons': len(outcome['ids']),
+                      'created': len(report['created_lesson_ids']), 'warnings': report['warnings'],
+                      'excluded_lesson_ids': excluded, **metadata}
+            if deferred:
+                result.update(status='review', code='final_lesson_deferred', issues=deferred)
+            return result
         finally:
             client.close()
     except Review as error:
@@ -258,4 +273,11 @@ def main(directory):
 
 
 if __name__ == '__main__':
-    print(json.dumps({'account': ACCOUNT, **main(sys.argv[1])}, ensure_ascii=True))
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('directory')
+    parser.add_argument('--defer-final-lesson', help='ID of a known empty final lesson to leave for review')
+    args = parser.parse_args()
+    print(json.dumps({'account': ACCOUNT, **main(args.directory, defer_final_lesson=args.defer_final_lesson)},
+                     ensure_ascii=True))

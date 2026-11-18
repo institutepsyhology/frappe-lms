@@ -8,8 +8,18 @@ from lms.lms.avo_transform import plan_import
 from normalize_source import clean_table, table_content
 
 
-EXCLUDED_LESSONS = frozenset({'20', '169', '188', '1405', '1406', '1957', '4396', '4400', '4512', '5296', '5864'})
+EXCLUDED_LESSONS = frozenset({
+    '20', '169', '188', '1405', '1406', '1957', '4396', '4400', '4512', '5296', '5864',
+    # The owner selected the remaining 36 lessons from course 74.
+    '726', '767', '768', '769', '770', '771', '775', '776', '777', '778', '780', '782',
+    '783', '784', '785', '786', '787', '788', '789', '790', '791', '792', '793', '794',
+    '797', '798', '799', '800', '801', '802', '803', '804', '805', '806', '807', '810',
+    '811', '812', '813', '815', '816', '817', '818', '819', '820',
+})
 OMIT_AUDIO_LESSONS = frozenset({'1512', '1792', '1956'})
+AUDIO_BUTTON_LABELS = ('АУДИОЗАПИСЬ', 'АУДИОЗАПИСЬ 1', 'АУДИОЗАПИСЬ 2')
+MATERIAL_BUTTON_LABELS = (*AUDIO_BUTTON_LABELS, 'ПРЕЗЕНТАЦИЯ')
+DRIVE_FILE_LINK = re.compile(r'drive\.google\.com/file/d/[A-Za-z0-9_-]+/view(?:\?usp=[A-Za-z0-9_-]+)?')
 
 
 def clean_timing_table(source):
@@ -42,11 +52,15 @@ def normalize_review(payload):
             fields = node.get('fields', {})
             name = node.get('name')
             html = fields.get('html')
-            if (name == 'button' and html in ('АУДИОЗАПИСЬ', 'АУДИОЗАПИСЬ 1', 'АУДИОЗАПИСЬ 2')
-                    and fields.get('linkType') == 'url' and (omit_audio or not fields.get('url')) and not node.get('children')
+            if (name == 'button' and html in MATERIAL_BUTTON_LABELS and fields.get('linkType') == 'url'
+                    and not node.get('children')
                     and not any(fields.get(key) for key in ('anchor', 'toAnchor', 'event', 'icon'))
                     and not set(fields) - {'anchor', 'html', 'icon', 'linkType', 'url', 'blank', 'toAnchor', 'event'}):
-                continue
+                url = fields.get('url')
+                if url in (None, '') or (omit_audio and html in AUDIO_BUTTON_LABELS):
+                    continue
+                if isinstance(url, str) and DRIVE_FILE_LINK.fullmatch(url):
+                    fields['url'] = 'https://' + url
             if (name in ('header', 'text') and isinstance(html, str) and not node.get('children')
                     and not fields.get('anchor') and not set(fields) - {'anchor', 'html', 'format'}):
                 if name == 'header':
