@@ -75,3 +75,12 @@ nine matched exclusions. Three targeted regression tests passed. The
 writing verified drafts and recording the result for each course. At this
 checkpoint course 3 existed as an unpublished draft and its lessons were
 still being imported. Source snapshots remain private.
+
+The owner subsequently excluded lesson 4396 and requested lessons 1512,
+1792, and 1956 without audio. The IOMP policy records those decisions for
+later runs. Lesson 4396 had already been created before the clarification.
+It remains a draft in unpublished course 4 with zero enrollments. The
+attempt to remove its course membership was denied by the automatic review,
+so the local journal records the exclusion and the existing draft separately.
+Read-back of 1512, 1792, and 1956 confirmed draft status and no audio blocks
+or audio links. The presentation in 1792 was retained.

@@ -52,7 +52,10 @@ class ReviewedContentTests(unittest.TestCase):
         self.assertEqual((updated['name'], updated['fields']['html']), ('text', heading))
         self.assertEqual(button['fields']['url'], 'https://example.test/audio')
         self.assertIn('5296', EXCLUDED_LESSONS)
-        self.assertNotIn('4396', EXCLUDED_LESSONS)
+        self.assertIn('4396', EXCLUDED_LESSONS)
+        payload.update(course_id='34', lesson_id='1792')
+        normalize_review(payload)
+        self.assertEqual(payload['ape']['children'], [updated])
 
 
 if __name__ == '__main__':
