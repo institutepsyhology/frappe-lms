@@ -117,3 +117,19 @@ Each contains a Rutube video, with 39 YouTube/Rutube pairs in total. Courses
 93 and 96 were imported with 133 and 37 lessons respectively, in source
 order. Read-back confirmed one pair in lesson 1736 and two each in 1273 and
 1655. All three courses are unpublished. Five targeted unit tests passed.
+
+## Targeted retry of courses 38, 59, 63, and 97
+
+The fresh IOMP captures contain one YouTube video in lesson 1606 and a
+YouTube/Rutube pair in 2175. The owner approved omitting the audio button
+from 537 and the presentation button from 1277. The fresh source for 537
+already had no such button. The importer preserves both lessons' video pairs.
+
+For 1798, 1841, 1908, and 1910, the picture field repeated lesson 1798's
+YouTube address. The normalizer ignores that verified value in those four
+fields and retains each lesson's own player URL.
+
+Courses 38, 59, 63, and 97 imported in source order with 81, 32, 26, and 1
+lessons respectively. Frappe confirmed all four courses are unpublished,
+and read-back confirmed the four requested lesson drafts and the expected
+videos and button omissions. Seven targeted unit tests passed.

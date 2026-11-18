@@ -30,6 +30,39 @@ class AvatarNormalizationTests(unittest.TestCase):
 
 
 class ReviewedContentTests(unittest.TestCase):
+    def test_only_owner_selected_material_buttons_are_omitted(self):
+        for course_id, lesson_id, label in (
+            ('63', '537', 'АУДИОЗАПИСЬ'),
+            ('97', '1277', 'ПРЕЗЕНТАЦИЯ'),
+        ):
+            with self.subTest(lesson_id=lesson_id):
+                button = {'name': 'button', 'fields': {
+                    'html': label, 'linkType': 'url', 'url': 'https://example.test/material',
+                }}
+                video = {'name': 'video', 'fields': {'videoProvider': 'youtube'}}
+                payload = {'account': 'iomp', 'source_origin': 'https://shop.iomp.ru', 'format': 'ape',
+                           'course_id': course_id, 'lesson_id': '1',
+                           'ape': {'name': 'page', 'children': [video, button]}}
+                normalize_review(payload)
+                self.assertEqual(payload['ape']['children'], [video, button])
+                payload['lesson_id'] = lesson_id
+                normalize_review(payload)
+                self.assertEqual(payload['ape']['children'], [video])
+
+    def test_reviewed_video_poster_is_omitted_without_changing_player(self):
+        poster = 'https://youtu.be/aaaaaaaaaaa'
+        player = 'https://youtu.be/bbbbbbbbbbb'
+        fields = {'videoProvider': 'youtube', 'videoSrc': player, 'posterSrc': poster}
+        video = {'name': 'video', 'fields': fields}
+        payload = {'account': 'iomp', 'source_origin': 'https://shop.iomp.ru', 'format': 'ape',
+                   'course_id': '38', 'lesson_id': '1841', 'ape': {'name': 'page', 'children': [video]}}
+        with patch('normalize_review.STALE_POSTER_DIGEST', hashlib.sha256(poster.encode()).hexdigest()):
+            normalize_review(payload)
+            self.assertEqual(fields, {'videoProvider': 'youtube', 'videoSrc': player})
+            fields['posterSrc'] = 'https://example.test/poster.jpg'
+            normalize_review(payload)
+            self.assertEqual(fields['posterSrc'], 'https://example.test/poster.jpg')
+
     def test_drive_file_button_gets_https_and_empty_presentation_is_omitted(self):
         drive = 'drive.google.com/file/d/sample-id/view?usp=sharing'
         nodes = [
