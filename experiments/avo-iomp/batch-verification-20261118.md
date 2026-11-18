@@ -84,3 +84,10 @@ attempt to remove its course membership was denied by the automatic review,
 so the local journal records the exclusion and the existing draft separately.
 Read-back of 1512, 1792, and 1956 confirmed draft status and no audio blocks
 or audio links. The presentation in 1792 was retained.
+
+The review batch completed at 16:07 Moscow time with 10 accepted courses and
+517 lessons after excluding course 4 from the active results. No unresolved
+lesson issues remained in that batch. The stored draft of lesson 2230 has one
+YouTube/Rutube pair. The next batch of 30 began at 18:28 Moscow time, starting
+from course 38. Before that launch, available space was 7.95 GiB on the server
+and 2.68 GiB on the local drive. The selected MV contact transfer was active.
