@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from import_capture import normalize_avatar_label
 from lms.lms.avo_transform import omit_placeholder_node
+from normalize_review import EXCLUDED_LESSONS, clean_timing_table, normalize_review
 
 
 class AvatarNormalizationTests(unittest.TestCase):
@@ -24,6 +25,34 @@ class AvatarNormalizationTests(unittest.TestCase):
             self.assertEqual(nodes[1]['fields']['html'], 'Изображение')
             self.assertEqual(nodes[2]['fields']['html'], 'Схема урока')
             self.assertTrue(omit_placeholder_node(nodes[3], 'iomp', '3', '424'))
+
+
+class ReviewedContentTests(unittest.TestCase):
+    def test_table_repairs_keep_text_cells_and_links(self):
+        source = '<table cellpadding="3"><tbody><tr><td valign="middle"><a id="start"></a>00:01</td>' \
+                 '<td><a href="https://example.test/material">Материал</a></td></tr></tbody></table>'
+        result = clean_timing_table(source)
+        self.assertIn('<span id="start"></span>00:01', result)
+        self.assertIn('<a href="https://example.test/material">Материал</a>', result)
+        self.assertNotIn('cellpadding', result)
+        self.assertNotIn('valign', result)
+
+    def test_heading_keeps_its_link_and_blank_audio_is_omitted(self):
+        heading = '<h4 style="text-align: center"><a href="https://example.test/audio">Аудио</a></h4>'
+        nodes = [
+            {'name': 'header', 'fields': {'anchor': '', 'format': 'h4', 'html': heading}},
+            {'name': 'button', 'fields': {'html': 'АУДИОЗАПИСЬ', 'linkType': 'url', 'url': ''}},
+            {'name': 'button', 'fields': {'html': 'АУДИОЗАПИСЬ', 'linkType': 'url', 'url': 'https://example.test/audio'}},
+        ]
+        payload = {'account': 'iomp', 'source_origin': 'https://shop.iomp.ru', 'format': 'ape',
+                   'course_id': '8', 'lesson_id': '32', 'course_title': 'Course', 'lesson_title': 'Lesson',
+                   'ape': {'name': 'page', 'children': nodes}}
+        normalize_review(payload)
+        updated, button = payload['ape']['children']
+        self.assertEqual((updated['name'], updated['fields']['html']), ('text', heading))
+        self.assertEqual(button['fields']['url'], 'https://example.test/audio')
+        self.assertIn('5296', EXCLUDED_LESSONS)
+        self.assertNotIn('4396', EXCLUDED_LESSONS)
 
 
 if __name__ == '__main__':

@@ -51,7 +51,7 @@ function importCourse(capture) {
   if (processResult.status !== 0 || !processResult.stdout) throw new Error('frappe_result_uncertain');
   const result = JSON.parse(processResult.stdout);
   if (result.account !== 'iomp' || result.course_id !== String(capture.course_id) ||
-      !['imported', 'review', 'stopped'].includes(result.status)) throw new Error('frappe_result_uncertain');
+      !['imported', 'excluded', 'review', 'stopped'].includes(result.status)) throw new Error('frappe_result_uncertain');
   return result;
 }
 
@@ -69,9 +69,12 @@ async function run({ mode, after, limit }) {
     browser = await openBrowser();
     const catalog = await readCatalog(browser);
     writeJson(path.join(ARCHIVE, 'batch-catalog.json'), { account: 'iomp', origin: 'https://shop.iomp.ru', courses: catalog });
-    const ready = catalog.filter(row => row.id > after && ![
-      'imported', 'review', ...(mode === '--capture-only' ? ['captured'] : []),
-    ].includes(previous.get(row.id)?.status));
+    const ready = catalog.filter(row => {
+      const status = previous.get(row.id)?.status;
+      if (row.id <= after) return false;
+      if (mode === '--retry-review') return status === 'review';
+      return !['imported', 'excluded', 'review', ...(mode === '--capture-only' ? ['captured'] : [])].includes(status);
+    });
     const selected = ready.slice(0, limit);
     event({ status: 'started', mode, catalog_count: catalog.length, batch_count: selected.length });
     let consecutive = 0;
@@ -120,9 +123,9 @@ async function run({ mode, after, limit }) {
 }
 
 const [mode, after = '2', limit = '317', extra] = process.argv.slice(2);
-if (!['--capture-only', '--apply'].includes(mode) || !/^\d{1,10}$/.test(after) ||
+if (!['--capture-only', '--apply', '--retry-review'].includes(mode) || !/^\d{1,10}$/.test(after) ||
     !/^\d{1,3}$/.test(limit) || Number(limit) < 1 || extra !== undefined) {
-  console.error('Usage: node batch.cjs --capture-only|--apply [AFTER_ID] [COURSE_LIMIT]');
+  console.error('Usage: node batch.cjs --capture-only|--apply|--retry-review [AFTER_ID] [COURSE_LIMIT]');
   process.exitCode = 1;
 } else {
   run({ mode, after: Number(after), limit: Number(limit) }).catch(error => {

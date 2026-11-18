@@ -20,6 +20,7 @@ from assets import MAX_IMAGE, MAX_IMAGES, NoRedirect, _data_image, _inspect
 from covers import _local_public_url
 from importer import DIAGNOSTIC, IOMP_BINDING, Importer, MCPClient, Review, Stop, source_id
 from lms.lms.avo_transform import IMAGE_KEY, omit_placeholder_node, omit_placeholder_section, plan_import
+from normalize_review import EXCLUDED_LESSONS, normalize_review
 
 
 ACCOUNT, ORIGIN, SITE, SERVER = IOMP_BINDING
@@ -93,6 +94,19 @@ def normalize_avatar_label(payload):
             node['fields'] = candidate_fields
 
 
+def refreshed_lessons(path, course_id, lesson_ids):
+    refreshed = {}
+    for receipt in sorted((path.parent / 'refreshed').glob('*/refresh-status.json')):
+        row = json.loads(receipt.read_text(encoding='utf-8'))
+        if (row.get('account'), row.get('course_id'), row.get('lesson_ids')) != (ACCOUNT, int(course_id), lesson_ids):
+            raise Stop('refreshed_outline_mismatch')
+        for ident in row['refreshed']:
+            if ident not in lesson_ids or type(ident) is not int:
+                raise Stop('refreshed_lesson_mismatch')
+            refreshed[str(ident)] = receipt.parent / f'lesson-{ident}.json'
+    return refreshed
+
+
 def read_capture(directory):
     path = Path(directory).resolve(strict=True)
     if not path.is_relative_to(ARCHIVE.resolve(strict=True)):
@@ -107,9 +121,13 @@ def read_capture(directory):
             status['saved'] != ids or meta['course_id'] != int(cid) or meta['lesson_ids'] != ids or
             len(set(include)) != len(ids) or any(source_id(value) != value for value in include)):
         raise Stop('capture_incomplete')
+    refreshed = refreshed_lessons(path, cid, ids)
     records = []
     for ident in include:
-        lesson = json.loads((path / f'lesson-{ident}.json').read_text(encoding='utf-8'))
+        if ident in EXCLUDED_LESSONS:
+            continue
+        document = refreshed.get(ident, path / f'lesson-{ident}.json')
+        lesson = json.loads(document.read_text(encoding='utf-8'))
         payload = lesson['payload']
         if (payload['account'], payload['source_origin'], source_id(payload['course_id']),
                 source_id(payload['lesson_id']), payload['course_title']) != (ACCOUNT, ORIGIN, cid, ident, meta['title']):
@@ -117,6 +135,7 @@ def read_capture(directory):
         payload.update(course_id=cid, lesson_id=ident)
         if payload['format'] == 'ape':
             normalize_avatar_label(payload)
+            normalize_review(payload)
         records.append(payload)
     return cid, meta, records
 
@@ -214,7 +233,10 @@ def main(directory):
     cid = None
     try:
         cid, meta, payloads = read_capture(directory)
+        excluded = [str(ident) for ident in meta['lesson_ids'] if str(ident) in EXCLUDED_LESSONS]
         if not payloads:
+            if excluded:
+                return {'status': 'excluded', 'course_id': cid, 'excluded_lesson_ids': excluded}
             raise Review('empty_source_course')
         preflight_source(payloads)
         client = IompClient(WORKSPACE)
@@ -224,7 +246,8 @@ def main(directory):
             outcome = importer.outline(cid)
             metadata = finish_course(client, outcome['course'], cid, meta['cover_url'])
             return {'status': 'imported', 'course_id': cid, 'lessons': len(outcome['ids']),
-                    'created': len(report['created_lesson_ids']), 'warnings': report['warnings'], **metadata}
+                    'created': len(report['created_lesson_ids']), 'warnings': report['warnings'],
+                    'excluded_lesson_ids': excluded, **metadata}
         finally:
             client.close()
     except Review as error:

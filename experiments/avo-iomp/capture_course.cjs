@@ -147,4 +147,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { ARCHIVE, authLost, captureCourse, diagnostic, openBrowser, readCatalog, writeJson };
+module.exports = { ARCHIVE, authLost, captureCourse, diagnostic, editorUrl, LESSON_PATH, openBrowser, readCatalog, readEditor, writeJson };

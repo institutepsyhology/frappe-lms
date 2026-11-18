@@ -54,3 +54,24 @@ drafts. IOMP read-back confirmed disabled self-enrollment and found no avatar
 or generic greeting in lessons 500 and 516, with their two and four video
 choices respectively and timing HTML retained. The latest batch journal now
 lists 44 unresolved lessons in 11 courses.
+
+On the next pass the owner supplied ten excluded lesson IDs and corrected
+source videos in 827, 896, 897, 1203, and 1331. A bounded refresh read those
+lesson editors and 2230 using the IOMP source session. Both video URLs
+were already valid in the live 2230 snapshot. Refreshed records are used
+only when the verified course outline matches the original archive.
+
+The IOMP preparation retains heading markup and links and removes legacy
+presentation metadata from timing tables only after validating their text,
+links, and cell order. Exact trainer-question actions and empty audio
+buttons are omitted. Lesson 4396 contains two distinct YouTube IDs, a pasted
+duplicate of the second player's controls, and two small homework icons.
+The source-bound repair keeps both videos, both icons, and the homework text.
+Lesson ID 5296 is in the exclusion set. It was absent from these captures.
+
+All 11 recheck courses passed local preflight with 518 included lessons and
+nine matched exclusions. Three targeted regression tests passed. The
+`node experiments/avo-iomp/batch.cjs --retry-review 2 11` worker then started
+writing verified drafts and recording the result for each course. At this
+checkpoint course 3 existed as an unpublished draft and its lessons were
+still being imported. Source snapshots remain private.
