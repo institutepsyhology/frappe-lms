@@ -15,6 +15,13 @@ MAX_DEPTH = 100
 MAX_NODES = 150000  # JSON values, not lesson blocks; APE blocks remain capped separately.
 MAX_BLOCKS = 1000
 ACCOUNT = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+IOMP_CERTIFICATE_URL = 'https://shop.iomp.ru/personal/certificate'
+IOMP_CERTIFICATE_CAPTION = 'Скачать СЕРТИФИКАТ'
+IOMP_CERTIFICATE_BUTTONS = {
+    ('232', '4299'): (IOMP_CERTIFICATE_CAPTION, '#ad1457'),
+    ('233', '4298'): (IOMP_CERTIFICATE_CAPTION, '#ad1457'),
+    ('253', '4546'): ('<strong><span style="font-size: 20px">Скачать СЕРТИФИКАТ</span></strong>', '#565953'),
+}
 IMAGE_KEY = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
 PLACEHOLDER_IMAGE_SHA256 = '44c98968db4973a119db3bbc00ca36392c1466e1b631596e1fff0ac4a2474ea2'
 PRIVATE_FILE = re.compile(r"^/private/files/[a-zA-Z0-9][a-zA-Z0-9_.-]{0,180}$")
@@ -1652,6 +1659,17 @@ def plan_import(payload, image_urls=None):
                 if isinstance(button_url,str): button_url = button_url.strip()
                 label = fields.get('html')
                 if isinstance(label,str): label = re.sub(r'<br\s*/?>', ' ', label, flags=re.I).strip()
+                certificate = IOMP_CERTIFICATE_BUTTONS.get((course, lesson))
+                native_certificate = (
+                    account == 'iomp' and payload.get('source_origin') == 'https://shop.iomp.ru'
+                    and certificate is not None and fields.get('url') == IOMP_CERTIFICATE_URL
+                    and fields.get('html') == certificate[0]
+                )
+                if native_certificate:
+                    if node.get('children') or type(fields.get('blank')) is not bool:
+                        issue('unsupported_button')
+                        continue
+                    label = IOMP_CERTIFICATE_CAPTION
                 audio_two_hash = REVIEWED_AUDIO_TWO_LINKS.get((account,course,lesson))
                 if audio_two_hash and _sha256_text(fields.get('url')) == audio_two_hash and label == 'АУДИОЗАПИСЬ 2':
                     match = re.fullmatch(r'(https://disk\.yandex\.by/d/[A-Za-z0-9_-]+)\s+isk\.yandex\.ru/d/[A-Za-z0-9_-]+', button_url)
@@ -1684,9 +1702,10 @@ def plan_import(payload, image_urls=None):
                         or not _url(button_url)):
                     issue('unsupported_button')
                 else:
-                    if selection and selection[0] == 'videos':
+                    if native_certificate or (selection and selection[0] == 'videos'):
                         blocks.append({'type':'lessonButton','data':{'text':label,'url':button_url,
-                            'size':'medium','background':'#2563eb','color':'#ffffff','newTab':bool(fields.get('blank'))}})
+                            'size':'medium','background':certificate[1] if native_certificate else '#2563eb',
+                            'color':'#ffffff','newTab':bool(fields.get('blank'))}})
                     else:
                         paragraph('<a href="' + escape(button_url, quote=True) + '">' + (label_html if label_html is not None else escape(label)) + '</a>')
                         if fields.get('blank') and 'ape_button_new_tab_not_reconstructed' not in plan['warnings']:

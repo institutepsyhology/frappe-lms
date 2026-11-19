@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 from import_capture import (
     ACCOUNT, ORIGIN, SITE, Course60Importer, IompImporter, Review, Stop,
-    normalize_avatar_label, refreshed_lessons,
+    ARCHIVE, main, normalize_avatar_label, ready_prefix, refreshed_lessons,
 )
 from lms.lms.avo_transform import omit_placeholder_node
 from normalize_review import EXCLUDED_LESSONS, clean_timing_table, normalize_review
@@ -30,6 +30,25 @@ class AvatarNormalizationTests(unittest.TestCase):
             self.assertEqual(nodes[1]['fields']['html'], 'Изображение')
             self.assertEqual(nodes[2]['fields']['html'], 'Схема урока')
             self.assertTrue(omit_placeholder_node(nodes[3], 'iomp', '3', '424'))
+
+
+class OwnerReviewTests(unittest.TestCase):
+    def test_excluded_courses_do_not_open_a_capture_or_a_connection(self):
+        with patch('import_capture.read_capture') as read, patch('import_capture.IompClient') as connect:
+            for cid in ('247', '251'):
+                self.assertEqual(main(ARCHIVE / ('course-' + cid) / 'capture')['status'], 'excluded')
+            read.assert_not_called()
+            connect.assert_not_called()
+
+    def test_only_confirmed_prefix_can_be_imported_ahead_of_pending_materials(self):
+        rows = [{'lesson_id': lid} for lid in ('3262', '3280', '3279', '3260')]
+        problem = Review('course_needs_review', [{'lesson_id': '3279', 'codes': ['unsupported_button']},
+                                                  {'lesson_id': '3260', 'codes': ['owner_decision_pending']}])
+        self.assertEqual(ready_prefix('193', rows, problem, None), (rows[:2], 'remaining_lessons_deferred'))
+        with self.assertRaises(Review):
+            ready_prefix('194', rows, problem, None)
+        with self.assertRaises(Review):
+            ready_prefix('193', rows, Review('course_needs_review', [{'lesson_id': '3280', 'codes': ['empty_lesson']}]), None)
 
 
 class ReviewedContentTests(unittest.TestCase):

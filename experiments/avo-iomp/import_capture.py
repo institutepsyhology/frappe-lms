@@ -26,6 +26,9 @@ from normalize_iomp_material import normalize_iomp_material, reviewed_image_url
 from normalize_iomp_course_material import normalize_iomp_course_material
 from normalize_reviewed_pairs import normalize_reviewed_pairs
 from normalize_life_position import normalize_life_position
+from normalize_supervision_media import normalize_supervision_media
+from normalize_expired_countdown import normalize_expired_countdown
+from normalize_psychotherapy_materials import omit_questionnaire_button, awaiting_presentation_decision
 from normalize_reviewed_vk import normalize_reviewed_vk
 from jpeg_cover import prepare_jpeg_upload
 from course_audio import prepare_course_audio, sync_course_audio
@@ -33,6 +36,7 @@ from shared_course_audio import prepare_shared_audio, verify_shared_audio, verif
 
 
 ACCOUNT, ORIGIN, SITE, SERVER = IOMP_BINDING
+EXCLUDED_COURSES = {'247', '251'}
 
 
 class IompClient(MCPClient):
@@ -173,6 +177,8 @@ def read_capture(directory):
             raise Stop('source_account_mismatch')
         payload.update(course_id=cid, lesson_id=ident)
         if payload['format'] == 'ape':
+            normalize_supervision_media(payload, ARCHIVE)
+            normalize_expired_countdown(payload)
             normalize_reviewed_pairs(payload, ARCHIVE)
             normalize_avatar_label(payload)
             normalize_reviewed_vk(payload)
@@ -180,6 +186,7 @@ def read_capture(directory):
             normalize_iomp_material(payload)
             normalize_iomp_course_material(payload)
             normalize_life_position(payload, ARCHIVE, presentation='powerpoint')
+            omit_questionnaire_button(payload)
         records.append(payload)
     return cid, meta, records
 
@@ -264,6 +271,8 @@ def preflight_source(payloads):
             issues = [code for code in plan_import(payload, {})['issues'] if code != 'image_not_prepared']
         except (TypeError, ValueError):
             issues = ['source_converter_input_invalid']
+        if awaiting_presentation_decision(payload):
+            issues.append('owner_decision_pending')
         if issues:
             problems.append({'lesson_id': payload['lesson_id'], 'codes': issues})
     if problems:
@@ -283,30 +292,47 @@ def verify_empty_destination(client, cid, lesson_ids):
             raise Stop('course_prior_write_requires_reconciliation')
 
 
+def ready_prefix(course_id, payloads, error, defer_final_lesson):
+    if str(error) != 'course_needs_review' or not error.problems:
+        raise error
+    ids = [row['lesson_id'] for row in payloads]
+    issues = error.problems
+    if (len(ids) > 1 and ids[-1] == defer_final_lesson and len(issues) == 1
+            and issues[0]['lesson_id'] == defer_final_lesson and 'empty_lesson' in issues[0]['codes']):
+        return payloads[:-1], 'final_lesson_deferred'
+    # Import through the confirmed lesson in AVO order while later lessons await review.
+    through = {'193': '3280', '202': '4096'}.get(course_id)
+    blocked = {issue['lesson_id'] for issue in issues}
+    if through not in ids or not blocked.issubset(ids):
+        raise error
+    boundary = next(index for index, lesson_id in enumerate(ids) if lesson_id in blocked)
+    if ids.index(through) >= boundary:
+        raise error
+    return payloads[:boundary], 'remaining_lessons_deferred'
+
+
 def main(directory, *, defer_final_lesson=None, require_empty=False, client_scope=None):
     cid = None
     try:
         course_dir = Path(directory).resolve().parent
         if course_dir.parent == ARCHIVE.resolve() and re.fullmatch(r'course-[1-9][0-9]{0,9}', course_dir.name):
             cid = course_dir.name.removeprefix('course-')
+        if cid in EXCLUDED_COURSES:
+            return {'status': 'excluded', 'course_id': cid, 'code': 'owner_excluded_course'}
         cid, meta, payloads = read_capture(directory)
         excluded = [str(ident) for ident in meta['lesson_ids'] if str(ident) in EXCLUDED_LESSONS]
         if not payloads:
             if excluded:
                 return {'status': 'excluded', 'course_id': cid, 'excluded_lesson_ids': excluded}
             raise Review('empty_source_course')
-        audio = prepare_course_audio(payloads)
-        shared_audio = prepare_shared_audio(payloads)
         deferred = []
         try:
             preflight_source(payloads)
         except Review as error:
-            if (len(payloads) < 2 or payloads[-1]['lesson_id'] != defer_final_lesson
-                    or len(error.problems) != 1 or error.problems[0]['lesson_id'] != defer_final_lesson
-                    or 'empty_lesson' not in error.problems[0]['codes']):
-                raise
+            payloads, deferred_code = ready_prefix(cid, payloads, error, defer_final_lesson)
             deferred = error.problems
-            payloads = payloads[:-1]
+        audio = prepare_course_audio(payloads)
+        shared_audio = prepare_shared_audio(payloads)
         with (client_scope() if client_scope is not None else closing(IompClient(WORKSPACE))) as client:
             if require_empty:
                 verify_empty_destination(client, cid, [str(i) for i in meta['lesson_ids']])
@@ -332,7 +358,7 @@ def main(directory, *, defer_final_lesson=None, require_empty=False, client_scop
             if shared_audio:
                 result['reused_audio_files'] = sum(map(len, shared_audio.values()))
             if deferred:
-                result.update(status='review', code='final_lesson_deferred', issues=deferred)
+                result.update(status='review', code=deferred_code, issues=deferred)
             return result
     except Review as error:
         return {'status': 'review', 'course_id': cid, 'code': diagnostic(error), 'issues': error.problems}

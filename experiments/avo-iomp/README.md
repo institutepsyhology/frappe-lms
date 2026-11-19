@@ -91,3 +91,15 @@ All ten lessons of course 172 were verified as drafts in source order. Lesson
 2882 uses both YouTube/Rutube pairs and the PowerPoint link from lesson 1886
 for “Презентация 1”. The other three material links and the lesson HTML were
 checked against the original capture.
+
+IOMP courses 247 and 251 are excluded by owner decision. In course 193 the
+importer removes only the incorrect questionnaire button in lesson 3280 and
+holds lesson 3260 for a decision on its presentation. Lesson 202/4096 uses the
+approved video pair and audio link from 221/4103. For these two courses a
+verified initial sequence can be saved in source order up to the first problem.
+The journal keeps the course in review until the rest of the outline is ready.
+
+Lessons 232/4299, 233/4298 and 253/4546 retain native certificate buttons with
+the original AVO personal certificate URL and new-tab behavior. Historical
+countdowns with the reviewed June 2024 deadline show the four zero values
+observed in AVO. Certificate issuance and existing learner access are independent.
