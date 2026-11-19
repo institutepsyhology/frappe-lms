@@ -178,6 +178,11 @@ the same transaction as its User and verify it before commit. They advance as
 soon as queue and disk capacity allow. For IOMP, apply the native Contact
 lookup index with `index_mastervision_contact_email.py --account iomp --release <SHA>`.
 
+On 19 November 2026 the IOMP pilot verified 25 new Users with their AVO IDs,
+linked Contacts and encrypted support-password entries. The previous writer
+created 387 identities in five minutes. The new writer created 1,102 in a
+three-minute interval with zero pending default jobs and zero recorded failures.
+
 Owner priority: finish MV contacts, then MV contact/course/lesson access. IOMP
 continues in parallel and must not delay MV access. IOMP course/lesson migration
 must precede its access synchronization. The old local access database has only
