@@ -72,14 +72,18 @@ class IompCourseMaterialTests(unittest.TestCase):
 
     def test_reviewed_monospace_word_keeps_quotes_punctuation_and_typeface(self):
         html = '<p>что такое&nbsp;<code>&laquo;психосоматоз&raquo;</code>.<br />Далее</p>'
-        source = record('163', '2683', [{'name': 'text', 'fields': {'html': html}}])
+        node = {'name': 'text', 'fields': {'html': html}}
+        source = record('163', '2683', [copy.deepcopy(node)])
+        other_course = record('208', '3526', [copy.deepcopy(node)])
         changed = copy.deepcopy(source)
         changed['ape']['children'][0]['fields']['html'] += '<code>2 + 2</code>'
         original = copy.deepcopy(changed)
         with patch.object(material, 'PSYCHOSOMATOSIS_TEXT_DIGEST', hashlib.sha256(html.encode()).hexdigest()):
             material.normalize_iomp_course_material(source)
+            material.normalize_iomp_course_material(other_course)
             material.normalize_iomp_course_material(changed)
         self.assertEqual(changed, original)
+        self.assertEqual(source['ape'], other_course['ape'])
         self.assertEqual(source['ape']['children'][0]['fields']['html'],
                          '<p>что такое&nbsp;<span style="font-family:monospace">&laquo;психосоматоз&raquo;</span>.<br />Далее</p>')
         self.assertFalse(import_capture.plan_import(source)['issues'])

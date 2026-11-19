@@ -105,6 +105,13 @@ The owner subsequently excluded the empty lessons 4097–4101 in course 202,
 4448 and 4453 in course 237, and 4721–4724 in course 261. Their expected
 outlines contain 43, 24 and 17 lessons, respectively.
 
+Course 208 omits the optional sales lesson 3532. Lessons 178/3002, 194/3288
+and 207/3498 use the application links from their own student previews. The
+importer reads the private `preview-offer-links.json` next to `batch-events.jsonl`
+and verifies the school, both source IDs, original button and approved URL
+before replacing the editor placeholder. Each stored URL opens the corresponding
+anonymous form. Its query contains only `r`, `id`, `clean` and `lg`.
+
 Course 221 was imported after refreshing lesson 3817 from AVO. Read-back
 confirmed the original order of all 12 drafts and both primary YouTube and
 alternative Rutube URLs in one player in the eighth lesson.

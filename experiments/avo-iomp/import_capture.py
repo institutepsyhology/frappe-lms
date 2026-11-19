@@ -30,6 +30,7 @@ from normalize_supervision_media import normalize_supervision_media
 from normalize_expired_countdown import normalize_expired_countdown
 from normalize_psychotherapy_materials import omit_questionnaire_button, omit_supervision_presentation
 from normalize_course193 import normalize_course193
+from normalize_offer_links import resolve_offer_link
 from normalize_reviewed_vk import normalize_reviewed_vk
 from jpeg_cover import prepare_jpeg_upload
 from course_audio import prepare_course_audio, sync_course_audio
@@ -190,6 +191,7 @@ def read_capture(directory):
             omit_questionnaire_button(payload)
             omit_supervision_presentation(payload)
             normalize_course193(payload)
+            resolve_offer_link(payload, ARCHIVE)
         records.append(payload)
     return cid, meta, records
 

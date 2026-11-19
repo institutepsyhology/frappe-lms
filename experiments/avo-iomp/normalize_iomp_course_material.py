@@ -45,7 +45,7 @@ def normalize_iomp_course_material(payload):
     label = DECORATED_LABELS.get(identity)
     omit = identity in EMPTY_THIRD_AUDIO
     timing = identity == ('152', '2401')
-    monospace_term = identity == ('163', '2683')
+    monospace_term = identity in {('163', '2683'), ('208', '3526')}
     if not (label or omit or timing or monospace_term):
         return
 
