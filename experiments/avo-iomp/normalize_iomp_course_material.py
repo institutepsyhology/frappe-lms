@@ -10,14 +10,19 @@ from normalize_iomp_material import _digest
 
 
 EMPTY_THIRD_AUDIO = {('131', '2093'), ('152', '2411')}
-SUPERVISION_COURSES = {'301', '302', '303', '305', '306', '308', '309', '310', '311'}
-SUPERVISION_TIMINGS = {('308', '5783'), ('309', '5828'), ('311', '5795'), ('311', '5796'), ('311', '5797')}
+SUPERVISION_TIMINGS = {
+    ('308', '5783'), ('309', '5828'), ('311', '5795'), ('311', '5796'), ('311', '5797'),
+    ('312', '5818'), *(('324', lesson) for lesson in ('6011', '6012', '6013', '6018', '6019', '6020')),
+}
 SUPERVISION_CAPTIONS = {
+    '<span>АУДИОЗАПИСЬ</span>': 'АУДИОЗАПИСЬ',
     'АУДИОЗАПИСЬ<span style="font-size: 16px"> </span>': 'АУДИОЗАПИСЬ',
     'АУДИОЗАПИСЬ<span style="font-size: 16px;"> </span>': 'АУДИОЗАПИСЬ',
     '<span style="font-size: 20px;">АУДИОЗАПИСЬ</span>': 'АУДИОЗАПИСЬ',
     '<span style="font-size: 16px;">МАТЕРИАЛЫ</span>': 'МАТЕРИАЛЫ',
+    '<span style="font-size: 16px">МАТЕРИАЛЫ</span>': 'МАТЕРИАЛЫ',
     **{f'АУДИОЗАПИСЬ<span style="font-size: 16px"> {i}</span>': f'АУДИОЗАПИСЬ {i}' for i in (1, 2, 3)},
+    **{f'АУДИОЗАПИСЬ<span style="font-size: 16px;"> {i}</span>': f'АУДИОЗАПИСЬ {i}' for i in (1, 2, 3)},
 }
 EMPTY_BUTTON_DIGEST = '7690d746c001dcd128ba5ea0de3bbd8ae1a6c4a8c6f1c238ec59b7096431be5b'
 TIMING_ACCORDIONS = {('131', '2183'), ('152', '2417')}
@@ -54,13 +59,10 @@ def normalize_iomp_course_material(payload):
         return
     if identity in SUPERVISION_TIMINGS:
         payload['ape'], _ = normalize_accordions(payload['ape'], make_html_block)
-    supervision = identity[0] in SUPERVISION_COURSES
     label = DECORATED_LABELS.get(identity)
     omit = identity in EMPTY_THIRD_AUDIO
     timing = identity == ('152', '2401')
     monospace_term = identity in {('163', '2683'), ('208', '3526')}
-    if not (supervision or label or omit or timing or monospace_term):
-        return
 
     def walk(parent):
         children = parent.get('children', [])
@@ -74,7 +76,7 @@ def normalize_iomp_course_material(payload):
                         continue
                 if label and html == label[0] and fields.get('linkType') == 'url' and fields.get('url'):
                     fields['html'] = label[1]
-                if (supervision and isinstance(html, str) and html in SUPERVISION_CAPTIONS
+                if (isinstance(html, str) and html in SUPERVISION_CAPTIONS
                         and fields.get('linkType') == 'url' and isinstance(fields.get('url'), str)
                         and fields['url'].startswith('https://') and not node.get('children')):
                     fields['html'] = SUPERVISION_CAPTIONS[html]

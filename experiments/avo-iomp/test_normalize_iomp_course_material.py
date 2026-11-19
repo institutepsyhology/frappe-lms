@@ -25,12 +25,29 @@ class IompCourseMaterialTests(unittest.TestCase):
                 node = button(original, 'https://example.com/audio')
                 source = record('305', '5834', [copy.deepcopy(node)])
                 foreign = record('304', '5758', [copy.deepcopy(node)])
+                foreign['source_origin'] = 'https://shop.mastervision.su'
                 material.normalize_iomp_course_material(source)
                 material.normalize_iomp_course_material(foreign)
                 self.assertEqual(foreign['ape']['children'], [node])
                 node['fields']['html'] = expected
                 self.assertEqual(source['ape']['children'], [node])
                 self.assertFalse(import_capture.plan_import(source)['issues'])
+
+    def test_only_inert_avatar_is_removed_and_neighboring_content_survives(self):
+        avatar = {'name': 'image', 'fields': {'imageSrc': '{avatar_url}', 'linkHref': '', 'anchor': ''}}
+        linked = copy.deepcopy(avatar)
+        linked['fields']['linkHref'] = 'https://example.com/resource'
+        styled = {**avatar, 'style': {'caption': 'Учебная иллюстрация'}}
+        text = {'name': 'text', 'fields': {'html': '<p>Материалы урока</p>'}}
+        image = {'name': 'image', 'fields': {'imageSrc': 'https://example.com/picture.jpg'}}
+        column = {'name': 'column', 'children': [avatar, text, linked, styled, image]}
+        source = record('304', '5737', [copy.deepcopy(column)])
+        foreign = copy.deepcopy(source)
+        foreign['account'] = 'mastervision'
+        import_capture.normalize_review(source)
+        import_capture.normalize_review(foreign)
+        self.assertEqual(source['ape']['children'][0]['children'], [text, linked, styled, image])
+        self.assertEqual(foreign['ape']['children'], [column])
 
     def test_third_empty_button_omission_preserves_links_and_rejects_drift(self):
         empty = button('АУДИОЗАПИСЬ 3')

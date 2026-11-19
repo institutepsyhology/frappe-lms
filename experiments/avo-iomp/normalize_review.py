@@ -6,11 +6,12 @@ import re
 from importer import Review
 from lms.lms.avo_html_fragment import make_html_block
 from lms.lms.avo_transform import plan_import
+from normalize_editor_nodes import _style_content
 from normalize_source import clean_table, table_content
 
 
 EXCLUDED_LESSONS = frozenset({
-    '345', '2689', '3532',
+    '345', '2689', '3532', '5758',
     # Empty supervision and practice lessons in IOMP courses 202, 237 and 261.
     '4097', '4098', '4099', '4100', '4101', '4448', '4453', '4721', '4722', '4723', '4724',
     '20', '169', '188', '1405', '1406', '1957', '4396', '4400', '4512', '5296', '5864',
@@ -65,6 +66,12 @@ def normalize_review(payload):
             fields = node.get('fields', {})
             name = node.get('name')
             html = fields.get('html')
+            if (name == 'image' and fields.get('imageSrc') == '{avatar_url}'
+                    and not set(fields) - {'imageSrc', 'anchor', 'linkHref'}
+                    and all(fields.get(key) in (None, '') for key in ('anchor', 'linkHref'))
+                    and not set(node) - {'id', 'name', 'fields', 'style', 'children'}
+                    and not node.get('children') and not _style_content(node.get('style'))):
+                continue
             if name == 'video' and course_id == '38' and lesson_id in STALE_POSTER_LESSONS:
                 poster = fields.get('posterSrc')
                 if (isinstance(poster, str) and poster.isascii()

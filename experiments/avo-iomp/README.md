@@ -117,7 +117,12 @@ The saved draft contained the exact refreshed YouTube/Rutube pair and audio
 link. The 61 draft lesson IDs in courses 301, 302, 303, 305, 306, 308, 309,
 310 and 311 matched their respective source outlines in order. For these
 courses the importer recognizes the reviewed material captions and static
-timing accordions. Course 304's personalized certificate actions remain in review.
+timing accordions. The owner excluded lesson 5758. Read-back of the unpublished
+IOMP course 304 confirmed source IDs 5737, 5738, 5743, 5744, 5745 and 5746
+in that order, with public lesson previews disabled. The importer ignores
+standalone, unlinked `{avatar_url}` placeholders, retaining their siblings.
+It recognizes the same audited audio and material captions across IOMP,
+preserving the original HTTPS destinations.
 
 Course 221 was imported after refreshing lesson 3817 from AVO. Read-back
 confirmed the original order of all 12 drafts and both primary YouTube and
