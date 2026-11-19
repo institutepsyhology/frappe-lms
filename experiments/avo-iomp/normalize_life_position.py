@@ -54,7 +54,7 @@ def _compare_materials(target, donor):
 
 def normalize_life_position(payload, archive, presentation=None):
     """Add both verified alternates. With no selection the first button stays in review."""
-    if not _matches(payload, 172, 2882):
+    if not any(_matches(payload, c, l) for c, l in ((172, 2882), (226, 3917))):
         return
     if presentation not in PREPARED:
         raise Review('life_position_presentation_unknown')

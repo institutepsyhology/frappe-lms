@@ -74,6 +74,9 @@ def normalize_reviewed_pairs(payload, archive):
     if (payload.get('account'), payload.get('source_origin'), payload.get('format')) != (
             'iomp', 'https://shop.iomp.ru', 'ape'):
         return
+    if (str(payload.get('course_id')), str(payload.get('lesson_id'))) in {('337', '6433'), ('338', '6552')}:
+        _restore_third_alternative(payload, archive)
+        return
     if (str(payload.get('course_id')), str(payload.get('lesson_id'))) not in {
             ('146', '2249'), ('332', '6154')}:
         return
@@ -101,3 +104,42 @@ def normalize_reviewed_pairs(payload, archive):
     if _digest(root) != PREPARED:
         raise Review('reviewed_pair_result_changed')
     payload['ape'] = root
+
+
+def _restore_third_alternative(payload, archive):
+    prepared = 'da1055d1d3462f4db27154e6d103d6ae5f69bdcea3611f6f006d5e02584133cd'
+    original = 'f139dc6b77a13ddb4a927ed2630ab407b5d469d1874bb61b728d38cbc99e587d'
+    root = payload['ape']
+    digest = _digest(root)
+    if digest == prepared:
+        return
+    if digest != original:
+        raise Review('reviewed_pair_source_changed')
+
+    def third_fields(ape):
+        return ape['children'][5]['children'][1]['children'][1]['fields']
+
+    for course, lesson in ((3, 827), (31, 896), (35, 897)):
+        files = sorted((archive / f'course-{course}').rglob(f'lesson-{lesson}.json'), key=lambda f: f.parent.name)
+        if not files:
+            continue
+        try:
+            donor = json.loads(files[-1].read_text(encoding='utf-8'))['payload']
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise Review('reviewed_pair_donor_unreadable') from exc
+        if not isinstance(donor, dict):
+            raise Review('reviewed_pair_donor_unreadable')
+        if (donor.get('account'), donor.get('source_origin'), donor.get('format'),
+                str(donor.get('course_id')), str(donor.get('lesson_id'))) != (
+                'iomp', 'https://shop.iomp.ru', 'ape', str(course), str(lesson)):
+            raise Review('reviewed_pair_donor_changed')
+        try:
+            alternate = third_fields(donor['ape'])['videoSrc']
+        except (IndexError, KeyError, TypeError):
+            continue
+        candidate = copy.deepcopy(root)
+        third_fields(candidate)['videoSrc'] = alternate
+        if _digest(candidate) == prepared:
+            payload['ape'] = candidate
+            return
+    raise Review('reviewed_pair_donor_changed')

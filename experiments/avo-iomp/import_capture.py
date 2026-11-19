@@ -32,6 +32,10 @@ from normalize_psychotherapy_materials import omit_questionnaire_button, omit_su
 from normalize_course193 import normalize_course193
 from normalize_offer_links import resolve_offer_link
 from normalize_reviewed_vk import normalize_reviewed_vk
+from normalize_accordions import normalize_accordions
+from normalize_button_labels import normalize_button_labels
+from normalize_editor_nodes import _simple_header_markup
+from lms.lms.avo_html_fragment import make_html_block
 from masterclass_frame import import_frame
 from jpeg_cover import prepare_jpeg_upload
 from course_audio import prepare_course_audio, sync_course_audio
@@ -185,6 +189,15 @@ def read_capture(directory):
             raise Stop('source_account_mismatch')
         payload.update(course_id=cid, lesson_id=ident)
         if payload['format'] == 'ape':
+            if {'personalOffer', 'tag'}.intersection(lesson.get('editor_options', {}).get('visibleConditionsTypes', {})):
+                # Hold authored visibility rules before any layout conversion.
+                nodes = [payload['ape']]
+                while nodes:
+                    node = nodes.pop()
+                    if node.get('fields', {}).get('visibleConditions') or node.get('visibleConditions'):
+                        raise Review('conditional_visibility_requires_review',
+                                    [{'lesson_id': ident, 'codes': ['conditional_visibility_requires_review']}])
+                    nodes.extend(node.get('children', []))
             normalize_supervision_media(payload, ARCHIVE)
             normalize_expired_countdown(payload)
             normalize_reviewed_pairs(payload, ARCHIVE)
@@ -280,6 +293,24 @@ def preflight_source(payloads):
     for payload in payloads:
         try:
             issues = [code for code in plan_import(payload, {})['issues'] if code != 'image_not_prepared']
+            if payload.get('format') == 'ape' and {'unknown_block', 'unsupported_button'}.intersection(issues):
+                root = payload['ape']
+                if 'unknown_block' in issues:
+                    root, _ = normalize_accordions(root, make_html_block)
+                    nodes = [root]
+                    while nodes:
+                        node = nodes.pop()
+                        if node.get('name') == 'header-simple' and isinstance(node.get('fields'), dict):
+                            markup = _simple_header_markup(node, make_html_block)
+                            if markup:
+                                node.update(name='text', fields={'html': markup})
+                        nodes.extend(node.get('children', []))
+                if 'unsupported_button' in issues:
+                    root, _ = normalize_button_labels(root, make_html_block)
+                remaining = set(plan_import({**payload, 'ape': root}, {})['issues']) - {'image_not_prepared'}
+                if not remaining:
+                    payload['ape'] = root
+                    issues = []
         except (TypeError, ValueError):
             issues = ['source_converter_input_invalid']
         if issues:
@@ -301,11 +332,17 @@ def verify_empty_destination(client, cid, lesson_ids):
             raise Stop('course_prior_write_requires_reconciliation')
 
 
-def ready_prefix(course_id, payloads, error, defer_final_lesson):
+def ready_prefix(course_id, payloads, error, defer_final_lesson, *, allow_prefix=False):
     if str(error) != 'course_needs_review' or not error.problems:
         raise error
     ids = [row['lesson_id'] for row in payloads]
     issues = error.problems
+    if allow_prefix:
+        blocked = {issue['lesson_id'] for issue in issues}
+        if not blocked.issubset(ids) or ids[0] in blocked:
+            raise error
+        boundary = next(index for index, ident in enumerate(ids) if ident in blocked)
+        return payloads[:boundary], 'remaining_lessons_deferred'
     if (len(ids) > 1 and ids[-1] == defer_final_lesson and len(issues) == 1
             and issues[0]['lesson_id'] == defer_final_lesson and 'empty_lesson' in issues[0]['codes']):
         return payloads[:-1], 'final_lesson_deferred'
@@ -320,7 +357,7 @@ def ready_prefix(course_id, payloads, error, defer_final_lesson):
     return payloads[:boundary], 'remaining_lessons_deferred'
 
 
-def main(directory, *, defer_final_lesson=None, require_empty=False, client_scope=None):
+def main(directory, *, defer_final_lesson=None, require_empty=False, client_scope=None, allow_prefix=False):
     cid = None
     try:
         course_dir = Path(directory).resolve().parent
@@ -345,7 +382,7 @@ def main(directory, *, defer_final_lesson=None, require_empty=False, client_scop
         try:
             preflight_source(payloads)
         except Review as error:
-            payloads, deferred_code = ready_prefix(cid, payloads, error, defer_final_lesson)
+            payloads, deferred_code = ready_prefix(cid, payloads, error, defer_final_lesson, allow_prefix=allow_prefix)
             deferred = error.problems
         audio = prepare_course_audio(payloads)
         shared_audio = prepare_shared_audio(payloads)

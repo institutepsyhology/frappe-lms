@@ -66,6 +66,19 @@ def normalize_review(payload):
             fields = node.get('fields', {})
             name = node.get('name')
             html = fields.get('html')
+            if name == 'video' and fields.get('videoProvider') == 'youtube':
+                if ((course_id, lesson_id) == ('147', '2290') and
+                        isinstance(fields.get('videoSrc'), str) and
+                        hashlib.sha256(fields['videoSrc'].encode()).hexdigest() ==
+                        '4050f8eef0c8a3ecdfca0e3657e35051702c7344b86aac94eea0a57173122afa'):
+                    fields['videoSrc'] = fields['videoSrc'].replace('.cфom/', '.com/')
+                if ((course_id, lesson_id) in {('337', '6452'), ('338', '6571')} and
+                        isinstance(fields.get('videoSrc'), str) and isinstance(fields.get('posterSrc'), str) and
+                        hashlib.sha256(fields['videoSrc'].encode()).hexdigest() ==
+                        '503f83765db001d8dc23af69748c8d99770fee7f577537ed85fe2288f4a1481e' and
+                        hashlib.sha256(fields['posterSrc'].encode()).hexdigest() ==
+                        '1b350fc77b326f98502fb717d44b105c992cc9b524407c10ea4159bc15896513'):
+                    fields.pop('posterSrc')
             if (name == 'image' and fields.get('imageSrc') == '{avatar_url}'
                     and not set(fields) - {'imageSrc', 'anchor', 'linkHref'}
                     and all(fields.get(key) in (None, '') for key in ('anchor', 'linkHref'))

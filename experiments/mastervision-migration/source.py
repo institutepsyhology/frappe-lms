@@ -60,6 +60,9 @@ _APE = re.compile(_APE_HEAD + r'\s*\}\s*[,)]', re.S)
 _APE_CONDITIONS = re.compile(_APE_HEAD + r'\s*,\s*' + _js_key('visibleConditionsTypes')
     + r'\s*:\s*\{\s*' + _js_key('purchaseGoods') + r'\s*:\s*(0|[1-9][0-9]{0,9})'
     + r'\s*\}\s*\}\s*[,)]', re.S)
+_IOMP_CONDITIONS = re.compile(_APE_HEAD + r'\s*,\s*' + _js_key('visibleConditionsTypes')
+    + r'\s*:\s*\{\s*(' + _js_key('personalOffer') + '|' + _js_key('tag') + r')\s*:\s*([1-9][0-9]{0,8})'
+    + r'\s*\}\s*\}\s*[,)]', re.S)
 
 
 class Node:
@@ -330,9 +333,16 @@ def parse_lesson(html, course_id, lesson_id, course_title, lesson_title, *, conf
         _, version, packed, token = _one(matches, 'ape_payload_missing_or_ambiguous')
     else:
         extended = [m for script in scripts for m in _APE_CONDITIONS.findall(script)]
-        _, version, packed, token, condition_type = _one(extended, 'ape_payload_missing_or_ambiguous')
-        if int(condition_type) > 2**31 - 1: raise Review('ape_payload_unrecognized')
-        editor_options = {'visibleConditionsTypes': {'purchaseGoods': int(condition_type)}}
+        if not extended and config.account == 'iomp':
+            options = [m for script in scripts for m in _IOMP_CONDITIONS.findall(script)]
+            _, version, packed, token, key, number = _one(options, 'ape_payload_missing_or_ambiguous')
+            key = key.strip("'\"")
+            if key == 'personalOffer' and number != '2': raise Review('ape_payload_unrecognized')
+            editor_options = {'visibleConditionsTypes': {key: int(number)}}
+        else:
+            _, version, packed, token, condition_type = _one(extended, 'ape_payload_missing_or_ambiguous')
+            if int(condition_type) > 2**31 - 1: raise Review('ape_payload_unrecognized')
+            editor_options = {'visibleConditionsTypes': {'purchaseGoods': int(condition_type)}}
     try:
         decoded = _packed.decode_ape_payload({'formatVersion': int(version), 'packed': packed == 'true',
                                               'block': _packed.unquote_js_string(token)})['json']

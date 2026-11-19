@@ -15,9 +15,10 @@ function startImportWorker(interpreter = process.env.IOMP_PYTHON, launch = spawn
   const lines = readline.createInterface({ input: child.stdout, crlfDelay: Infinity })[Symbol.asyncIterator]();
 
   return {
-    async importCourse(capture, resumeEmpty = false) {
+    async importCourse(capture, resumeEmpty = false, allowPrefix = false) {
       const request = { course_id: String(capture.course_id), directory: capture.directory };
       if (resumeEmpty) request.resume_empty = true;
+      if (allowPrefix) request.allow_prefix = true;
       try {
         await new Promise((resolve, reject) => child.stdin.write(JSON.stringify(request) + '\n', 'utf8',
           error => error ? reject(error) : resolve()));

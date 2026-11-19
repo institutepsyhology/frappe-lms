@@ -227,6 +227,19 @@ class LessonTests(unittest.TestCase):
             with self.subTest(option=option),self.assertRaises(source.Review):
                 source.parse_lesson(self.conditions_page(option),7,11,'Course','Lesson 11')
 
+    def test_iomp_personal_offer_option_is_kept_only_for_the_observed_literal(self):
+        config = source.Config('iomp', 'https://shop.iomp.ru')
+        page = self.conditions_page('visibleConditionsTypes:{personalOffer:2}')
+        result = source.parse_lesson(page, 7, 11, 'Course', 'Lesson 11', config=config)
+        self.assertEqual(result['editor_options'], {'visibleConditionsTypes': {'personalOffer': 2}})
+        tagged = source.parse_lesson(page.replace('personalOffer:2', "'tag':7"), 7, 11, 'Course', 'Lesson 11', config=config)
+        self.assertEqual(tagged['editor_options'], {'visibleConditionsTypes': {'tag': 7}})
+        for invalid in ('personalOffer:3', 'personalOffer:2+1', 'personalOffer:2,other:1'):
+            with self.assertRaises(source.Review):
+                source.parse_lesson(page.replace('personalOffer:2', invalid), 7, 11, 'Course', 'Lesson 11', config=config)
+        with self.assertRaises(source.Review):
+            source.parse_lesson(page, 7, 11, 'Course', 'Lesson 11')
+
     def test_conditions_malformed_brackets_keys_and_duplicate_primary_options_rejected(self):
         good=self.conditions_page()
         pages=(good.replace('purchaseGoods":1}','purchaseGoods":1]'),

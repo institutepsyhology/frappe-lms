@@ -13,6 +13,16 @@ from normalize_review import EXCLUDED_LESSONS, clean_timing_table, normalize_rev
 
 
 class AvatarNormalizationTests(unittest.TestCase):
+    def test_archive_prefix_stops_before_the_first_unresolved_lesson(self):
+        lessons = [{'lesson_id': str(i)} for i in (25, 12, 7, 21)]
+        def review(*ids):
+            return Review('course_needs_review', [{'lesson_id': str(i), 'codes': ['unknown_block']} for i in ids])
+        rows, code = ready_prefix('4', lessons, review(21, 7), None, allow_prefix=True)
+        self.assertEqual((rows, code), (lessons[:2], 'remaining_lessons_deferred'))
+        for blocked in ((25,), (999,), (12, 999)):
+            with self.assertRaises(Review):
+                ready_prefix('4', lessons, review(*blocked), None, allow_prefix=True)
+
     def test_only_the_known_avatar_loses_the_generic_image_label(self):
         avatar = 'https://example.test/avatar.jpeg'
         picture = 'https://example.test/lesson.png'

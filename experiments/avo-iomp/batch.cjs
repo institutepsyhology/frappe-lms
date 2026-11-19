@@ -10,6 +10,7 @@ const REVIEW_LOG = path.join(ARCHIVE, 'batch-review.jsonl');
 const LOCK = path.join(ARCHIVE, 'batch.lock');
 const STOP = path.join(ARCHIVE, 'STOP');
 const REVIEW_LIMIT = 10;
+const archiveMode = mode => ['--from-archive', '--archive-prefixes'].includes(mode);
 
 function event(value) {
   const line = JSON.stringify({ at: new Date().toISOString(), account: 'iomp', ...value });
@@ -27,7 +28,7 @@ function recentEvents() {
     .map(row => [row.course_id, row]));
 }
 
-function priorCapture(courseId) {
+function priorCapture(courseId, latestOnly = false) {
   const folder = path.join(ARCHIVE, `course-${courseId}`);
   if (!fs.existsSync(folder)) return null;
   for (const name of fs.readdirSync(folder).sort().reverse()) {
@@ -40,8 +41,17 @@ function priorCapture(courseId) {
         Array.isArray(capture.lesson_ids) && Array.isArray(capture.saved) &&
         Array.isArray(capture.issues) && !capture.issues.length &&
         JSON.stringify(capture.lesson_ids) === JSON.stringify(capture.saved)) return { ...capture, directory };
+    if (latestOnly) return null;
   }
   return null;
+}
+
+function savedCatalog(snapshot) {
+  const { account, origin, courses } = snapshot;
+  if (account !== 'iomp' || origin !== 'https://shop.iomp.ru' || !Array.isArray(courses) ||
+      !courses.length || !courses.every((row, i) => Number.isSafeInteger(row.id) && row.id > 0 &&
+        (!i || row.id > courses[i - 1].id))) throw new Error('saved_catalog_invalid');
+  return courses;
 }
 
 function selectCourses(catalog, previous, { mode, after, limit, ids }) {
@@ -50,7 +60,7 @@ function selectCourses(catalog, previous, { mode, after, limit, ids }) {
     if (mode === '--resume-empty') {
       return ids.has(row.id) && last?.status === 'stopped' && last.code === 'mcp_authentication_failed';
     }
-    if (mode === '--retry-courses') {
+    if (mode === '--retry-courses' || archiveMode(mode)) {
       return ids.has(row.id) && (last?.status === 'review' || (last?.status === 'imported' && last.cover_issue));
     }
     if (row.id <= after) return false;
@@ -74,22 +84,32 @@ async function run(options) {
         !(mode === '--resume-empty' && options.ids.has(row.course_id) && row.code === 'mcp_authentication_failed')))) {
       throw new Error('prior_frappe_result_requires_review');
     }
-    browser = await openBrowser();
-    const catalog = await readCatalog(browser);
-    writeJson(path.join(ARCHIVE, 'batch-catalog.json'), { account: 'iomp', origin: 'https://shop.iomp.ru', courses: catalog });
+    const catalogPath = path.join(ARCHIVE, 'batch-catalog.json');
+    let catalog;
+    if (archiveMode(mode)) {
+      catalog = savedCatalog(JSON.parse(fs.readFileSync(catalogPath, 'utf8')));
+    } else {
+      browser = await openBrowser();
+      catalog = await readCatalog(browser);
+      writeJson(catalogPath, { account: 'iomp', origin: 'https://shop.iomp.ru', courses: catalog });
+    }
     const { ready, selected } = selectCourses(catalog, previous, options);
     event({ status: 'started', mode, catalog_count: catalog.length, batch_count: selected.length });
     let consecutive = 0;
     for (const row of selected) {
       if (fs.existsSync(STOP)) throw new Error('paused_by_owner');
-      const disk = fs.statfsSync(ARCHIVE);
-      if (disk.bavail * disk.bsize < 768 * 1024 * 1024) throw new Error('local_disk_reserve');
       let capture;
       try {
-        capture = priorCapture(row.id) || await captureCourse(browser, row.id, undefined);
+        capture = priorCapture(row.id, archiveMode(mode));
+        if (!capture) {
+          if (archiveMode(mode)) throw new Error('complete_capture_missing');
+          const disk = fs.statfsSync(ARCHIVE);
+          if (disk.bavail * disk.bsize < 768 * 1024 * 1024) throw new Error('local_disk_reserve');
+          capture = await captureCourse(browser, row.id, undefined);
+        }
       } catch (error) {
         const code = diagnostic(error);
-        if (authLost(code)) throw error;
+        if (authLost(code) || code === 'local_disk_reserve') throw error;
         event({ course_id: row.id, status: 'review', stage: 'capture', code });
         if (++consecutive >= REVIEW_LIMIT) throw new Error('ten_consecutive_reviews');
         continue;
@@ -106,11 +126,11 @@ async function run(options) {
       }
       event({ course_id: row.id, status: 'write_started', lessons: capture.saved.length });
       worker ??= startImportWorker();
-      const result = await worker.importCourse(capture, mode === '--resume-empty');
+      const result = await worker.importCourse(capture, mode === '--resume-empty', mode === '--archive-prefixes');
       const { course_id, account, ...details } = result;
       event({ course_id: row.id, ...details });
       if (result.status === 'stopped') throw new Error('frappe_result_uncertain');
-      consecutive = result.status === 'review' ? consecutive + 1 : 0;
+      consecutive = result.status === 'review' && !(result.created > 0) ? consecutive + 1 : 0;
       if (consecutive >= REVIEW_LIMIT) throw new Error('ten_consecutive_reviews');
     }
     if (worker && !await worker.close()) throw new Error('frappe_result_uncertain');
@@ -134,7 +154,7 @@ function parseOptions(args) {
   if (mode === '--resume-empty' && args.length === 2 && /^[1-9]\d{0,9}$/.test(after)) {
     return { mode, ids: new Set([Number(after)]), limit: 1 };
   }
-  if (mode === '--retry-courses' && args.length === 2 && /^(?:[1-9]\d{0,9})(?:,[1-9]\d{0,9})*$/.test(after)) {
+  if ((mode === '--retry-courses' || archiveMode(mode)) && args.length === 2 && /^(?:[1-9]\d{0,9})(?:,[1-9]\d{0,9})*$/.test(after)) {
     const ids = after.split(',').map(Number);
     if (new Set(ids).size === ids.length) return { mode, ids: new Set(ids), limit: ids.length };
   }
@@ -150,4 +170,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { parseOptions, selectCourses };
+module.exports = { parseOptions, savedCatalog, selectCourses };

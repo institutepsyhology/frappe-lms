@@ -24,8 +24,9 @@ def serve(requests, responses, *, import_course=main, connect=IompClient):
                 raise ValueError('invalid_worker_request')
             request = json.loads(line)
             if (not isinstance(request, dict)
-                    or set(request) not in ({'course_id', 'directory'}, {'course_id', 'directory', 'resume_empty'})
-                    or type(request.get('resume_empty', False)) is not bool):
+                    or set(request) not in ({'course_id', 'directory'}, {'course_id', 'directory', 'resume_empty'},
+                                            {'course_id', 'directory', 'allow_prefix'})
+                    or any(type(request[key]) is not bool for key in ('resume_empty', 'allow_prefix') if key in request)):
                 raise ValueError('invalid_worker_request')
             cid, directory = request['course_id'], request['directory']
             if (not isinstance(cid, str) or not re.fullmatch(r'[1-9][0-9]{0,9}', cid)
@@ -34,7 +35,7 @@ def serve(requests, responses, *, import_course=main, connect=IompClient):
                 raise ValueError('invalid_worker_request')
 
             result = import_course(directory, require_empty=request.get('resume_empty', False),
-                                   client_scope=client_scope)
+                                   client_scope=client_scope, **({'allow_prefix': True} if request.get('allow_prefix') else {}))
             if result.get('course_id') != cid or result.get('status') not in ('imported', 'excluded', 'review', 'stopped'):
                 raise ValueError('invalid_worker_result')
             print(json.dumps({'account': ACCOUNT, **result}, ensure_ascii=True), file=responses, flush=True)

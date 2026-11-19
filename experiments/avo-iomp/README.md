@@ -56,6 +56,24 @@ Each course outcome is recorded in the private capture archive. Set `IOMP_PYTHON
 to a Python executable with Pillow for JPEG covers. The importer applies EXIF
 orientation before upload and checks the saved file size and checksum.
 
+For a laptop with little free space, run
+`node experiments/avo-iomp/batch.cjs --from-archive 147,337,338` with the
+pending course IDs. This reads the saved IOMP catalogue and complete course
+snapshots, sends media from memory and appends the existing batch journal.
+It uses the same lock, draft checks and uncertain-write recovery as live capture.
+With `--archive-prefixes` and a comma-separated list of IDs, a course may
+also advance through the lessons preceding the first unresolved one. The
+journal keeps a partial course in review with the actual saved count. A later
+run verifies its existing order and only appends missing lessons.
+
+For an incomplete snapshot use
+`node experiments/avo-iomp/capture_course.cjs --complete-missing 246,293,294,321`.
+It rechecks the source outline, includes newer verified lesson refreshes,
+hard-links the saved lesson files into a new snapshot on the same volume and
+fetches only the missing ones. The original snapshot remains available.
+The 768 MiB disk reserve applies to fresh capture. On 20 November, repair
+of these four courses reused 113 files and fetched the remaining 14.
+
 On 19 November 2026, stored material in IOMP drafts 243, 263 and 342 was
 compared with the source. The comparisons covered the two handbook links, the
 labelled YouTube and VK players with their presentation, and the reading list

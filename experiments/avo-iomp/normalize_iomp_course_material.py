@@ -27,6 +27,11 @@ SUPERVISION_CAPTIONS = {
     'АУДИОЗАПИСЬ<span style="font-size: 16px;"> </span>': 'АУДИОЗАПИСЬ',
     '<span style="font-size: 20px;">АУДИОЗАПИСЬ</span>': 'АУДИОЗАПИСЬ',
     '<span style="font-size: 16px;">МАТЕРИАЛЫ</span>': 'МАТЕРИАЛЫ',
+    '<span style="font-size: 18px">Об обучении</span>': 'Об обучении',
+    '<span style="font-size: 18px">Нужна консультация</span>': 'Нужна консультация',
+    '<span style="font-size: 20px">Сделать заказ</span>': 'Сделать заказ',
+    '<span style="font-size: 20px">Связаться с менеджером</span>': 'Связаться с менеджером',
+    'АУДИОЗАПИСЬ<span style="font-size: 16px"> 4</span>': 'АУДИОЗАПИСЬ 4',
     '<span style="font-size: 16px">МАТЕРИАЛЫ</span>': 'МАТЕРИАЛЫ',
     **{f'АУДИОЗАПИСЬ<span style="font-size: 16px"> {i}</span>': f'АУДИОЗАПИСЬ {i}' for i in (1, 2, 3)},
     **{f'АУДИОЗАПИСЬ<span style="font-size: 16px;"> {i}</span>': f'АУДИОЗАПИСЬ {i}' for i in (1, 2, 3)},
@@ -125,6 +130,9 @@ def normalize_iomp_course_material(payload):
                     ('тайминг', '<strong>тайминг</strong>') for item in items))
             if node.get('name') == 'text' and isinstance(html, str) and ' class="docData;DOCY;v5;' in html:
                 fields['html'] = _remove_clipboard_classes(html)
+            if (identity == ('144', '2222') and node.get('name') == 'text' and isinstance(html, str)
+                    and _digest(html) == '78412feccff94e75a5a527a8bfb12f295a06d346372379c0214903b2303ea4ca'):
+                fields['html'] = re.sub(r'<strong style="[^"<>]*">', '<strong>', html)
             if (node.get('name') == 'header-simple' and fields.get('level') in ('h1','h2','h3','h4','h5','h6')
                     and isinstance(html, str) and '<br>' in html and re.fullmatch(r'[^<>]+(?:<br>[^<>]+)+', html)
                     and not fields.get('anchor') and not node.get('children') and not set(fields) - {'anchor','level','html'}):
@@ -132,6 +140,9 @@ def normalize_iomp_course_material(payload):
                 node['name'] = 'text'
                 fields['html'] = f'<{level}>{html}</{level}>'
             if node.get('name') == 'button':
+                if (identity == ('284', '5374') and html == 'АУДИОЗАПИСЬ' and fields.get('linkType') == 'url'
+                        and _digest(fields.get('url')) == 'ad40e587cef0cbc35ba8be31df7c980032af61dceacbbe41c3c058c698f9fefa'):
+                    fields['url'] = 'h' + fields['url']
                 if omit and html == 'АУДИОЗАПИСЬ 3' and not fields.get('url'):
                     if _digest({key: value for key, value in node.items() if key != 'id'}) == EMPTY_BUTTON_DIGEST:
                         children.remove(node)
