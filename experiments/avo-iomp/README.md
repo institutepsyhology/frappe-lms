@@ -93,8 +93,11 @@ for “Презентация 1”. The other three material links and the lesso
 checked against the original capture.
 
 IOMP courses 247 and 251 are excluded by owner decision. In course 193 the
-importer removes only the incorrect questionnaire button in lesson 3280 and
-holds lesson 3260 for a decision on its presentation. Lesson 202/4096 uses the
+importer removes the questionnaire button in lesson 3280. Lesson 3260 keeps
+its video pair and audio link and omits the duplicate presentation button.
+Reviewed timing blocks preserve their text, list items and links. Lesson 3268
+omits the unavailable Google illustration and retains the timecode on that line.
+Lesson 202/4096 uses the
 approved video pair and audio link from 221/4103. For these two courses a
 verified initial sequence can be saved in source order up to the first problem.
 The journal keeps the course in review until the rest of the outline is ready.

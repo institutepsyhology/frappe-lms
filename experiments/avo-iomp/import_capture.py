@@ -28,7 +28,8 @@ from normalize_reviewed_pairs import normalize_reviewed_pairs
 from normalize_life_position import normalize_life_position
 from normalize_supervision_media import normalize_supervision_media
 from normalize_expired_countdown import normalize_expired_countdown
-from normalize_psychotherapy_materials import omit_questionnaire_button, awaiting_presentation_decision
+from normalize_psychotherapy_materials import omit_questionnaire_button, omit_supervision_presentation
+from normalize_course193 import normalize_course193
 from normalize_reviewed_vk import normalize_reviewed_vk
 from jpeg_cover import prepare_jpeg_upload
 from course_audio import prepare_course_audio, sync_course_audio
@@ -187,6 +188,8 @@ def read_capture(directory):
             normalize_iomp_course_material(payload)
             normalize_life_position(payload, ARCHIVE, presentation='powerpoint')
             omit_questionnaire_button(payload)
+            omit_supervision_presentation(payload)
+            normalize_course193(payload)
         records.append(payload)
     return cid, meta, records
 
@@ -271,8 +274,6 @@ def preflight_source(payloads):
             issues = [code for code in plan_import(payload, {})['issues'] if code != 'image_not_prepared']
         except (TypeError, ValueError):
             issues = ['source_converter_input_invalid']
-        if awaiting_presentation_decision(payload):
-            issues.append('owner_decision_pending')
         if issues:
             problems.append({'lesson_id': payload['lesson_id'], 'codes': issues})
     if problems:

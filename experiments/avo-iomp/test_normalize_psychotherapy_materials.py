@@ -33,12 +33,36 @@ class PsychotherapyMaterialTests(unittest.TestCase):
             repair.omit_questionnaire_button(payload)
         self.assertEqual(payload['ape']['children'], [text, other])
 
-    def test_deferred_presentation_is_scoped_to_iomp_course_193_lesson_3260(self):
-        deferred = dict(lesson([]), lesson_id='3260')
-        self.assertTrue(repair.awaiting_presentation_decision(deferred))
+    def test_supervision_materials_are_scoped_to_iomp_course_193_lesson_3260(self):
+        deferred = dict(lesson([{'name': 'section', 'children': []}]), lesson_id='3260')
         for changes in [{'account': 'mastervision'}, {'source_origin': 'https://shop.mastervision.su'},
                         {'course_id': '194'}, {'lesson_id': 3280}]:
-            self.assertFalse(repair.awaiting_presentation_decision(dict(deferred, **changes)))
+            payload = dict(deepcopy(deferred), **changes)
+            before = deepcopy(payload)
+            repair.omit_supervision_presentation(payload)
+            self.assertEqual(payload, before)
+        with self.assertRaisesRegex(Review, 'supervision_materials_changed'):
+            repair.omit_supervision_presentation(deferred)
+
+    def test_archived_supervision_layouts_keep_the_audio_and_video_pair(self):
+        captures = sorted((ARCHIVE / 'course-193').rglob('lesson-3260.json'))
+        if not captures:
+            self.skipTest('private capture unavailable')
+        for capture in captures:
+            with self.subTest(capture=capture.parent.name):
+                payload = json.loads(capture.read_text(encoding='utf-8'))['payload']
+                nodes = payload['ape']['children']
+                before = deepcopy(nodes[:-1])
+                audio = deepcopy(nodes[-1]['children'][-1]['children'][0])
+                repair.omit_supervision_presentation(payload)
+                repair.omit_supervision_presentation(payload)
+                self.assertEqual(nodes[:-1], before)
+                self.assertEqual(len(nodes[-1]['children']), 1)
+                audio['fields']['html'] = 'АУДИОЗАПИСЬ'
+                self.assertTrue(nodes[-1]['children'][0]['children'] == [audio])
+                plan = plan_import(payload, {})
+                self.assertEqual(plan['issues'], [])
+                self.assertEqual([b['type'] for b in plan['blocks']], ['videoChoice', 'paragraph'])
 
     def test_saved_questionnaire_converts_with_text_and_no_button(self):
         captures = sorted((ARCHIVE / 'course-193').rglob('lesson-3280.json'))
