@@ -102,6 +102,10 @@ The owner subsequently excluded the empty lessons 4097–4101 in course 202,
 4448 and 4453 in course 237, and 4721–4724 in course 261. Their expected
 outlines contain 43, 24 and 17 lessons, respectively.
 
+Course 221 was imported after refreshing lesson 3817 from AVO. Read-back
+confirmed the original order of all 12 drafts and both primary YouTube and
+alternative Rutube URLs in one player in the eighth lesson.
+
 Lessons 232/4299, 233/4298 and 253/4546 retain native certificate buttons with
 the original AVO personal certificate URL and new-tab behavior. Historical
 countdowns with the reviewed June 2024 deadline show the four zero values
