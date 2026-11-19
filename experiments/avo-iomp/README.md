@@ -112,6 +112,13 @@ and verifies the school, both source IDs, original button and approved URL
 before replacing the editor placeholder. Each stored URL opens the corresponding
 anonymous form. Its query contains only `r`, `id`, `clean` and `lg`.
 
+On 19 November the IOMP editor was refreshed for course 305, lesson 5834.
+The saved draft contained the exact refreshed YouTube/Rutube pair and audio
+link. The 61 draft lesson IDs in courses 301, 302, 303, 305, 306, 308, 309,
+310 and 311 matched their respective source outlines in order. For these
+courses the importer recognizes the reviewed material captions and static
+timing accordions. Course 304's personalized certificate actions remain in review.
+
 Course 221 was imported after refreshing lesson 3817 from AVO. Read-back
 confirmed the original order of all 12 drafts and both primary YouTube and
 alternative Rutube URLs in one player in the eighth lesson.

@@ -4,11 +4,21 @@ import hashlib
 import re
 
 from lms.lms.avo_html_fragment import make_html_block
+from lms.lms.avo_transform import _player_url
 from normalize_accordions import normalize_accordions
 from normalize_iomp_material import _digest
 
 
 EMPTY_THIRD_AUDIO = {('131', '2093'), ('152', '2411')}
+SUPERVISION_COURSES = {'301', '302', '303', '305', '306', '308', '309', '310', '311'}
+SUPERVISION_TIMINGS = {('308', '5783'), ('309', '5828'), ('311', '5795'), ('311', '5796'), ('311', '5797')}
+SUPERVISION_CAPTIONS = {
+    'АУДИОЗАПИСЬ<span style="font-size: 16px"> </span>': 'АУДИОЗАПИСЬ',
+    'АУДИОЗАПИСЬ<span style="font-size: 16px;"> </span>': 'АУДИОЗАПИСЬ',
+    '<span style="font-size: 20px;">АУДИОЗАПИСЬ</span>': 'АУДИОЗАПИСЬ',
+    '<span style="font-size: 16px;">МАТЕРИАЛЫ</span>': 'МАТЕРИАЛЫ',
+    **{f'АУДИОЗАПИСЬ<span style="font-size: 16px"> {i}</span>': f'АУДИОЗАПИСЬ {i}' for i in (1, 2, 3)},
+}
 EMPTY_BUTTON_DIGEST = '7690d746c001dcd128ba5ea0de3bbd8ae1a6c4a8c6f1c238ec59b7096431be5b'
 TIMING_ACCORDIONS = {('131', '2183'), ('152', '2417')}
 TIMING_LIST_DIGEST = '91a61b38c466a39abe5cfc23141bef3064a9555ec4406726b563d21b3373db47'
@@ -42,11 +52,14 @@ def normalize_iomp_course_material(payload):
     if identity in TIMING_ACCORDIONS:
         payload['ape'], _ = normalize_accordions(payload['ape'], make_html_block)
         return
+    if identity in SUPERVISION_TIMINGS:
+        payload['ape'], _ = normalize_accordions(payload['ape'], make_html_block)
+    supervision = identity[0] in SUPERVISION_COURSES
     label = DECORATED_LABELS.get(identity)
     omit = identity in EMPTY_THIRD_AUDIO
     timing = identity == ('152', '2401')
     monospace_term = identity in {('163', '2683'), ('208', '3526')}
-    if not (label or omit or timing or monospace_term):
+    if not (supervision or label or omit or timing or monospace_term):
         return
 
     def walk(parent):
@@ -61,6 +74,15 @@ def normalize_iomp_course_material(payload):
                         continue
                 if label and html == label[0] and fields.get('linkType') == 'url' and fields.get('url'):
                     fields['html'] = label[1]
+                if (supervision and isinstance(html, str) and html in SUPERVISION_CAPTIONS
+                        and fields.get('linkType') == 'url' and isinstance(fields.get('url'), str)
+                        and fields['url'].startswith('https://') and not node.get('children')):
+                    fields['html'] = SUPERVISION_CAPTIONS[html]
+            elif node.get('name') == 'video' and identity == ('311', '5795'):
+                alternate = fields.get('videoSrc2')
+                if (fields.get('videoProvider2') == 'rutube' and isinstance(alternate, str)
+                        and alternate != alternate.strip() and _player_url(alternate.strip(), 'rutube')):
+                    fields['videoSrc2'] = alternate.strip()
             elif node.get('name') == 'text' and isinstance(html, str) and (timing or monospace_term):
                 digest = hashlib.sha256(html.encode()).hexdigest()
                 if timing and digest == TIMING_LIST_DIGEST:

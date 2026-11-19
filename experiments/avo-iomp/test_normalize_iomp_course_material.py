@@ -19,6 +19,19 @@ def button(label, url=''):
 
 
 class IompCourseMaterialTests(unittest.TestCase):
+    def test_supervision_material_labels_keep_original_links_and_numbers(self):
+        for original, expected in material.SUPERVISION_CAPTIONS.items():
+            with self.subTest(original=original):
+                node = button(original, 'https://example.com/audio')
+                source = record('305', '5834', [copy.deepcopy(node)])
+                foreign = record('304', '5758', [copy.deepcopy(node)])
+                material.normalize_iomp_course_material(source)
+                material.normalize_iomp_course_material(foreign)
+                self.assertEqual(foreign['ape']['children'], [node])
+                node['fields']['html'] = expected
+                self.assertEqual(source['ape']['children'], [node])
+                self.assertFalse(import_capture.plan_import(source)['issues'])
+
     def test_third_empty_button_omission_preserves_links_and_rejects_drift(self):
         empty = button('АУДИОЗАПИСЬ 3')
         digest = material._digest({k: v for k, v in empty.items() if k != 'id'})
