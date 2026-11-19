@@ -23,6 +23,9 @@ from importer import DIAGNOSTIC, IOMP_BINDING, Importer, MCPClient, Review, Stop
 from lms.lms.avo_transform import IMAGE_KEY, omit_placeholder_node, omit_placeholder_section, plan_import
 from normalize_review import EXCLUDED_LESSONS, normalize_review
 from normalize_iomp_material import normalize_iomp_material, reviewed_image_url
+from normalize_iomp_course_material import normalize_iomp_course_material
+from normalize_reviewed_pairs import normalize_reviewed_pairs
+from normalize_life_position import normalize_life_position
 from normalize_reviewed_vk import normalize_reviewed_vk
 from jpeg_cover import prepare_jpeg_upload
 from course_audio import prepare_course_audio, sync_course_audio
@@ -144,10 +147,13 @@ def read_capture(directory):
             raise Stop('source_account_mismatch')
         payload.update(course_id=cid, lesson_id=ident)
         if payload['format'] == 'ape':
+            normalize_reviewed_pairs(payload, ARCHIVE)
             normalize_avatar_label(payload)
             normalize_reviewed_vk(payload)
             normalize_review(payload)
             normalize_iomp_material(payload)
+            normalize_iomp_course_material(payload)
+            normalize_life_position(payload, ARCHIVE)
         records.append(payload)
     return cid, meta, records
 

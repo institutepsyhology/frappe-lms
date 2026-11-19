@@ -73,3 +73,14 @@ On 19 November 2026 all 64 drafts of course 91 and all 62 private bindings
 were verified. Two actual media links returned the requested byte range
 to an administrator and denied it to an anonymous visitor. Access as an
 enrolled student was not tested on the unpublished course.
+
+For reviewed IOMP lessons, missing Rutube alternatives can be recovered from
+another IOMP lesson after comparing the primary video and its context. The
+normalizers read validated source captures at runtime. Repository files store
+source fingerprints, not private player URLs.
+
+In the 19 November follow-up, courses 131, 146, 152 and 163 were read back as
+drafts. In lessons 2093 and 2411 the empty third audio button was omitted.
+Lesson 2249 retained five YouTube players and gained four matching Rutube
+alternatives. The individual media URLs, headings and order were compared with
+the source. Lessons 345 and 2689 are excluded from future imports.
