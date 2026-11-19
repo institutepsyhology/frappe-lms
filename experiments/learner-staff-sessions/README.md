@@ -155,6 +155,11 @@ The invalid list-returned learner links are dropped rather than imported.
 New native Users retain their source password plus the verified encrypted
 support copy, have welcome mail disabled and remain Website Users. Existing
 identities/passwords/roles are preserved. Marketing flags are positive-only.
+The importer matches by school and numeric AVO contact ID. For each new User
+it sets the internal username to `avo-<account>-user-<id>` and verifies it on
+read-back. A conflicting alias is recorded as an issue. Profile URLs still
+use the original numeric ID. The regression tests cover duplicate names,
+short IDs, an occupied alias and an alias changed by a native insert hook.
 Social-only/no-email sources become Contacts. Shared-email and missing-password
 sources also become separate Contacts with the original email and AVO identity;
 they are not deferred or merged. Native email rows require the durable Contact

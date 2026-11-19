@@ -203,6 +203,11 @@ def insert_one(frappe,decision,account,*,inline_contacts=False):
             raise ApplyError('source_identity_already_exists')
         if decision['action']=='create_user':
             if frappe.db.exists('User',data['email']):raise ApplyError('email_already_exists')
+            # Native LMS otherwise derives a unique username from the learner's name.
+            # Keep the public route numeric and the private alias stable across retries.
+            username=f'avo-{account}-user-{ident}'
+            if frappe.db.exists('User',{'username':username}):raise ApplyError('source_username_occupied')
+            data={**data,'username':username}
             from lms.lms.avo_user_import import _insert_imported_user
             from lms.lms.support_credentials import store_new_user_password
             saved=frappe.get_doc({'doctype':'User',**data,'user_type':'Website User','send_welcome_email':0})

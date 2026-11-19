@@ -78,6 +78,29 @@ class WorkerTests(unittest.TestCase):
         with patch.dict(sys.modules,modules),self.assertRaises(worker.ApplyError):worker.insert_one(fake,decision,'mastervision')
         self.assertEqual(db.events,['begin','rollback']);self.assertEqual(calls,[])
 
+    def test_new_user_alias_depends_only_on_source_account_and_id(self):
+        for account, ident, first_name in [('iomp','7','Ирина'),('iomp','8','Ирина'),
+                                            ('iomp','7','Новое имя'),('mastervision','7','Ирина')]:
+            decision,db,fake,modules,_=self.setup_user(account,id_contact=ident,name=first_name)
+            with patch.dict(sys.modules,modules):worker.insert_one(fake,decision,account)
+            self.assertEqual(db.doc['username'],f'avo-{account}-user-{ident}')
+            self.assertEqual(db.doc['first_name'],first_name)
+            self.assertEqual(db.doc['custom_avo_contact_id'],ident)
+
+    def test_foreign_alias_does_not_trigger_native_name_generation(self):
+        decision,db,fake,modules,calls=self.setup_user('iomp')
+        db.exists=lambda kind,filters:kind=='User' and filters=={'username':'avo-iomp-user-123'}
+        with patch.dict(sys.modules,modules),self.assertRaisesRegex(worker.ApplyError,'source_username_occupied'):
+            worker.insert_one(fake,decision,'iomp')
+        self.assertEqual(db.events,['begin','rollback']);self.assertEqual(calls,[])
+
+    def test_native_alias_replacement_fails_readback(self):
+        decision,db,fake,modules,_=self.setup_user('iomp')
+        modules['lms.lms.avo_user_import']._insert_imported_user=lambda doc:doc.update(username='other')
+        with patch.dict(sys.modules,modules),self.assertRaisesRegex(worker.ApplyError,'contact_readback_mismatch'):
+            worker.insert_one(fake,decision,'iomp')
+        self.assertEqual(db.events,['begin','rollback'])
+
     def test_missing_support_copy_rolls_back_whole_new_user(self):
         decision,db,fake,modules,calls=self.setup_user();db.missing_support=True
         with patch.dict(sys.modules,modules),self.assertRaisesRegex(worker.ApplyError,'^support_copy_missing$'):
