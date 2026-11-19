@@ -19,6 +19,58 @@ def button(label, url=''):
 
 
 class IompCourseMaterialTests(unittest.TestCase):
+    def test_only_valid_single_player_urls_lose_outer_whitespace(self):
+        youtube = 'https://youtu.be/abcdefghijk'
+        rutube = 'https://rutube.ru/video/private/' + 'a' * 32 + '/?p=test_key'
+        fields = {'videoProvider': 'youtube', 'videoSrc': ' ' + youtube,
+                  'videoProvider2': 'rutube', 'videoSrc2': rutube + '\n'}
+        source = record('134', '2022', [{'name': 'video', 'fields': fields}])
+        material.normalize_iomp_course_material(source)
+        self.assertEqual((fields['videoSrc'], fields['videoSrc2']), (youtube, rutube))
+        for invalid in (' ' + youtube + ' ' + youtube, ' https://example.com/video', ' ' + rutube):
+            fields['videoSrc'] = invalid
+            material.normalize_iomp_course_material(source)
+            self.assertEqual(fields['videoSrc'], invalid)
+
+    def test_clipboard_metadata_removal_preserves_text_style_and_links(self):
+        attr = ' class="docData;DOCY;v5;3;YWJj"'
+        paragraph = '<p style="text-align:justify"' + attr + '><b>00:15</b> <a href="https://example.com/">Материал</a></p>'
+        source = '<p>Вступление</p>\n' + paragraph + paragraph
+        self.assertEqual(material._remove_clipboard_classes(source), source.replace(attr, ''))
+        pasted = paragraph.replace('<b>00:15</b>', '<span style="tab-stops:12.322527777777777cm">00:15</span>')
+        self.assertEqual(material._remove_clipboard_classes(pasted),
+                         pasted.replace(attr, '').replace(' style="tab-stops:12.322527777777777cm"', ''))
+        for changed in (paragraph.replace(';3;', ';7;'), paragraph.replace('<p ', '<div ').replace('</p>', '</div>'),
+                        paragraph.replace('<b>', '<script>').replace('</b>', '</script>')):
+            self.assertEqual(material._remove_clipboard_classes(changed), changed)
+
+    def test_multiline_heading_keeps_its_level_and_authored_break(self):
+        node = {'name': 'header-simple', 'fields': {'level': 'h5', 'html': 'Начало<br>продолжение'}}
+        source = record('322', '5943', [copy.deepcopy(node)])
+        material.normalize_iomp_course_material(source)
+        self.assertEqual(import_capture.plan_import(source)['blocks'][0]['data']['text'],
+                         '<h5>Начало<br>продолжение</h5>')
+        node['fields']['anchor'] = 'important'
+        source = record('322', '5943', [copy.deepcopy(node)])
+        material.normalize_iomp_course_material(source)
+        self.assertEqual(source['ape']['children'], [node])
+
+    def test_shared_timing_panel_keeps_heading_and_body_and_skips_mixed_panels(self):
+        body = {'name': 'text', 'fields': {'html': '<p>00:15 Начало</p>'}}
+        item = {'name': 'unfolding-item', 'fields': {'headerHtml': '<strong>Тайминг</strong>'}, 'children': [body]}
+        panel = {'name': 'unfolding', 'fields': {'onlyOneExpanded': True, 'initialState': 'all-folded',
+                 'expandedSpeedRate': 1}, 'children': [item]}
+        source = record('167', '2954', [copy.deepcopy(panel)])
+        material.normalize_iomp_course_material(source)
+        children = source['ape']['children'][0]['children'][0]['children']
+        self.assertEqual(children[0]['fields']['html'], item['fields']['headerHtml'])
+        self.assertEqual(children[1:], [body])
+        other = copy.deepcopy(panel)
+        other['children'][0]['fields']['headerHtml'] = 'Меню'
+        source = record('167', '2954', [copy.deepcopy(panel), copy.deepcopy(other)])
+        material.normalize_iomp_course_material(source)
+        self.assertEqual(source['ape']['children'], [panel, other])
+
     def test_supervision_material_labels_keep_original_links_and_numbers(self):
         for original, expected in material.SUPERVISION_CAPTIONS.items():
             with self.subTest(original=original):

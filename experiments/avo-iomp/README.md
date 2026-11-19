@@ -137,6 +137,18 @@ their private source snapshots. With `--apply` it replaces the one affected
 block, attaches the revised import snapshot and verifies the complete lesson
 through the regular importer. It can be rerun after an interruption.
 
+For IOMP lessons pasted from an office document, the importer removes the
+serialized clipboard class on paragraph tags and the observed office tab-stop
+attribute only after the remaining HTML passes validation. It keeps the text,
+links and author formatting. Static timing panels retain each heading followed
+by its original content. Multiline simple headings keep the heading level and
+line breaks. Outer whitespace on a single player URL is trimmed only when
+the resulting address passes the validator for the same provider.
+
+Read-back of lessons 4733, 5943 and 2954 checked the copied text and links,
+the two multiline headings and the timing panel titles, respectively. Their
+course outlines matched the source order.
+
 Course 221 was imported after refreshing lesson 3817 from AVO. Read-back
 confirmed the original order of all 12 drafts and both primary YouTube and
 alternative Rutube URLs in one player in the eighth lesson.
