@@ -124,6 +124,14 @@ standalone, unlinked `{avatar_url}` placeholders, retaining their siblings.
 It recognizes the same audited audio and material captions across IOMP,
 preserving the original HTTPS destinations.
 
+Course 332 lesson 6154 has the same source content as 146/2249. Its five
+YouTube videos were read back in order, four with matching Rutube alternatives
+from other IOMP lessons and the first with YouTube alone. Course 331 lesson
+6102 uses the previously verified replacement for the monospace term in its
+introduction. Read-back confirmed the introductory HTML, paired player, five
+resource links, homework and timing text. The unpublished course outlines
+matched all 41 and 68 source IDs respectively.
+
 Course 221 was imported after refreshing lesson 3817 from AVO. Read-back
 confirmed the original order of all 12 drafts and both primary YouTube and
 alternative Rutube URLs in one player in the eighth lesson.

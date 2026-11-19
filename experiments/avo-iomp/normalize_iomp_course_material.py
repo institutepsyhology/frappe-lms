@@ -62,7 +62,6 @@ def normalize_iomp_course_material(payload):
     label = DECORATED_LABELS.get(identity)
     omit = identity in EMPTY_THIRD_AUDIO
     timing = identity == ('152', '2401')
-    monospace_term = identity in {('163', '2683'), ('208', '3526')}
 
     def walk(parent):
         children = parent.get('children', [])
@@ -85,13 +84,13 @@ def normalize_iomp_course_material(payload):
                 if (fields.get('videoProvider2') == 'rutube' and isinstance(alternate, str)
                         and alternate != alternate.strip() and _player_url(alternate.strip(), 'rutube')):
                     fields['videoSrc2'] = alternate.strip()
-            elif node.get('name') == 'text' and isinstance(html, str) and (timing or monospace_term):
+            elif node.get('name') == 'text' and isinstance(html, str) and (timing or '<code>' in html):
                 digest = hashlib.sha256(html.encode()).hexdigest()
                 if timing and digest == TIMING_LIST_DIGEST:
                     candidate = TIMING_ITEM.sub(_preserve_timing_marker, html)
                     make_html_block(candidate)
                     fields['html'] = candidate
-                elif monospace_term and digest == PSYCHOSOMATOSIS_TEXT_DIGEST:
+                elif digest == PSYCHOSOMATOSIS_TEXT_DIGEST:
                     candidate = html.replace('<code>&laquo;психосоматоз&raquo;</code>',
                                              '<span style="font-family:monospace">&laquo;психосоматоз&raquo;</span>')
                     make_html_block(candidate)

@@ -65,7 +65,12 @@ class ReviewedPairsTests(unittest.TestCase):
         self.assertEqual(sample, before)
 
     def test_real_capture_preserves_all_videos_and_headings_in_order(self):
-        targets = sorted((ARCHIVE / 'course-146').rglob('lesson-2249.json'))
+        for course, lesson in [('146', '2249'), ('332', '6154')]:
+            with self.subTest(course=course, lesson=lesson):
+                self.check_video_choices(course, lesson)
+
+    def check_video_choices(self, course, lesson):
+        targets = sorted((ARCHIVE / f'course-{course}').rglob(f'lesson-{lesson}.json'))
         if not targets:
             self.skipTest('private capture unavailable')
         payload = json.loads(targets[-1].read_text(encoding='utf-8'))['payload']

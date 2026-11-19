@@ -1,4 +1,4 @@
-"""Prepare the five native video choices of IOMP 146/2249 from private captures."""
+"""Restore confirmed Rutube alternatives in identical IOMP technical-help lessons."""
 
 import copy
 import hashlib
@@ -71,9 +71,11 @@ def _donor_pairs(archive):
 
 def normalize_reviewed_pairs(payload, archive):
     """Mutate this lesson only, after verifying both donors and the complete result."""
-    if (payload.get('account'), payload.get('source_origin'), payload.get('format'),
-            str(payload.get('course_id')), str(payload.get('lesson_id'))) != (
-            'iomp', 'https://shop.iomp.ru', 'ape', '146', '2249'):
+    if (payload.get('account'), payload.get('source_origin'), payload.get('format')) != (
+            'iomp', 'https://shop.iomp.ru', 'ape'):
+        return
+    if (str(payload.get('course_id')), str(payload.get('lesson_id'))) not in {
+            ('146', '2249'), ('332', '6154')}:
         return
     digest = _digest(payload['ape'])
     if digest == PREPARED:
