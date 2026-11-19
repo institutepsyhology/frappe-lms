@@ -100,7 +100,7 @@ class IompCourseMaterialTests(unittest.TestCase):
         self.assertEqual(children[1:], [body])
         self.assertFalse(import_capture.plan_import(source)['issues'])
 
-    def test_reviewed_monospace_word_keeps_quotes_punctuation_and_typeface(self):
+    def test_reviewed_term_uses_plain_text_and_keeps_quotes_and_punctuation(self):
         html = '<p>что такое&nbsp;<code>&laquo;психосоматоз&raquo;</code>.<br />Далее</p>'
         node = {'name': 'text', 'fields': {'html': html}}
         source = record('163', '2683', [copy.deepcopy(node)])
@@ -115,7 +115,7 @@ class IompCourseMaterialTests(unittest.TestCase):
         self.assertEqual(changed, original)
         self.assertEqual(source['ape'], other_course['ape'])
         self.assertEqual(source['ape']['children'][0]['fields']['html'],
-                         '<p>что такое&nbsp;<span style="font-family:monospace">&laquo;психосоматоз&raquo;</span>.<br />Далее</p>')
+                         '<p>что такое&nbsp;&laquo;психосоматоз&raquo;.<br />Далее</p>')
         self.assertFalse(import_capture.plan_import(source)['issues'])
 
     def test_other_site_is_untouched(self):

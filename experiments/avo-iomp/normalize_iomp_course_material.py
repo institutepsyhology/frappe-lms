@@ -91,8 +91,7 @@ def normalize_iomp_course_material(payload):
                     make_html_block(candidate)
                     fields['html'] = candidate
                 elif digest == PSYCHOSOMATOSIS_TEXT_DIGEST:
-                    candidate = html.replace('<code>&laquo;психосоматоз&raquo;</code>',
-                                             '<span style="font-family:monospace">&laquo;психосоматоз&raquo;</span>')
+                    candidate = html.replace('<code>&laquo;психосоматоз&raquo;</code>', '&laquo;психосоматоз&raquo;')
                     make_html_block(candidate)
                     fields['html'] = candidate
             walk(node)

@@ -127,10 +127,15 @@ preserving the original HTTPS destinations.
 Course 332 lesson 6154 has the same source content as 146/2249. Its five
 YouTube videos were read back in order, four with matching Rutube alternatives
 from other IOMP lessons and the first with YouTube alone. Course 331 lesson
-6102 uses the previously verified replacement for the monospace term in its
-introduction. Read-back confirmed the introductory HTML, paired player, five
+6102 uses plain text for the quoted term «психосоматоз» in its introduction.
+Read-back confirmed the introductory HTML, paired player, five
 resource links, homework and timing text. The unpublished course outlines
 matched all 41 and 68 source IDs respectively.
+
+`plain_term_correction.py` checks the seven existing IOMP copies against
+their private source snapshots. With `--apply` it replaces the one affected
+block, attaches the revised import snapshot and verifies the complete lesson
+through the regular importer. It can be rerun after an interruption.
 
 Course 221 was imported after refreshing lesson 3817 from AVO. Read-back
 confirmed the original order of all 12 drafts and both primary YouTube and
