@@ -83,4 +83,11 @@ In the 19 November follow-up, courses 131, 146, 152 and 163 were read back as
 drafts. In lessons 2093 and 2411 the empty third audio button was omitted.
 Lesson 2249 retained five YouTube players and gained four matching Rutube
 alternatives. The individual media URLs, headings and order were compared with
-the source. Lessons 345 and 2689 are excluded from future imports.
+the source. Lessons 345 and 2689 are excluded from future imports. The existing
+closed draft of lesson 345 stays ninth in course 60. Retries verify its position
+and skip writing it.
+
+All ten lessons of course 172 were verified as drafts in source order. Lesson
+2882 uses both YouTube/Rutube pairs and the PowerPoint link from lesson 1886
+for “Презентация 1”. The other three material links and the lesson HTML were
+checked against the original capture.

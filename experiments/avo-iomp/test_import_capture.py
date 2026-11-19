@@ -2,9 +2,12 @@ import hashlib
 import json
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from import_capture import Stop, normalize_avatar_label, refreshed_lessons
+from import_capture import (
+    ACCOUNT, ORIGIN, SITE, Course60Importer, IompImporter, Review, Stop,
+    normalize_avatar_label, refreshed_lessons,
+)
 from lms.lms.avo_transform import omit_placeholder_node
 from normalize_review import EXCLUDED_LESSONS, clean_timing_table, normalize_review
 
@@ -121,6 +124,79 @@ class RefreshReceiptTests(unittest.TestCase):
             read.assert_called_once_with(encoding='utf-8')
             with self.assertRaisesRegex(Stop, 'refreshed_outline_mismatch'):
                 refreshed_lessons(capture, '74', [714, 715])
+
+
+class RetainedDraftTests(unittest.TestCase):
+    source_ids = [337, 338, 340, 339, 341, 342, 344, 343, 345, 1942]
+
+    def setUp(self):
+        self.ids = list(map(str, self.source_ids))
+        self.client = Mock(account=ACCOUNT, site=SITE)
+
+    def outline(self, ids):
+        return {'course': 'course', 'ids': list(ids),
+                'by_id': {lid: {'name': 'doc-' + lid} for lid in ids}}
+
+    def payloads(self):
+        return [{'account': ACCOUNT, 'source_origin': ORIGIN, 'course_id': '60',
+                 'course_title': 'Course', 'lesson_title': lid, 'lesson_id': lid,
+                 'format': 'ape'} for lid in self.ids if lid != '345']
+
+    def test_importer_previews_only_included_lessons_for_both_destination_states(self):
+        payloads = self.payloads()
+        active = [payload['lesson_id'] for payload in payloads]
+        for ids in [self.ids, active]:
+            with (self.subTest(retained='345' in ids),
+                  patch.object(IompImporter, 'outline', return_value=self.outline(ids))):
+                importer = Course60Importer(self.client, self.source_ids)
+                with patch.object(importer, 'preview', return_value=({'action': 'already_imported'}, [])) as preview:
+                    result = importer.import_course(payloads, apply=True)
+                self.assertEqual(result['status'], 'already_present')
+                self.assertEqual(result['created_lesson_ids'], [])
+                self.assertEqual([call.args[0]['lesson_id'] for call in preview.call_args_list], active)
+                self.assertEqual(importer.outline('60').get('retained_lesson_ids', []),
+                                 ['345'] if '345' in ids else [])
+                self.client.call.assert_not_called()
+
+    def test_appends_only_missing_included_lesson_with_or_without_the_draft(self):
+        for retain in [False, True]:
+            ids = [lid for lid in self.ids[:-1] if retain or lid != '345']
+
+            def create(_method, arguments):
+                args = arguments['args']
+                lid = args['payload']['lesson_id']
+                self.assertIs(args['dry_run'], False)
+                self.assertEqual(lid, '1942')
+                ids.append(lid)
+                return {'result': {'action': 'created', 'account': ACCOUNT, 'course_id': '60',
+                                   'lesson_id': lid, 'dry_run': False}}
+
+            def preview(payload, _images):
+                action = 'already_imported' if payload['lesson_id'] in ids else 'create_lesson'
+                return {'action': action}, []
+
+            with (self.subTest(retain=retain), patch.object(self.client, 'call', side_effect=create) as write,
+                  patch.object(IompImporter, 'outline', side_effect=lambda _: self.outline(ids)),
+                  patch.object(Course60Importer, 'preview', side_effect=preview)):
+                result = Course60Importer(self.client, self.source_ids).import_course(self.payloads(), apply=True)
+                self.assertEqual(result['created_lesson_ids'], ['1942'])
+                write.assert_called_once()
+                self.assertEqual(ids, [lid for lid in self.ids if retain or lid != '345'])
+
+    def test_changed_order_or_retained_record_fails_even_when_other_ids_are_unchanged(self):
+        moved = self.ids.copy()
+        moved[7], moved[8] = moved[8], moved[7]
+        active = [lid for lid in self.ids if lid != '345']
+        changed = self.outline(self.ids)
+        changed['by_id']['345']['name'] = 'replacement'
+        for before, after in [(self.ids, self.outline(moved)), (self.ids, self.outline(active)),
+                              (active, self.outline(self.ids)), (self.ids, changed),
+                              (self.ids, self.outline(self.ids + ['999']))]:
+            with (self.subTest(after=after),
+                  patch.object(IompImporter, 'outline', side_effect=[self.outline(before), after])):
+                importer = Course60Importer(self.client, self.source_ids)
+                with self.assertRaisesRegex(Review, 'course_order_conflict'):
+                    importer.outline('60')
 
 
 if __name__ == '__main__':

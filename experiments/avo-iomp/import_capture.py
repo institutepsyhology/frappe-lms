@@ -43,6 +43,32 @@ class IompImporter(Importer):
     account, origin, site = IOMP_BINDING[:3]
 
 
+class Course60Importer(IompImporter):
+    """Keep the existing draft 345 in its source position across all import checks."""
+
+    def __init__(self, client, source_ids):
+        super().__init__(client)
+        self.source_order = [lid for lid in map(str, source_ids) if lid == '345' or lid not in EXCLUDED_LESSONS]
+        initial = super().outline('60')
+        self.retained_name = initial['by_id'].get('345', {}).get('name')
+
+    def outline(self, course_id):
+        outline = super().outline(course_id)
+        if course_id != '60':
+            return outline
+        draft_name = outline['by_id'].get('345', {}).get('name')
+        if draft_name != self.retained_name:
+            raise Review('course_order_conflict')
+        if not draft_name:
+            return outline
+        ids = outline['ids']
+        if ids != self.source_order[:len(ids)]:
+            raise Review('course_order_conflict')
+        return {**outline, 'ids': [lid for lid in ids if lid != '345'],
+                'by_id': {lid: row for lid, row in outline['by_id'].items() if lid != '345'},
+                'retained_lesson_ids': ['345']}
+
+
 def fetch_image(value):
     if not isinstance(value, str) or not value:
         raise Review('asset_url_invalid')
@@ -153,7 +179,7 @@ def read_capture(directory):
             normalize_review(payload)
             normalize_iomp_material(payload)
             normalize_iomp_course_material(payload)
-            normalize_life_position(payload, ARCHIVE)
+            normalize_life_position(payload, ARCHIVE, presentation='powerpoint')
         records.append(payload)
     return cid, meta, records
 
@@ -282,9 +308,12 @@ def main(directory, *, defer_final_lesson=None, require_empty=False, client_scop
             deferred = error.problems
             payloads = payloads[:-1]
         with (client_scope() if client_scope is not None else closing(IompClient(WORKSPACE))) as client:
-            importer = IompImporter(client)
             if require_empty:
                 verify_empty_destination(client, cid, [str(i) for i in meta['lesson_ids']])
+            if cid == '60' and '345' in excluded:
+                importer = Course60Importer(client, meta['lesson_ids'])
+            else:
+                importer = IompImporter(client)
             sync_course_audio('prepare', audio)
             verify_shared_audio(importer, shared_audio)
             report = importer.import_course(payloads, apply=True, images_for_lesson=lesson_images)
@@ -292,9 +321,12 @@ def main(directory, *, defer_final_lesson=None, require_empty=False, client_scop
             sync_course_audio('attach', audio)
             verify_shared_destination(importer, shared_audio)
             metadata = finish_course(client, outcome['course'], cid, meta['cover_url'])
-            result = {'status': 'imported', 'course_id': cid, 'lessons': len(outcome['ids']),
+            retained = outcome.get('retained_lesson_ids', [])
+            result = {'status': 'imported', 'course_id': cid, 'lessons': len(outcome['ids']) + len(retained),
                       'created': len(report['created_lesson_ids']), 'warnings': report['warnings'],
                       'excluded_lesson_ids': excluded, **metadata}
+            if retained:
+                result['retained_lesson_ids'] = retained
             if audio:
                 result['verified_audio_files'] = len(audio)
             if shared_audio:
