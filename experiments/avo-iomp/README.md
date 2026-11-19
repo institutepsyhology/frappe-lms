@@ -98,6 +98,9 @@ holds lesson 3260 for a decision on its presentation. Lesson 202/4096 uses the
 approved video pair and audio link from 221/4103. For these two courses a
 verified initial sequence can be saved in source order up to the first problem.
 The journal keeps the course in review until the rest of the outline is ready.
+The owner subsequently excluded the empty lessons 4097–4101 in course 202,
+4448 and 4453 in course 237, and 4721–4724 in course 261. Their expected
+outlines contain 43, 24 and 17 lessons, respectively.
 
 Lessons 232/4299, 233/4298 and 253/4546 retain native certificate buttons with
 the original AVO personal certificate URL and new-tab behavior. Historical

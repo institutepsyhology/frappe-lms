@@ -11,6 +11,8 @@ from normalize_source import clean_table, table_content
 
 EXCLUDED_LESSONS = frozenset({
     '345', '2689',
+    # Empty supervision and practice lessons in IOMP courses 202, 237 and 261.
+    '4097', '4098', '4099', '4100', '4101', '4448', '4453', '4721', '4722', '4723', '4724',
     '20', '169', '188', '1405', '1406', '1957', '4396', '4400', '4512', '5296', '5864',
     # The owner selected the remaining 36 lessons from course 74.
     '726', '767', '768', '769', '770', '771', '775', '776', '777', '778', '779', '780', '782',
