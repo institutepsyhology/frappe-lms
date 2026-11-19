@@ -173,6 +173,11 @@ The default RQ queue must have fewer than 100 pending jobs; a queue-overload rac
 retries the same record after rollback. Ten consecutive genuine failures stop
 the writer. Less than 2 GiB free on the server pauses application writes.
 
+The general IOMP and selected MV writers create the native linked Contact in
+the same transaction as its User and verify it before commit. They advance as
+soon as queue and disk capacity allow. For IOMP, apply the native Contact
+lookup index with `index_mastervision_contact_email.py --account iomp --release <SHA>`.
+
 Owner priority: finish MV contacts, then MV contact/course/lesson access. IOMP
 continues in parallel and must not delay MV access. IOMP course/lesson migration
 must precede its access synchronization. The old local access database has only

@@ -14,13 +14,13 @@ class Job(dict):
 
 
 class InlineTests(unittest.TestCase):
-    def setup_case(self):
-        user=Doc(doctype='User',user_type='Website User',custom_avo_account='mastervision',
+    def setup_case(self,account='mastervision'):
+        user=Doc(doctype='User',user_type='Website User',custom_avo_account=account,
             custom_avo_contact_id='123',name='test@example.invalid',email='test@example.invalid',
             first_name='Test',last_name='Person',gender=None,phone='123',mobile_no='999')
         original=Mock();native=Mock()
         lookup=Mock(return_value=None)
-        fake=SimpleNamespace(local=SimpleNamespace(site=worker.destination('mastervision')),
+        fake=SimpleNamespace(local=SimpleNamespace(site=worker.destination(account)),
             session=SimpleNamespace(user='Administrator'),enqueue=original,
             get_attr=Mock(side_effect=lambda method:native if method==METHOD else lookup),
             _dict=Job,
@@ -73,7 +73,7 @@ class InlineTests(unittest.TestCase):
             if case=='existing':native.assert_not_called()
             self.assertIs(fake.enqueue,original)
 
-    def test_only_private_single_thread_mv_website_creation_can_opt_in(self):
+    def test_only_private_single_thread_site_bound_website_creation_can_opt_in(self):
         for case in ('account','site','actor','thread','user_type'):
             user,fake,original,native=self.setup_case();account='mastervision'
             if case=='account':account='iomp'
@@ -105,14 +105,16 @@ class InlineTests(unittest.TestCase):
         with worker.inline_contact_creation(fake,user,'mastervision'):self.enqueue(fake,user)
 
     def test_native_name_collision_uses_source_bound_contact_name(self):
-        user,fake,original,native=self.setup_case()
-        mirror=SimpleNamespace(add_email=Mock(),add_phone=Mock(),insert=Mock())
-        fake.get_doc=Mock(return_value=mirror)
-        fake.get_all.side_effect=[[],[{'name':'numeric','user':user.name,'email_id':user.email}]]
-        with worker.inline_contact_creation(fake,user,'mastervision'):self.enqueue(fake,user)
-        mirror.insert.assert_called_once_with(set_name='avo-mastervision-user-123',ignore_permissions=True,ignore_mandatory=True)
-        mirror.add_email.assert_called_once_with(user.email,is_primary=True)
-        self.assertEqual(mirror.add_phone.call_count,2)
+        for account in ('mastervision','iomp'):
+            with self.subTest(account=account):
+                user,fake,original,native=self.setup_case(account)
+                mirror=SimpleNamespace(add_email=Mock(),add_phone=Mock(),insert=Mock())
+                fake.get_doc=Mock(return_value=mirror)
+                fake.get_all.side_effect=[[],[{'name':'numeric','user':user.name,'email_id':user.email}]]
+                with worker.inline_contact_creation(fake,user,account):self.enqueue(fake,user)
+                mirror.insert.assert_called_once_with(set_name=f'avo-{account}-user-123',ignore_permissions=True,ignore_mandatory=True)
+                mirror.add_email.assert_called_once_with(user.email,is_primary=True)
+                self.assertEqual(mirror.add_phone.call_count,2)
 
     def test_foreign_user_enqueue_is_never_intercepted(self):
         user,fake,original,native=self.setup_case();foreign=object()

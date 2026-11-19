@@ -128,11 +128,11 @@ def target_map(frappe,account):
 def inline_contact_creation(frappe,user,account):
     """Run this private import's native mirror in its creation transaction.
 
-    Only the selected MV writer's main thread opts in. All User hooks still
+    Only the IOMP or selected MV writer's main thread opts in. All User hooks still
     run; exactly one known enqueue is replaced with the same native function.
     Other jobs keep their normal queue/after-commit semantics.
     """
-    if (account!='mastervision' or frappe.local.site!=destination(account)
+    if (account not in SITES or frappe.local.site!=destination(account)
             or frappe.session.user!='Administrator' or threading.current_thread() is not threading.main_thread()
             or user.get('doctype')!='User' or user.get('user_type')!='Website User'
             or user.get('custom_avo_account')!=account):
@@ -181,7 +181,7 @@ def inline_contact_creation(frappe,user,account):
 
 def numeric_contact_mirror(frappe,user,account):
     ident=user.get('custom_avo_contact_id')
-    if (account!='mastervision' or type(ident) is not str
+    if (account not in SITES or user.get('custom_avo_account')!=account or type(ident) is not str
             or not re.fullmatch('[1-9][0-9]{0,18}',ident) or int(ident)>=2**63):
         raise ApplyError('source_identity_mismatch')
     contact=frappe.get_doc({'doctype':'Contact','first_name':user.first_name,'last_name':user.last_name,
@@ -373,6 +373,7 @@ def run(frappe,account,*,limit=20,retry_issues=False,selection=None):
                 if not retry_issues or status not in ('deferred','failed')}
             replay_optouts=captured_optouts(folder) if selected is not None else set()
             queue=get_queue('default');failures=0;created=0;handled=0
+            inline_contacts=account=='iomp' or selected is not None
             stopped=lambda:(base/'STOP').exists() or selected is not None and (folder/'STOP').exists()
             update=lambda status:progress(base,state,status,account,source_count=source_count,
                 selection_fingerprint=selection,selection_count=len(selected) if selected is not None else source_count)
@@ -401,7 +402,7 @@ def run(frappe,account,*,limit=20,retry_issues=False,selection=None):
                     else:
                         identities[ident]=insert_ready(frappe,decision,account,pending=lambda:queue.count,
                             free=lambda:shutil.disk_usage(base).free,stopped=stopped,waiting=update,
-                            inline_contacts=selected is not None)
+                            inline_contacts=inline_contacts)
                         status='created_user' if action=='create_user' else 'created_contact'
                         if selected is not None and fresh_optout(folder,ident):
                             apply_optout(frappe,account,ident);identities[ident]['blocked']=True
@@ -418,10 +419,8 @@ def run(frappe,account,*,limit=20,retry_issues=False,selection=None):
                 handled+=1
                 if handled%20==0:update('applying')
                 if limit and created>=limit:return update('batch_complete')
-                # IOMP yields more time to MV and the single native default worker.
-                # Selected native mirrors are inline: no RQ production delay.
-                # Queue/disk checks still gate every actual write/create.
-                if selected is None:time.sleep(0.15 if account=='mastervision' else 0.6)
+                # Only general MV still enqueues a separate Contact job per User.
+                if not inline_contacts:time.sleep(0.15)
             if selected is not None:
                 actual=target_map(frappe,account)
                 missing=selected-set(actual)
