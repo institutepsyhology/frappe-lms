@@ -42,6 +42,12 @@ URLs retained in one pair. Actual image transfer and playback remain unverified.
 
 ## Resuming an IOMP import
 
+IOMP course 346 omits the chat invitation (lesson 7117) and retains 18 lessons.
+Course 347 contains the one reviewed masterclass iframe in lesson 7128. Its
+native HTML block preserves the original iframe markup and 3100px inner height.
+The importer verifies the saved contents, numeric IDs and private outline on
+replay. Its source cover is served as PNG but decodes as JPEG.
+
 `node experiments/avo-iomp/batch.cjs --apply 100 317` processes pending courses
 above source ID 100. To revisit particular review items or missing covers, use
 `--retry-courses 44,48` with the current pending IDs. Both modes use the same

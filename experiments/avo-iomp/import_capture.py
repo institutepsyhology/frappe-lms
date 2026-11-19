@@ -32,6 +32,7 @@ from normalize_psychotherapy_materials import omit_questionnaire_button, omit_su
 from normalize_course193 import normalize_course193
 from normalize_offer_links import resolve_offer_link
 from normalize_reviewed_vk import normalize_reviewed_vk
+from masterclass_frame import import_frame
 from jpeg_cover import prepare_jpeg_upload
 from course_audio import prepare_course_audio, sync_course_audio
 from shared_course_audio import prepare_shared_audio, verify_shared_audio, verify_shared_destination
@@ -75,7 +76,7 @@ class Course60Importer(IompImporter):
                 'retained_lesson_ids': ['345']}
 
 
-def fetch_image(value):
+def fetch_image(value, *, reviewed_jpeg_cover=False):
     if not isinstance(value, str) or not value:
         raise Review('asset_url_invalid')
     if value.startswith('data:'):
@@ -95,7 +96,12 @@ def fetch_image(value):
             if response.status != 200 or response.geturl() != url.geturl():
                 raise Review('asset_response_invalid')
             raw = response.read(MAX_IMAGE + 1)
-            return raw, _inspect(raw, response.headers.get('Content-Type', ''))
+            content_type = response.headers.get('Content-Type', '')
+            if reviewed_jpeg_cover and content_type.split(';')[0].strip().lower() == 'image/png' and raw.startswith(b'\xff\xd8'):
+                # Course 347's PNG-labelled response is a JPEG. Validate its
+                # actual format here and decode it again before File upload.
+                content_type = 'image/jpeg'
+            return raw, _inspect(raw, content_type)
     except urllib.error.HTTPError as error:
         raise Review('asset_not_found' if error.code == 404 else 'asset_unavailable') from None
     except (urllib.error.URLError, OSError):
@@ -243,7 +249,7 @@ def finish_course(client, name, cid, cover):
     cover_issue = None
     if not before.get('image') and cover:
         try:
-            raw, extension = fetch_image(cover)
+            raw, extension = fetch_image(cover, reviewed_jpeg_cover=True) if cid == '347' else fetch_image(cover)
             digest = hashlib.sha256(raw).hexdigest()
             if extension == 'jpg':
                 raw = prepare_jpeg_upload(raw)
@@ -328,6 +334,13 @@ def main(directory, *, defer_final_lesson=None, require_empty=False, client_scop
             if excluded:
                 return {'status': 'excluded', 'course_id': cid, 'excluded_lesson_ids': excluded}
             raise Review('empty_source_course')
+        if cid == '347':
+            with (client_scope() if client_scope is not None else closing(IompClient(WORKSPACE))) as client:
+                if require_empty:
+                    verify_empty_destination(client, cid, ['7128'])
+                name, created = import_frame(IompImporter(client), payloads, mutate, checked_course)
+                return {'status':'imported','course_id':cid,'lessons':1,'created':created,
+                        'warnings':[],'excluded_lesson_ids':[], **finish_course(client,name,cid,meta['cover_url'])}
         deferred = []
         try:
             preflight_source(payloads)
