@@ -18,7 +18,7 @@ class PreviewOfferTests(unittest.TestCase):
         self.addCleanup(reader.stop)
         self.key = ('178', '3002')
         self.placeholder = '{goods_ordering_738}'
-        self.url = 'https://shop.iomp.ru/?r=example/order&id=738&clean=1&lg=ru'
+        self.url = 'https://shop.iomp.ru/?r=ordering/cart/as1&id=738&clean=true&lg=ru'
         self.button = {'name': 'button', 'fields': {'html': 'Записаться', 'linkType': 'url',
                        'url': self.placeholder, 'blank': True}}
         self.payload = {'account': 'iomp', 'source_origin': offers.ORIGIN, 'format': 'ape', 'course_id': '178',
@@ -67,6 +67,30 @@ class PreviewOfferTests(unittest.TestCase):
             with patch.dict(offers.PREVIEW_FINGERPRINTS, {self.key: hashlib.sha256(url.encode()).hexdigest()}):
                 with self.assertRaisesRegex(import_capture.Review, 'preview_requires_verification'):
                     offers.resolve_offer_link(self.payload, self.archive)
+
+    def test_same_caption_cannot_substitute_another_product_or_form(self):
+        for url in (self.url.replace('id=738', 'id=750'), self.url.replace('cart/as1', 'cart/checkout')):
+            self.write_capture(links=[{**self.row, 'url': url}])
+            with patch.dict(offers.PREVIEW_FINGERPRINTS, {self.key: hashlib.sha256(url.encode()).hexdigest()}):
+                with self.assertRaisesRegex(import_capture.Review, 'preview_requires_verification'):
+                    offers.resolve_offer_link(self.payload, self.archive)
+
+    def test_new_receipt_is_separate_from_previous_three_links(self):
+        key = ('179', '3017')
+        self.assertNotIn(key, offers.FIRST_CAPTURE)
+        self.payload.update(course_id=key[0], lesson_id=key[1])
+        self.button['fields']['url'] = '{goods_ordering_746}'
+        self.row.update(course_id=179, lesson_id=3017, url=self.url.replace('738', '746'))
+        paths = []
+        def read_receipt(path, **kwargs):
+            paths.append(path)
+            return json.dumps(self.capture)
+
+        with patch.object(Path, 'read_text', read_receipt), patch.dict(
+                offers.SOURCE_BUTTONS, {key: ('{goods_ordering_746}', offers._digest(self.button))}):
+            offers.resolve_offer_link(self.payload, self.archive)
+        self.assertEqual(self.button['fields']['url'], self.row['url'])
+        self.assertEqual(paths, [self.archive / 'preview-offer-links-20261120.json'])
 
     def test_other_lessons_and_schools_are_untouched(self):
         for changes in [

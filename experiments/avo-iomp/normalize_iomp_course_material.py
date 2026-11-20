@@ -10,7 +10,7 @@ from normalize_accordions import normalize_accordions
 from normalize_iomp_material import _digest
 
 
-EMPTY_THIRD_AUDIO = {('131', '2093'), ('152', '2411')}
+EMPTY_THIRD_AUDIO = {('131', '2093'), ('152', '2411'), ('341', '6817')}
 SUPERVISION_TIMINGS = {
     ('308', '5783'), ('309', '5828'), ('311', '5795'), ('311', '5796'), ('311', '5797'),
     ('312', '5818'), *(('324', lesson) for lesson in ('6011', '6012', '6013', '6018', '6019', '6020')),

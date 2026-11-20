@@ -77,6 +77,24 @@ class SharedAudioTests(unittest.TestCase):
         self.assertEqual(sum(map(len, source_paths.values())), 62)
         import_capture.preflight_source(target)
 
+    def test_course_333_reuses_62_files_in_their_existing_order(self):
+        captures = sorted((import_capture.ARCHIVE / 'course-333').glob('*/capture-status.json'))
+        if not captures:
+            self.skipTest('private captures unavailable')
+        records = import_capture.read_capture(captures[-1].parent)[2]
+        ids = [(record['course_id'], record['lesson_id']) for record in records]
+        paths = shared.prepare_shared_audio(records)
+        shared.check_order(paths)
+        self.assertEqual(sum(map(len, paths.values())), 62)
+        self.assertEqual(ids, [(record['course_id'], record['lesson_id']) for record in records])
+        import_capture.preflight_source(records)
+        client = Client({'6276': paths['1829']})
+        client.outline['course'] = 'course-333'
+        client.docs['Course Lesson'][0]['course'] = 'course-333'
+        importer = SimpleNamespace(client=client, outline=lambda cid: client.outline if cid == '333' else None)
+        shared.verify_shared_destination(importer, paths, '333', included_lessons={'6276'})
+        self.assertEqual(client.calls, ['Course Lesson'])
+
     def test_destination_uses_its_own_lesson_ids_and_donor_file_urls(self):
         paths = {src: [shared.PREFIX + src + '-sample.mp3'] for src in shared.PAIRED.values()}
         digest = hashlib.sha256(json.dumps(paths, sort_keys=True, separators=(',', ':')).encode()).hexdigest()

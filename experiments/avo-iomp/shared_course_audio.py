@@ -1,4 +1,4 @@
-"""Reuse course 91's verified private IOMP audio in its matching course 116 lessons."""
+"""Reuse course 91's verified private IOMP recordings in matching IOMP lessons."""
 import copy
 import hashlib
 from html.parser import HTMLParser
@@ -12,6 +12,7 @@ from importer import IOMP_BINDING, Review, Stop
 
 # Pairing was checked against both sets of captures. Each list of audio paths is in source order.
 PAIRED = {str(lesson): str(lesson - 67) for lesson in range(1896, 1906)}
+COURSE_PAIRS = {'116': PAIRED, '333': {str(lesson): str(lesson - 4447) for lesson in range(6276, 6286)}}
 ORDERED_MANIFEST = '4c7e8f98d57c79095be0aba4b447d4272bdcffafa4e84094630e5711fdea04ef'
 PREFIX = '/private/files/avo-iomp-91-'
 ORIGIN = 'https://' + IOMP_BINDING[2]
@@ -19,20 +20,23 @@ ORIGIN = 'https://' + IOMP_BINDING[2]
 
 def prepare_shared_audio(payloads):
     """Prepare copies of leaf nodes. Course/lesson IDs in the imported documents stay original."""
-    if not any(p.get('course_id') == '116' and p.get('account') == 'iomp' for p in payloads):
+    course = next((p.get('course_id') for p in payloads if p.get('course_id') in COURSE_PAIRS
+                   and p.get('account') == 'iomp'), None)
+    if not course:
         return {}
+    pairs = COURSE_PAIRS[course]
     if any((p.get('account'), p.get('source_origin'), p.get('course_id')) !=
-           (*IOMP_BINDING[:2], '116') for p in payloads):
+           (*IOMP_BINDING[:2], course) for p in payloads):
         raise Stop('source_account_mismatch')
-    originals = [p for p in payloads if p.get('lesson_id') in PAIRED]
-    if len(originals) != len(PAIRED) or {p['lesson_id'] for p in originals} != set(PAIRED):
+    originals = [p for p in payloads if p.get('lesson_id') in pairs]
+    if len(originals) != len(pairs) or {p['lesson_id'] for p in originals} != set(pairs):
         raise Review('iomp_shared_audio_source_changed')
-    shadow = [{**p, 'course_id': '91', 'lesson_id': PAIRED[p['lesson_id']], 'ape': copy.deepcopy(p['ape'])}
+    shadow = [{**p, 'course_id': '91', 'lesson_id': pairs[p['lesson_id']], 'ape': copy.deepcopy(p['ape'])}
               for p in originals]
     try:
-        rows = prepare_course_audio(shadow)
+        rows = prepare_course_audio(shadow, alternate_player=(course == '333'))
     except Review as error:
-        source_to_target = {v: k for k, v in PAIRED.items()}
+        source_to_target = {v: k for k, v in pairs.items()}
         problems = [{**p, 'lesson_id': source_to_target.get(p.get('lesson_id'), p.get('lesson_id'))}
                     for p in error.problems]
         raise Review(str(error), problems) from None
@@ -104,11 +108,14 @@ def verify_lesson_links(importer, cid, expected_paths):
     return names
 
 
-def verify_shared_destination(importer, paths):
+def verify_shared_destination(importer, paths, course_id='116', *, included_lessons=None):
     """Check all source IDs and every saved url in the ten destination lessons."""
     if paths:
         check_order(paths)
-        verify_lesson_links(importer, '116', {dst: paths[src] for dst, src in PAIRED.items()})
+        pairs = COURSE_PAIRS[course_id]
+        targets = {dst: paths[src] for dst, src in pairs.items() if included_lessons is None or dst in included_lessons}
+        if targets:
+            verify_lesson_links(importer, course_id, targets)
 
 
 def verify_shared_audio(importer, paths):

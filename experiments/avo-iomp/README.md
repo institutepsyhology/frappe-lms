@@ -181,3 +181,23 @@ Lessons 232/4299, 233/4298 and 253/4546 retain native certificate buttons with
 the original AVO personal certificate URL and new-tab behavior. Historical
 countdowns with the reviewed June 2024 deadline show the four zero values
 observed in AVO. Certificate issuance and existing learner access are independent.
+
+### Personal certificates and reviewed November 20 lessons
+
+On IOMP, install the session-specific `/personal/certificate` Web Page with
+`python -B experiments/avo-iomp/install_certificate_page.py --apply --verify-http`.
+It selects the current member's certificates under Frappe's read permissions,
+50 per page. Course 296 and the matching certificate widgets link to this page.
+In lesson 5069 the button is visible to every learner with access to the lesson.
+It leads to the current learner's list and does not issue a certificate.
+The installer checks an existing page before writing. The HTTP verification
+alternates guest and signed-in requests to the same URL and checks cache headers.
+
+The IOMP archive importer preserves the reviewed YouTube selection in 5520 and
+the paired providers in 5934 and 5889. Source read-back checks matched one
+pair in 5934 and six in 5889. Reviewed timing tables and headings retain their
+text and links. Course 333 reuses the 62 verified private audio files of course
+91 in their original order. Course 335 can be resumed with
+`python -B experiments/avo-iomp/repair_course335_order.py --apply` before normal
+batch import. The repair verifies the existing draft 6311 before and after
+restoring its original position.

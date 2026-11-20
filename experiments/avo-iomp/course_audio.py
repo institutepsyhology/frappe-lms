@@ -16,13 +16,16 @@ HERE = Path(__file__).resolve().parent
 WORKSPACE = HERE.parents[2]
 LESSONS = {str(value) for value in range(1829, 1839)}
 PLAYER_STYLE = '7ce563a7ab1d249197c75de36aac44f2f46ecf53e2f24e9585f441000c374c41'
+SPEED_PLAYER_STYLE = '18d8be3b93e73161829de74d7cc2fdf9d5c27f11739be2de6605fd113179d959'
 PLAYER_CONTROLS = dict(showDownloadButton=False, showLoopButton=True, showStopButton=True,
                        showVolumeButton=True, showVolumeSlider=True)
 DRIVE = re.compile(r'(<p><iframe src="https://drive\.google\.com/file/d/[A-Za-z0-9_-]{1,200}/preview"'
                    r' width="640" height="480") scrolling="no" frameborder="0"(></iframe></p>)')
 
 
-def prepare_course_audio(payloads):
+def prepare_course_audio(payloads, *, alternate_player=False):
+    expected_controls = {**PLAYER_CONTROLS, 'showPlaybackRateButton': True} if alternate_player else PLAYER_CONTROLS
+    expected_style = SPEED_PLAYER_STYLE if alternate_player else PLAYER_STYLE
     rows = []
     for payload in payloads:
         if (payload.get('account'), payload.get('source_origin'), payload.get('format'),
@@ -53,8 +56,8 @@ def prepare_course_audio(payloads):
                 controls = {key: value for key, value in fields.items() if key not in {'audioSrc', 'anchor'}}
                 style = json.dumps(node.get('style'), sort_keys=True, separators=(',', ':')).encode()
                 if (set(node) - {'id', 'name', 'style', 'fields', 'children'} or fields.get('anchor') != ''
-                        or controls != PLAYER_CONTROLS or any(type(v) is not bool for v in controls.values())
-                        or hashlib.sha256(style).hexdigest() != PLAYER_STYLE):
+                        or controls != expected_controls or any(type(v) is not bool for v in controls.values())
+                        or hashlib.sha256(style).hexdigest() != expected_style):
                     raise Review('iomp_audio_controls_changed', [{'lesson_id': lesson}])
                 row = {'lesson_id': lesson, 'url': fields.get('audioSrc')}
                 try:

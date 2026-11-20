@@ -25,6 +25,11 @@ from normalize_review import EXCLUDED_LESSONS, normalize_review
 from normalize_iomp_material import normalize_iomp_material, reviewed_image_url
 from normalize_iomp_course_material import normalize_iomp_course_material
 from normalize_reviewed_pairs import normalize_reviewed_pairs
+from normalize_iomp_approved_players import normalize_approved_players
+from normalize_split_player_label import normalize_split_player_label
+from normalize_iomp_archive_html import normalize_iomp_archive_html
+from certificate_list import normalize_certificate_list
+from normalize_diagnostic_session import normalize_diagnostic_session
 from normalize_life_position import normalize_life_position
 from normalize_supervision_media import normalize_supervision_media
 from normalize_expired_countdown import normalize_expired_countdown
@@ -189,6 +194,9 @@ def read_capture(directory):
             raise Stop('source_account_mismatch')
         payload.update(course_id=cid, lesson_id=ident)
         if payload['format'] == 'ape':
+            normalize_approved_players(payload, ARCHIVE)
+            normalize_split_player_label(payload)
+            normalize_certificate_list(payload)
             if {'personalOffer', 'tag'}.intersection(lesson.get('editor_options', {}).get('visibleConditionsTypes', {})):
                 # Hold authored visibility rules before any layout conversion.
                 nodes = [payload['ape']]
@@ -211,6 +219,8 @@ def read_capture(directory):
             omit_supervision_presentation(payload)
             normalize_course193(payload)
             resolve_offer_link(payload, ARCHIVE)
+            normalize_iomp_archive_html(payload)
+            normalize_diagnostic_session(payload)
         records.append(payload)
     return cid, meta, records
 
@@ -378,6 +388,7 @@ def main(directory, *, defer_final_lesson=None, require_empty=False, client_scop
                 name, created = import_frame(IompImporter(client), payloads, mutate, checked_course)
                 return {'status':'imported','course_id':cid,'lessons':1,'created':created,
                         'warnings':[],'excluded_lesson_ids':[], **finish_course(client,name,cid,meta['cover_url'])}
+        shared_audio = prepare_shared_audio(payloads)
         deferred = []
         try:
             preflight_source(payloads)
@@ -385,7 +396,6 @@ def main(directory, *, defer_final_lesson=None, require_empty=False, client_scop
             payloads, deferred_code = ready_prefix(cid, payloads, error, defer_final_lesson, allow_prefix=allow_prefix)
             deferred = error.problems
         audio = prepare_course_audio(payloads)
-        shared_audio = prepare_shared_audio(payloads)
         with (client_scope() if client_scope is not None else closing(IompClient(WORKSPACE))) as client:
             if require_empty:
                 verify_empty_destination(client, cid, [str(i) for i in meta['lesson_ids']])
@@ -398,7 +408,7 @@ def main(directory, *, defer_final_lesson=None, require_empty=False, client_scop
             report = importer.import_course(payloads, apply=True, images_for_lesson=lesson_images)
             outcome = importer.outline(cid)
             sync_course_audio('attach', audio)
-            verify_shared_destination(importer, shared_audio)
+            verify_shared_destination(importer, shared_audio, cid, included_lessons={p['lesson_id'] for p in payloads})
             metadata = finish_course(client, outcome['course'], cid, meta['cover_url'])
             retained = outcome.get('retained_lesson_ids', [])
             result = {'status': 'imported', 'course_id': cid, 'lessons': len(outcome['ids']) + len(retained),

@@ -108,7 +108,7 @@ class IompCourseMaterialTests(unittest.TestCase):
         changed['fields']['event'] = 'custom'
         linked = button('АУДИОЗАПИСЬ 3', 'https://example.com/audio')
         other = button('АУДИОЗАПИСЬ 2')
-        for identity in [('131', '2093'), ('152', '2411'), ('152', '2093')]:
+        for identity in [('131', '2093'), ('152', '2411'), ('341', '6817'), ('152', '2093')]:
             with self.subTest(identity=identity), patch.object(material, 'EMPTY_BUTTON_DIGEST', digest):
                 nodes = [other, empty, changed, linked]
                 source = record(*identity, copy.deepcopy(nodes))
