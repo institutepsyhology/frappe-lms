@@ -57,7 +57,7 @@ def course(fr, course_id, *, lock):
 
 
 def members(fr, ids):
-    """Resolve both objects by numeric source identity. Never use e-mail or names."""
+    """Resolve the account by its AVO ID and follow the Contact.user foreign key."""
     result = {}
     for offset in range(0, len(ids), 300):
         group = ids[offset:offset+300]
@@ -66,10 +66,28 @@ def members(fr, ids):
         for doctype, dest, extra in (("User", users, ["enabled"]), ("Contact", contacts, ["user"])):
             for obj in rows(fr, doctype, filters, ["name", "custom_avo_contact_id", *extra]):
                 dest[obj["custom_avo_contact_id"]].append(obj)
+        named = {ident: matches[0]["name"] for ident, matches in users.items()
+                 if len(matches) == 1 and matches[0]["enabled"]}
+        linked = defaultdict(list)
+        if named:
+            for card in rows(fr, "Contact", {"user": ("in", list(named.values()))},
+                             ["name", "user", "custom_avo_account", "custom_avo_contact_id"]):
+                linked[card["user"]].append(card)
         for ident in group:
-            u, c = users[str(ident)], contacts[str(ident)]
-            if len(u) == len(c) == 1 and c[0]["user"] == u[0]["name"] and u[0]["enabled"]:
-                result[ident] = u[0]["name"]
+            key = str(ident)
+            account = named.get(key)
+            attached = linked[account]
+            if len(attached) != 1:
+                continue
+            card = attached[0]
+            source = (card["custom_avo_account"], card["custom_avo_contact_id"])
+            # The bulk account importer also creates plain native Contacts.
+            # They are unambiguous only when linked to this exact source User
+            # and no different Contact claims the source identity.
+            by_id = contacts[key]
+            if (source == (ACCOUNT, key) and len(by_id) == 1 and by_id[0]["name"] == card["name"]
+                    or not any(source) and not by_id):
+                result[ident] = account
     return result
 
 

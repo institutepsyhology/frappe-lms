@@ -197,6 +197,21 @@ class WriteTests(Fixture, unittest.TestCase):
             fr.tables[dt,name] = Doc(name=name, custom_avo_account=ACCOUNT, **v)
         return fr
 
+    def test_native_contact_uses_a_unique_user_link_and_rejects_conflicting_claims(self):
+        from target_sync import members
+        fr = self.fixture()
+        card = fr.tables["Contact", "k"]
+        card.update(custom_avo_account=None, custom_avo_contact_id=None)
+        self.assertEqual(members(fr, [53]), {53: "u"})
+        fr.tables["Contact", "other"] = Doc(name="other", user="another",
+            custom_avo_account=ACCOUNT, custom_avo_contact_id="53")
+        self.assertEqual(members(fr, [53]), {})
+        fr.tables["Contact", "other"].update(user="u", custom_avo_account=None, custom_avo_contact_id=None)
+        self.assertEqual(members(fr, [53]), {})
+        del fr.tables["Contact", "other"]
+        card.update(custom_avo_account="iomp", custom_avo_contact_id="53")
+        self.assertEqual(members(fr, [53]), {})
+
     def test_projection_idempotent_and_conflicting_access_is_held(self):
         fr = self.fixture()
         def apply(write, rules=RULES):
