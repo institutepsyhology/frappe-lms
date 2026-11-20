@@ -51,7 +51,7 @@ async function fetchPolicy(browser, id) {
     expect(Object.hasOwn(settings, key), 'missing_course_setting');
   const tree = sourceLiteral(html, /['"]trainingLessonsTree['"]\s*:\s*/g, true);
   expect(Array.isArray(tree), 'unknown_lesson_tree');
-  const seen = new Set(), drafts = [];
+  const seen = new Set(), drafts = [], lessonRules = {};
   function visit(row) {
     expect(row && Number(row.id_training) === id, 'wrong_lesson_course');
     if (row.id_training_lessons == null && Array.isArray(row.elements)) {
@@ -63,6 +63,13 @@ async function fetchPolicy(browser, id) {
     seen.add(lesson);
     expect([0,1,'0','1'].includes(row.is_draft), 'unconfirmed_draft_flag');
     if (Number(row.is_draft)) drafts.push(lesson);
+    const keys = ['day_access', 'start_date', 'check_report', 'request_report'];
+    expect(keys.every(key => Object.hasOwn(row, key)), 'unconfirmed_lesson_schedule');
+    const rule = Object.fromEntries(keys.map(key => [key, row[key]]));
+    if (Number(rule.day_access) !== 0 || Number(rule.check_report) !== 0 ||
+        Number(rule.request_report) !== 0 || !['0000-00-00 00:00:00', '', null].includes(rule.start_date)) {
+      lessonRules[lesson] = rule;
+    }
     for (const [key, value] of Object.entries(row)) {
       if (!Array.isArray(value) || !value.length) continue;
       if (key === 'children' || value.every(item => item && typeof item === 'object' && 'id_training_lessons' in item)) value.forEach(visit);
@@ -71,7 +78,7 @@ async function fetchPolicy(browser, id) {
   tree.forEach(visit);
   const notice = sourceLiteral(html, /AWO\.APE\(\s*['"]#TrainingForm_no_access_info['"]\s*,\s*/g, Boolean(settings.always_show));
   return {course_id: id, source_origin: ORIGIN, captured_at: new Date().toISOString(), settings,
-    no_access_info: notice || {}, draft_lesson_ids: drafts, source_lesson_count: seen.size};
+    no_access_info: notice || {}, draft_lesson_ids: drafts, source_lesson_count: seen.size, lesson_rules: lessonRules};
 }
 
 async function collectPolicies() {
@@ -85,14 +92,17 @@ async function collectPolicies() {
     // Re-check the control course after collection even if a pilot copy exists.
     const ids = [...new Set([598, ...pending])];
     const problems = [];
+    const perCourse = new Set(['course_editor_missing', 'missing_start_mode', 'missing_course_setting',
+      'ambiguous_course_editor', 'unknown_lesson_tree', 'unconfirmed_lesson_id', 'unconfirmed_draft_flag',
+      'unconfirmed_lesson_schedule']);
     for (const id of ids) {
       try {
         const policy = await fetchPolicy(browser, id);
         await sink.call({op: 'policy', policy});
       } catch (error) {
-        if (id === 598 || error.message !== 'course_editor_missing') throw error;
+        if (id === 598 || !perCourse.has(error.message)) throw error;
         problems.push(id);
-        console.log(JSON.stringify({course_id: id, status: 'course_editor_missing'}));
+        console.log(JSON.stringify({course_id: id, status: error.message}));
       }
     }
     const remaining = await sink.call({op: 'policy_ids'});
