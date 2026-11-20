@@ -201,3 +201,10 @@ text and links. Course 333 reuses the 62 verified private audio files of course
 `python -B experiments/avo-iomp/repair_course335_order.py --apply` before normal
 batch import. The repair verifies the existing draft 6311 before and after
 restoring its original position.
+
+The final IOMP catalog check on November 20 compared the original IDs and
+chapter references against 314 selected courses and 5,309 lessons. All
+matched in order and remained drafts. Three excluded courses were outside
+this comparison. Fourteen courses used two verified WebP cover files served
+by the source with a PNG header. Both file contents are recognized by digest
+and checked as WebP before attaching them as local Frappe files.

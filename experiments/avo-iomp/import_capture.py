@@ -85,7 +85,13 @@ class Course60Importer(IompImporter):
                 'retained_lesson_ids': ['345']}
 
 
-def fetch_image(value, *, reviewed_jpeg_cover=False):
+PNG_LABELLED_WEBP_COVERS = {
+    '2119dfdd3176881d913e03d67d97b3e254b254579e7cdbd38830310e4bf7f72f',
+    'e46f5c0fc837acc828426e8bd0299665476bec6cd849a6b3a0d8102747b65427',
+}
+
+
+def fetch_image(value, *, course_cover_id=None):
     if not isinstance(value, str) or not value:
         raise Review('asset_url_invalid')
     if value.startswith('data:'):
@@ -106,10 +112,11 @@ def fetch_image(value, *, reviewed_jpeg_cover=False):
                 raise Review('asset_response_invalid')
             raw = response.read(MAX_IMAGE + 1)
             content_type = response.headers.get('Content-Type', '')
-            if reviewed_jpeg_cover and content_type.split(';')[0].strip().lower() == 'image/png' and raw.startswith(b'\xff\xd8'):
-                # Course 347's PNG-labelled response is a JPEG. Validate its
-                # actual format here and decode it again before File upload.
-                content_type = 'image/jpeg'
+            if course_cover_id and content_type.split(';')[0].strip().lower() == 'image/png':
+                if course_cover_id == '347' and raw.startswith(b'\xff\xd8'):
+                    content_type = 'image/jpeg'
+                elif hashlib.sha256(raw).hexdigest() in PNG_LABELLED_WEBP_COVERS:
+                    content_type = 'image/webp'
             return raw, _inspect(raw, content_type)
     except urllib.error.HTTPError as error:
         raise Review('asset_not_found' if error.code == 404 else 'asset_unavailable') from None
@@ -272,7 +279,7 @@ def finish_course(client, name, cid, cover):
     cover_issue = None
     if not before.get('image') and cover:
         try:
-            raw, extension = fetch_image(cover, reviewed_jpeg_cover=True) if cid == '347' else fetch_image(cover)
+            raw, extension = fetch_image(cover, course_cover_id=cid)
             digest = hashlib.sha256(raw).hexdigest()
             if extension == 'jpg':
                 raw = prepare_jpeg_upload(raw)
