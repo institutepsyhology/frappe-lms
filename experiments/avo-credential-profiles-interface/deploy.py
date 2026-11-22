@@ -61,7 +61,7 @@ def setup_sites():
         BENCH+'/env/bin/python','-c',code,site],timeout=180)) for site in SITES]
 
 
-def main():
+def main(prepare_runtime=None, restore_runtime=None):
     if os.geteuid()!=0 or run(['hostname'])!='spb-3-vm-t6fa':raise RuntimeError('unexpected_host_or_user')
     old=run(['docker','inspect','--format','{{.Image}}',BACKEND])
     if old!=OLD or not healthy(OLD):raise RuntimeError('active_image_changed')
@@ -82,6 +82,8 @@ def main():
     safe_write(folder/'counts.before.json',(json.dumps(before)+'\n').encode())
     report={'old':OLD,'new':new,'backup_manifest':str(backups[-1]),'ok':False}
     try:
+        if prepare_runtime:
+            prepare_runtime(folder)
         updated=re.sub(rb'(?m)^LMS_IMAGE=.+$',('LMS_IMAGE='+new).encode(),original)
         temp=env.with_name('.env.contact-card-'+stamp);safe_write(temp,updated);os.replace(temp,env)
         run(COMPOSE+['up','-d','--no-deps',*SERVICES],timeout=180)
@@ -101,6 +103,8 @@ def main():
         if isinstance(exc,RuntimeError):report['reason']=str(exc)
         temp=env.with_name('.env.contact-card-rollback-'+stamp);safe_write(temp,original);os.replace(temp,env)
         try:
+            if restore_runtime:
+                restore_runtime()
             run(COMPOSE+['up','-d','--no-deps',*SERVICES],timeout=180)
             deadline=time.monotonic()+180
             while not (healthy(OLD) and all(ping(site) for site in SITES)):

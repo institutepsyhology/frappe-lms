@@ -139,7 +139,7 @@ finally:frappe.destroy()
                                  timeout=180)) for site in SITES]
 
 
-def activate(image, manifest, source_revision):
+def activate(image, manifest, source_revision, *, prepare_runtime=None, restore_runtime=None):
     if not re.fullmatch(r'sha256:[0-9a-f]{64}', image) or image == BASELINE:
         raise RuntimeError('candidate_image_invalid')
     if not re.fullmatch(r'[0-9a-f]{40}', source_revision):
@@ -160,6 +160,8 @@ def activate(image, manifest, source_revision):
     # site counts and pings, and restores the prior .env/image on any failure.
     module.OLD, module.NEW, module.TAG = BASELINE, image, image
     module.setup_sites = lambda: clear_site_caches(module)
+    if prepare_runtime or restore_runtime:
+        return module.main(prepare_runtime=prepare_runtime, restore_runtime=restore_runtime)
     return module.main()
 
 

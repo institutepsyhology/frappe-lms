@@ -22,6 +22,12 @@ APP = BENCH + "/apps/lms"
 LIVE = "company-lms-backend-1"
 UI = "frontend/src/components/Assignment.vue"
 ROOT = Path("/opt/company-lms")
+SERVICES = ("backend", "frontend", "websocket", "queue-short", "queue-long", "scheduler")
+HOOK = "lms/hooks.py"
+HOOK_PATH = APP + "/" + HOOK
+OLD_BIND = str(ROOT / "overlays/contact-binding-555e664bae82dae7761ace738f807195dd4ddd6b/lms/hooks.py")
+JOB_LINE = b'\t\t"lms.lms.avo_homework_approval.approve_due",\n'
+CONTACT = "lms/lms/avo_contact_binding.py"
 SHA_READER = """import sys,json,hashlib;from pathlib import Path
 p=Path('/home/frappe/frappe-bench/apps/lms')
 print(json.dumps({f:hashlib.sha256((p/f).read_bytes().replace(b'\\r\\n',b'\\n')).hexdigest() if (p/f).is_file() else None for f in sys.argv[1:]}))"""
@@ -37,6 +43,127 @@ def digest(raw):
 
 def available():
     return shutil.disk_usage(ROOT).free
+
+
+def compose_plan(config):
+    """Remove only the redundant, version-pinned hooks mount from all six services."""
+    line = (OLD_BIND + ":" + HOOK_PATH + ":ro").encode()
+    lines = config.splitlines(keepends=True)
+    updated = b"".join(row for row in lines if row.strip() != b"- " + line)
+    if sum(row.strip() == b"- " + line for row in lines) != len(SERVICES):
+        raise RuntimeError("unexpected_hooks_mount_count")
+
+    def render(data):
+        proc = subprocess.run(["docker", "compose", "--project-directory", str(ROOT / "runtime"),
+                               "--profile", "jobs", "-f", "-", "config", "--format", "json"],
+                              input=data, capture_output=True, timeout=45)
+        if proc.returncode:
+            raise RuntimeError("compose_validation_failed")
+        return json.loads(proc.stdout)
+
+    expected = render(config)
+    for service in SERVICES:
+        mounts = expected["services"][service]["volumes"]
+        matches = [m for m in mounts if m["target"] == HOOK_PATH]
+        if len(matches) != 1 or matches[0]["type"] != "bind" or matches[0]["source"] != OLD_BIND or not matches[0].get("read_only"):
+            raise RuntimeError("unexpected_hooks_mount:" + service)
+        mounts.remove(matches[0])
+    if render(updated) != expected:
+        raise RuntimeError("other_compose_settings_changed")
+    return updated
+
+
+class RuntimeLayout:
+    def __init__(self, image, files, app_paths):
+        self.config = ROOT / "runtime/compose.yaml"
+        if self.config.is_symlink() or self.config.stat().st_uid:
+            raise RuntimeError("unexpected_compose_owner")
+        self.before = self.config.read_bytes()
+        self.after = compose_plan(self.before)
+        self.written = False
+        old_hook = Path(OLD_BIND).read_bytes()
+        if files[HOOK].count(JOB_LINE) != 1 or files[HOOK].replace(JOB_LINE, b"") != old_hook:
+            raise RuntimeError("candidate_does_not_preserve_contact_hooks")
+        base_hash = json.loads(run("docker", "run", "--rm", "--read-only", "--network=none",
+                                   "--entrypoint=python", BASE, "-B", "-c", SHA_READER, HOOK))[HOOK]
+        if base_hash != digest(old_hook):
+            raise RuntimeError("original_image_needs_hooks_mount")
+        self.expected = {name: digest(files[name]) for name in app_paths}
+        mounted = None
+        for service in SERVICES:
+            container = "company-lms-" + service + "-1"
+            rows = json.loads(run("docker", "inspect", "--format", "{{json .Mounts}}", container))
+            code_mounts = {}
+            for m in rows:
+                dest = Path(m["Destination"])
+                if dest == Path(APP) or dest in Path(APP).parents:
+                    raise RuntimeError("unexpected_application_parent_mount:" + service)
+                if not dest.is_relative_to(APP):
+                    continue
+                if m["Type"] != "bind" or m["RW"] or not Path(m["Source"]).is_file():
+                    raise RuntimeError("unexpected_application_mount:" + service)
+                code_mounts[str(dest.relative_to(APP))] = m["Source"]
+            if code_mounts.get(HOOK) != OLD_BIND or CONTACT not in code_mounts:
+                raise RuntimeError("contact_overlay_changed:" + service)
+            if mounted is not None and mounted != code_mounts:
+                raise RuntimeError("service_code_mounts_differ:" + service)
+            mounted = code_mounts
+        binds = []
+        for name, source in mounted.items():
+            if name != HOOK:
+                binds.extend(["--mount", "type=bind,source="+source+",target="+APP+"/"+name+",readonly"])
+                file_hash = digest(Path(source).read_bytes().replace(b"\r\n", b"\n"))
+                if name in self.expected and self.expected[name] != file_hash:
+                    raise RuntimeError("another_mount_masks_release_file:" + name)
+                self.expected[name] = file_hash
+        # Reproduce effective application mounts without any database, network or writable production volumes.
+        check = ["docker", "run", "--rm", "--network=none", "--read-only", *binds,
+                 "--entrypoint="+BENCH+"/env/bin/python", image, "-B", "-c"]
+        if json.loads(run(*check, SHA_READER, *self.expected)) != self.expected:
+            raise RuntimeError("effective_candidate_files_differ")
+        contact_check = """import lms.hooks as hooks
+from lms.lms.avo_contact_binding import AvoContactIdentityMixin
+from lms.lms.avo_homework_approval import approve_due
+assert 'lms.lms.avo_contact_binding.AvoContactIdentityMixin' in hooks.extend_doctype_class['Contact']
+assert 'lms.lms.avo_homework_approval.approve_due' in hooks.scheduler_events['all']"""
+        run(*check, contact_check)
+        print("Six service layouts, effective candidate files and contact binding verified", flush=True)
+
+    def replace(self, expected, data):
+        if self.config.read_bytes() != expected:
+            raise RuntimeError("runtime_compose_changed")
+        meta = self.config.stat()
+        with tempfile.NamedTemporaryFile(dir=self.config.parent, delete=False) as f:
+            p = Path(f.name)
+            try:
+                os.fchown(f.fileno(), meta.st_uid, meta.st_gid)
+                os.fchmod(f.fileno(), meta.st_mode & 0o777)
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())
+                os.replace(p, self.config)
+            finally:
+                p.unlink(missing_ok=True)
+
+    def apply(self, backup_dir):
+        with (backup_dir / "compose.yaml.before").open("xb") as f:
+            f.write(self.before)
+            f.flush()
+            os.fsync(f.fileno())
+        self.replace(self.before, self.after)
+        self.written = True
+
+    def restore(self):
+        if self.written:
+            self.replace(self.after, self.before)
+            self.written = False
+
+    def verify_active(self):
+        for service in SERVICES:
+            container = "company-lms-" + service + "-1"
+            actual = json.loads(run("docker", "exec", container, "python", "-B", "-c", SHA_READER, *self.expected))
+            if actual != self.expected:
+                raise RuntimeError("active_source_mismatch:" + service)
 
 
 def verify_stage(image, files):
@@ -130,31 +257,77 @@ def build_candidate(tmp, request, files):
 
 SCHEMA = """import frappe,sys,json
 from frappe.core.doctype.scheduled_job_type.scheduled_job_type import insert_single_event
-site=sys.argv[1];frappe.init(site=site);frappe.connect();frappe.set_user('Administrator')
+site=sys.argv[1];step='connect'
 try:
+ frappe.init(site=site);frappe.connect();frappe.set_user('Administrator')
+ step='check_site'
  stage=site=='access-stage2.local' and frappe.conf.allow_tests and frappe.conf.db_host=='db'
  assert stage or site in ('my-lk.mv-centr.ru','my-lk.mastervision.su','my-lk.iomp.ru')
  assert stage or frappe.conf.get('encryption_key'), 'existing_key_required'
  method='lms.lms.avo_homework_approval.approve_due'
  existing_job=bool(frappe.db.exists('Scheduled Job Type',{'method':method}))
- for doctype in ('lms_assignment','lms_assignment_submission'):
-  frappe.reload_doc('lms','doctype',doctype,force=True)
+ if sys.argv[2]=='prepare':
+  for doctype in ('lms_assignment','lms_assignment_submission'):
+   step='reload_'+doctype
+   frappe.reload_doc('lms','doctype',doctype,force=True)
+ step='verify_schema'
  frappe.clear_cache()
  for dt,fields in {'LMS Assignment':('avo_optional','avo_allow_attachments','avo_auto_approve','avo_auto_approve_hours'),'LMS Assignment Submission':('avo_answer_submitted_at',)}.items():
   assert all(frappe.get_meta(dt).has_field(n) and frappe.db.has_column(dt,n) for n in fields)
  assert all(str(frappe.get_meta('LMS Assignment').get_field(n).default)=='0'
             for n in ('avo_optional','avo_allow_attachments','avo_auto_approve','avo_auto_approve_hours'))
  if sys.argv[2]=='enable':
+  step='verify_contact_binding'
+  from lms.lms.avo_contact_binding import binding_status
+  assert binding_status()['active']
+  step='verify_scheduler_hook'
   assert method in frappe.get_hooks('scheduler_events')['all']
+  step='register_scheduler_job'
   insert_single_event('All',method)
   assert frappe.db.exists('Scheduled Job Type',{'method':method,'frequency':'All'})
+ step='commit_schema'
  frappe.db.commit();frappe.clear_cache()
  print(json.dumps({'site':site,'homework_schema':True,'scheduler_registered':sys.argv[2]=='enable',
                    'existing_job':existing_job}))
+except Exception as exc:
+ print('HOMEWORK_SETUP='+step+':'+type(exc).__name__,file=sys.stderr)
+ sys.exit(1)
 finally: frappe.destroy()"""
 
 
-def activate(tmp, request, image, files):
+def checked_setup(site, phase, cmd):
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=240)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("homework_setup:"+site+":"+phase+":timeout") from None
+    if proc.returncode:
+        marker = re.search(r"(?m)^HOMEWORK_SETUP=([a-z_]+:[A-Za-z][A-Za-z0-9_]*)$", proc.stderr)
+        detail = marker.group(1) if marker else "exit_"+str(proc.returncode)
+        raise RuntimeError("homework_setup:"+site+":"+phase+":"+detail)
+    return proc.stdout.strip()
+
+
+def backup_for_activation(shared):
+    manifests = sorted((ROOT / "backups").glob("contact-card-*/manifest.json"))
+    if manifests:
+        try:
+            shared.validate_backup(manifests[-1])
+        except RuntimeError as exc:
+            if str(exc) not in ("backup_not_fresh", "backup_release_mismatch"):
+                raise
+        else:
+            print("Three existing database backups verified again (maximum age two hours)", flush=True)
+            return str(manifests[-1])
+    if available() < 1024**3:
+        raise RuntimeError("insufficient_space_for_fresh_backups")
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        shared.prepare(keep_database_staging=False)
+    print("Three fresh database backups verified", flush=True)
+    return json.loads(output.getvalue())["backup_manifest"]
+
+
+def activate(tmp, request, image, files, layout):
     for name, data in files.items():
         if name.startswith("experiments/"):
             p = tmp/name
@@ -168,31 +341,27 @@ def activate(tmp, request, image, files):
 
     def schema(module):
         # User-facing catalogs are in the shared sites/assets volume.
-        module.run(["docker","exec","-u","frappe","-w",BENCH,LIVE,"bench","compile-po-to-mo",
-                    "--app","lms","--locale","ru","--force"],timeout=150)
-        return [json.loads(module.run(["docker","exec","-u","frappe","-w",BENCH+"/sites",LIVE,
-            BENCH+"/env/bin/python","-B","-c",SCHEMA,site,"enable"],timeout=240)) for site in shared.SITES]
+        layout.verify_active()
+        checked_setup("shared","compile_translations",["docker","exec","-u","frappe","-w",BENCH,LIVE,
+                      "bench","compile-po-to-mo","--app","lms","--locale","ru","--force"])
+        return [json.loads(checked_setup(site,"enable",["docker","exec","-u","frappe","-w",BENCH+"/sites",LIVE,
+            BENCH+"/env/bin/python","-B","-c",SCHEMA,site,"enable"])) for site in shared.SITES]
 
     shared.clear_site_caches = schema
     with shared.release_lock():
-        if available() < 1024**3:
-            raise RuntimeError("insufficient_space_for_fresh_backups")
         verify_keys = "import frappe,sys\nfor s in sys.argv[1:]:\n frappe.init(site=s);assert frappe.conf.get('encryption_key');frappe.destroy()"
         run("docker","exec","-u","frappe","-w",BENCH+"/sites",LIVE,BENCH+"/env/bin/python","-B","-c",verify_keys,*shared.SITES)
-        result = io.StringIO()
-        with contextlib.redirect_stdout(result):
-            shared.prepare(keep_database_staging=False)
-        manifest = json.loads(result.getvalue())["backup_manifest"]
-        print("Three current database backups verified", flush=True)
+        manifest = backup_for_activation(shared)
         networks = json.loads(run("docker","inspect","--format","{{json .NetworkSettings.Networks}}",LIVE))
         if len(networks) != 1:
             raise RuntimeError("unexpected_application_network")
         old_jobs = {}
         for site in shared.SITES:
-            check = run("docker","run","--rm","--network",next(iter(networks)),"--volumes-from",LIVE,
-                "--entrypoint",BENCH+"/env/bin/python","-w",BENCH+"/sites",image,"-B","-c",SCHEMA,site,"prepare")
+            check = checked_setup(site,"prepare",["docker","run","--rm","--network",next(iter(networks)),"--volumes-from",LIVE,
+                "--entrypoint",BENCH+"/env/bin/python","-w",BENCH+"/sites",image,"-B","-c",SCHEMA,site,"prepare"])
             old_jobs[site] = json.loads(check)["existing_job"]
-        rc = shared.activate(image, manifest, request["revision"])
+        rc = shared.activate(image, manifest, request["revision"], prepare_runtime=layout.apply,
+                             restore_runtime=layout.restore)
         if rc and run("docker","inspect","--format","{{.Image}}",LIVE) == BASE:
             undo = """import sys,frappe
 frappe.init(site=sys.argv[1]);frappe.connect();frappe.set_user('Administrator')
@@ -219,6 +388,18 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="mv-homework-build-",dir=ROOT) as folder:
         tmp = Path(folder)
         candidate = build_candidate(tmp, data, files)
+        layout = RuntimeLayout(candidate, files, data["previous"])
+        if data["action"] == "trial":
+            # Exercise activation and rollback on a temporary copy of the real Compose input.
+            layout.config = tmp / "compose.yaml"
+            layout.config.write_bytes(layout.before)
+            layout.apply(tmp)
+            if layout.config.read_bytes() != layout.after:
+                raise RuntimeError("trial_compose_change_failed")
+            layout.restore()
+            if layout.config.read_bytes() != layout.before:
+                raise RuntimeError("trial_compose_restore_failed")
+            print("Compose change and rollback verified on a temporary copy", flush=True)
         verify_stage(candidate, files)
         if data["action"] == "publish":
-            sys.exit(activate(tmp, data, candidate, files))
+            sys.exit(activate(tmp, data, candidate, files, layout))
