@@ -11976,3 +11976,36 @@ msgstr "Не удалось поставить письмо в очередь о
 msgid "Password encryption is not configured on this site."
 msgstr "Шифрование паролей на этом сайте ещё не настроено."
 
+msgid "Attach file"
+msgstr "Прикрепить файл"
+
+msgid "Optional Assignment"
+msgstr "Необязательное задание"
+
+msgid "Attachments"
+msgstr "Прикреплённые файлы"
+
+msgid "A private file is required."
+msgstr "Загрузите файл с закрытым доступом."
+
+msgid "Allow attachments in text answers"
+msgstr "Разрешить прикреплять файлы к текстовому ответу"
+
+msgid "Automatically approve the answer"
+msgstr "Одобрять ответ автоматически"
+
+msgid "Hours before automatic approval"
+msgstr "Количество часов до автоматического одобрения"
+
+msgid "Attach a private file that you uploaded for this answer."
+msgstr "Прикрепите файл, который вы загрузили для этого ответа."
+
+msgid "The assignment and learner of this response cannot be changed."
+msgstr "У этого ответа нельзя изменить задание или ученика."
+
+msgid "Please provide a written answer before submitting."
+msgstr "Введите текст ответа перед отправкой."
+
+msgid "Written Answer Submitted At"
+msgstr "Время отправки письменного ответа"
+

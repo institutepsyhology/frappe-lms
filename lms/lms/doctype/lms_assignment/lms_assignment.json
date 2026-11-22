@@ -13,6 +13,10 @@
   "authors",
   "type",
   "grade_assignment",
+  "avo_optional",
+  "avo_allow_attachments",
+  "avo_auto_approve",
+  "avo_auto_approve_hours",
   "course",
   "column_break_hmwv",
   "question",
@@ -26,6 +30,34 @@
   "schedule_end"
  ],
  "fields": [
+  {
+   "default": "0",
+   "fieldname": "avo_optional",
+   "fieldtype": "Check",
+   "label": "Optional Assignment"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.type == \"Text\"",
+   "fieldname": "avo_allow_attachments",
+   "fieldtype": "Check",
+   "label": "Allow attachments in text answers"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.type == \"Text\"",
+   "fieldname": "avo_auto_approve",
+   "fieldtype": "Check",
+   "label": "Automatically approve the answer"
+  },
+  {
+   "default": "0",
+   "depends_on": "avo_auto_approve",
+   "fieldname": "avo_auto_approve_hours",
+   "fieldtype": "Int",
+   "label": "Hours before automatic approval",
+   "non_negative": 1
+  },
   {
    "fieldname": "question",
    "fieldtype": "Text Editor",

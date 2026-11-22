@@ -106,7 +106,9 @@ def prerequisite_satisfied(rule, *, member, course):
 		return False
 	filters = {"member": member, "lesson": prior, "assignment": rule.prerequisite_assignment}
 	if rule.prerequisite_type == "Assignment Passed":
-		filters["status"] = "Pass"
+		from lms.lms.avo_homework_approval import assignment_passed
+
+		return assignment_passed(filters)
 	return bool(frappe.db.exists("LMS Assignment Submission", filters))
 
 

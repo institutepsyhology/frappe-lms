@@ -20,6 +20,7 @@
   "section_break_ydgh",
   "column_break_oqqy",
   "status",
+  "avo_answer_submitted_at",
   "question",
   "column_break_tbnv",
   "comments",
@@ -29,6 +30,15 @@
   "lesson"
  ],
  "fields": [
+  {
+   "fieldname": "avo_answer_submitted_at",
+   "fieldtype": "Datetime",
+   "label": "Written Answer Submitted At",
+   "hidden": 1,
+   "read_only": 1,
+   "no_copy": 1,
+   "search_index": 1
+  },
   {
    "fieldname": "lesson",
    "fieldtype": "Link",

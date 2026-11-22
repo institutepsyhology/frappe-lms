@@ -678,6 +678,16 @@ def get_assignment_progress(lesson):
 		macros = find_macros(lesson_details.body)
 		assignments = [value for name, value in macros if name == "Assignment"]
 
+	if not assignments:
+		return True
+	if not all(isinstance(name, str) and name for name in assignments):
+		return False
+	# Only a stored assignment marked optional exempts its own answer. On a
+	# site before schema migration, every assignment retains its old behavior.
+	if frappe.db.has_column("LMS Assignment", "avo_optional"):
+		optional = set(frappe.get_all("LMS Assignment", filters={"name": ("in", assignments), "avo_optional": 1},
+			pluck="name", limit_page_length=0))
+		assignments = [name for name in assignments if name not in optional]
 	for assignment in assignments:
 		if not frappe.db.exists(
 			"LMS Assignment Submission",

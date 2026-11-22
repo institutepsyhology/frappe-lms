@@ -19,6 +19,9 @@
 			<div class="text-ink-gray-9 font-semibold mb-5">
 				{{ __('Assignment') }}: {{ assignment.data.title }}
 			</div>
+			<div v-if="assignment.data.avo_optional" class="text-sm text-ink-gray-7 mb-3">
+				{{ __('Optional Assignment') }}
+			</div>
 			<div
 				v-safe-html:rich="assignment.data.question"
 				class="ProseMirror prose prose-table:table-fixed prose-td:p-2 prose-th:p-2 prose-td:border prose-th:border prose-td:border-outline-gray-2 prose-th:border-outline-gray-2 prose-td:relative prose-th:relative prose-th:bg-surface-gray-2 prose-sm max-w-none !whitespace-normal"
@@ -159,6 +162,7 @@
 						{{ __('Write your answer here') }}
 					</div>
 					<RichTextEditor
+						:key="answerEditorRevision"
 						:content="answer"
 						@change="(val) => (answer = val)"
 						:editable="canModifyAssignment"
@@ -168,6 +172,28 @@
 						}"
 						editorClass="prose-sm max-w-none border-b border-x border-outline-elevation-2 bg-surface-gray-2 rounded-b-md py-1 px-2 min-h-[7rem]"
 					/>
+					<FileUploader
+						v-if="canModifyAssignment && assignment.data.type === 'Text' && assignment.data.avo_allow_attachments"
+						:uploadArgs="{ private: true }"
+						@success="appendAnswerFile"
+					>
+						<template #default="{ uploading, openFileSelector }">
+							<Button class="mt-2" :loading="uploading" @click="openFileSelector">
+								{{ __('Attach file') }}
+							</Button>
+						</template>
+					</FileUploader>
+				</div>
+
+				<div v-if="!canModifyAssignment && savedAnswerFiles.length" class="space-y-2">
+					<div class="text-sm font-medium">{{ __('Attachments') }}</div>
+					<a
+						v-for="file in savedAnswerFiles"
+						:key="file.url"
+						:href="file.url"
+						v-external
+						class="block text-sm underline"
+					>{{ file.label }}</a>
 				</div>
 
 				<div
@@ -247,6 +273,7 @@ import { safeUrl } from '@/utils/safeUrl'
 import { getScheduleBlockReason } from '@/utils/schedule'
 
 const answer = ref(null)
+const answerEditorRevision = ref(0)
 const attachment = ref(null)
 const comments = ref(null)
 const router = useRouter()
@@ -425,6 +452,30 @@ const saveSubmission = (file) => {
 	isDirty.value = true
 	attachment.value = file.file_url
 }
+
+const appendAnswerFile = (file) => {
+	if (!file?.file_url?.startsWith('/private/files/')) {
+		toast.error(__('A private file is required.'))
+		return
+	}
+	const link = document.createElement('a')
+	link.setAttribute('href', file.file_url)
+	link.textContent = file.file_name || file.file_url.split('/').pop()
+	answer.value = (answer.value || '') + '<p>' + link.outerHTML + '</p>'
+	answerEditorRevision.value++
+	isDirty.value = true
+}
+
+const savedAnswerFiles = computed(() => {
+	if (assignment.data?.type !== 'Text' || !assignment.data?.avo_allow_attachments) return []
+	const doc = new DOMParser().parseFromString(submissionResource.doc?.answer || '', 'text/html')
+	const urls = new Map()
+	for (const link of doc.querySelectorAll('a[href]')) {
+		const url = link.getAttribute('href')
+		if (url.startsWith('/private/files/')) urls.set(url, { url, label: link.textContent || url.split('/').pop() })
+	}
+	return Array.from(urls.values())
+})
 
 const markLessonProgress = () => {
 	let pathname = window.location.pathname.split('/')

@@ -2,6 +2,7 @@
 # See license.txt
 
 import frappe
+from pathlib import Path
 
 from lms.lms.test_helpers import BaseTestUtils, MemberOwnershipTestMixin
 
@@ -29,6 +30,37 @@ class TestLMSAssignmentSubmission(MemberOwnershipTestMixin, BaseTestUtils):
 
 	def _new_doc(self, member=None, variant=0):
 		return self._new_submission(member=member)
+
+	def test_optional_file_follows_submission_read_permissions(self):
+		from frappe.core.doctype.file.utils import find_file_by_url
+
+		frappe.db.set_value("LMS Assignment", self.assignment.name, "avo_allow_attachments", 1)
+		frappe.set_user(self.student_a.name)
+		content = ("homework-read-check-" + frappe.generate_hash(length=12)).encode()
+		file = frappe.get_doc({
+			"doctype": "File", "file_name": frappe.generate_hash(length=12) + ".txt",
+			"is_private": 1, "content": content,
+		}).insert(ignore_permissions=True)
+		self.addCleanup(Path(file.get_full_path()).unlink, missing_ok=True)
+		sub = self._new_submission(answer=f'<p>Мой ответ</p><a href="{file.file_url}">Файл</a>')
+		sub.insert()
+		file.reload()
+		self.assertEqual(file.attached_to_name, sub.name)
+		self.assertTrue(file.is_private)
+		frappe.set_user(self.moderator.name)
+		readable = find_file_by_url(file.file_url)
+		self.assertIsNotNone(readable)
+		actual = readable.get_content()
+		self.assertEqual(actual.encode() if isinstance(actual, str) else actual, content)
+		frappe.set_user(self.student_b.name)
+		self.assertIsNone(find_file_by_url(file.file_url))
+		frappe.set_user(self.student_a.name)
+		sub.answer = "<p>Мой ответ</p>"
+		sub.save()
+		file.reload()
+		self.assertFalse(file.attached_to_name)
+		frappe.set_user(self.moderator.name)
+		self.assertIsNone(find_file_by_url(file.file_url))
 
 	def test_student_cannot_reassign_member_on_update(self):
 		frappe.set_user(self.student_a.name)

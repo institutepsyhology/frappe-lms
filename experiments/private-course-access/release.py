@@ -96,12 +96,15 @@ def validate_backup(path, *, base=BASE, now=None, require_latest=True):
     return report
 
 
-def prepare():
+def prepare(*, keep_database_staging=True):
     module = load('private_course_prepare', HERE.parent / 'avo-credential-profiles-interface/prepare_sites.py')
     module.EXPECTED = BASELINE
     output = io.StringIO()
     with contextlib.redirect_stdout(output):
-        module.main()
+        if keep_database_staging:
+            module.main()
+        else:
+            module.main(keep_database_staging=False)
     report = json.loads(output.getvalue().strip())
     folder = Path(report['directory'])
     # The shared helper has already streamed every SQL gzip through its CRC.

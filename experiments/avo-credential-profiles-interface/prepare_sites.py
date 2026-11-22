@@ -34,7 +34,7 @@ def copy_private(src,dst):
         raise RuntimeError('backup_copy_mismatch')
 
 
-def main():
+def main(*, keep_database_staging=True):
     if os.geteuid()!=0 or subprocess.check_output(['hostname'],text=True).strip()!='spb-3-vm-t6fa':
         raise RuntimeError('unexpected_host_or_user')
     actual=run(['docker','inspect','--format','{{.Image}}',CONTAINER]).strip()
@@ -64,14 +64,24 @@ def main():
             if b'MariaDB dump' not in prefix and b'MySQL dump' not in prefix:raise RuntimeError('invalid_database_backup')
             while stream.read(1024*1024):pass
         target=destination/site;target.mkdir(mode=0o700)
-        copy_private(dumps[0],target/'database.sql.gz')
+        database_bytes = dumps[0].stat().st_size
+        if keep_database_staging:
+            copy_private(dumps[0],target/'database.sql.gz')
+        else:
+            # This backup was just produced in a newly created directory. Move
+            # the CRC-verified dump atomically; older backups are never touched.
+            if dumps[0].is_symlink() or dumps[0].parent != staging or not database_bytes:
+                raise ValueError('invalid_new_database_backup')
+            os.chown(dumps[0], 0, 0)
+            os.chmod(dumps[0], 0o600)
+            dumps[0].rename(target/'database.sql.gz')
         config=root/'site_config.json';copy_private(config,target/'site-config-before.json')
         code='''import frappe,sys\nfrom frappe.utils.password import get_encryption_key\nfrappe.init(site=sys.argv[1]);frappe.connect()\ntry:\n n=frappe.db.sql("select count(*) from __Auth where encrypted=1")[0][0]\n if not frappe.conf.get("encryption_key") and n: raise RuntimeError("existing_encrypted_data_without_key")\n get_encryption_key()\nfinally: frappe.destroy()\n'''
         run(['docker','exec','-u','frappe','-w',f'{BENCH}/sites',CONTAINER,f'{BENCH}/env/bin/python','-c',code,site])
         content=json.loads(config.read_text(encoding='utf-8'))
         if not content.get('encryption_key'):raise RuntimeError('encryption_key_not_persisted')
         copy_private(config,target/'site-config-with-key.json')
-        results.append({'site':site,'database_bytes':dumps[0].stat().st_size,'gzip_verified':True,'key_saved':True})
+        results.append({'site':site,'database_bytes':database_bytes,'gzip_verified':True,'key_saved':True})
     report={'directory':str(destination),'sites':results}
     (destination/'manifest.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
     os.chmod(destination/'manifest.json',0o600)

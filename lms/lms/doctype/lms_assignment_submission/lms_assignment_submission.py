@@ -13,6 +13,11 @@ from lms.lms.utils import PRIVILEGED_ROLES, get_lms_route
 
 
 class LMSAssignmentSubmission(Document):
+	def before_save(self):
+		from lms.lms.avo_homework_approval import prepare_attempt
+
+		prepare_attempt(self)
+
 	def validate(self):
 		self.enforce_member_ownership()
 		self.enforce_lesson_access()
@@ -39,14 +44,21 @@ class LMSAssignmentSubmission(Document):
 			placements = _protected_assignment_placements(record.assignment)
 			if not policy_applies(course) and not placements:
 				continue
-			lesson = frappe.db.get_value("Course Lesson", record.lesson, ["course", "content"], as_dict=True) if record.lesson else None
+			lesson_name = record.lesson
+			# The embedded answer form posts the assignment without a lesson. Use
+			# its declared course and actual placement, never the learner's URL.
+			if not lesson_name and len(placements) == 1 and course and placements[0].course == course:
+				lesson_name = placements[0].name
+			lesson = frappe.db.get_value("Course Lesson", lesson_name, ["course", "content"], as_dict=True) if lesson_name else None
 			if (
 				not lesson
-				or not any(item.name == record.lesson for item in placements)
+				or not any(item.name == lesson_name for item in placements)
 				or not assignment_in_lesson(record.assignment, get_editorjs_blocks(lesson.content))
-				or not can_access_lesson(record.lesson)
+				or not can_access_lesson(lesson_name)
 			):
 				frappe.throw(_("This assignment is not available to you."), frappe.PermissionError)
+			if record is self and not self.lesson:
+				self.lesson, self.course = lesson_name, lesson.course
 
 	def sanitize_rich_text_fields(self):
 		"""Drop form controls the framework's allowlist keeps: `comments` is mailed as
@@ -139,27 +151,9 @@ class LMSAssignmentSubmission(Document):
 
 	def validate_private_attachments(self):
 		if self.type == "Text":
-			from bs4 import BeautifulSoup
+			from lms.lms.assignment_answer_files import sync_answer_files
 
-			soup = BeautifulSoup(self.answer, "html.parser")
-			images = soup.find_all("img")
-			self.attach_images_to_document(images)
-
-	def attach_images_to_document(self, images):
-		for img in images:
-			src = img.get("src", "")
-			if src.startswith("/private/files/"):
-				file_name = frappe.db.get_value("File", {"file_url": src}, "name")
-				if file_name:
-					frappe.db.set_value(
-						"File",
-						file_name,
-						{
-							"attached_to_doctype": self.doctype,
-							"attached_to_name": self.name,
-							"attached_to_field": "answer",
-						},
-					)
+			sync_answer_files(self)
 
 	def trigger_update_notification(self):
 		notification = frappe._dict(

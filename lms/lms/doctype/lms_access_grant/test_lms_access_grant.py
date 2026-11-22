@@ -773,33 +773,85 @@ class TestIndividualAccessIntegration(BaseTestUtils):
 		frappe.set_user(self.other.email)
 		self.assertFalse(can_access_lesson(second.name))
 
-	def test_next_lesson_waits_for_this_students_assignment_approval(self):
+	def _assignment_gate(self, prerequisite_type):
 		second = self._create_lesson("Assignment gated lesson", self.chapter.name, self.course.name)
 		assignment = frappe.get_doc({"doctype": "LMS Assignment", "title": "Required assignment",
-			"type": "Text", "question": "Test question"}).insert(ignore_permissions=True)
+			"course": self.course.name, "type": "Text", "question": "Test question"}).insert(ignore_permissions=True)
 		content = json.dumps({"blocks": [{"type": "assignment", "data": {"assignment": assignment.name}}]})
 		frappe.db.set_value("Course Lesson", self.lesson.name, "content", content)
 		frappe.get_doc({"doctype": "LMS Access Policy", "course": self.course.name, "enabled": 1,
 			"lessons": [{"lesson": second.name, "opening_type": "After Start", "delay_days": 0,
-				"prerequisite_type": "Assignment Passed", "prerequisite_lesson": self.lesson.name,
+				"prerequisite_type": prerequisite_type, "prerequisite_lesson": self.lesson.name,
 				"prerequisite_assignment": assignment.name}]}).insert(ignore_permissions=True)
 		grant = frappe.get_doc("LMS Access Grant", self.grant.name)
 		grant.append("lessons", {"lesson": second.name, "opening_type": "Inherit", "prerequisite_state": "Inherit"})
 		grant.save(ignore_permissions=True)
+		return assignment, second
+
+	def test_embedded_answer_unlocks_submission_gate_before_grading(self):
+		from frappe.client import insert
+
+		assignment, second = self._assignment_gate("Assignment Submitted")
 		frappe.set_user(self.student.email)
 		self.assertFalse(can_access_lesson(second.name))
-		frappe.set_user("Administrator")
-		submission = frappe.get_doc({"doctype": "LMS Assignment Submission", "assignment": assignment.name,
-			"lesson": self.lesson.name, "member": self.student.email, "type": "Text", "answer": "Test answer"})
-		submission.insert(ignore_permissions=True)
+		response = insert({"doctype": "LMS Assignment Submission", "assignment": assignment.name,
+			"member": self.student.email, "answer": "Test answer"})
+		self.assertEqual(response["status"], "Not Graded")
+		self.assertTrue(can_access_lesson(second.name))
+		frappe.set_user(self.other.email)
+		self.assertFalse(can_access_lesson(second.name))
+
+	def test_next_lesson_waits_for_this_students_assignment_approval(self):
+		from frappe.client import insert
+
+		assignment, second = self._assignment_gate("Assignment Passed")
 		frappe.set_user(self.student.email)
 		self.assertFalse(can_access_lesson(second.name))
-		frappe.set_user("Administrator")
-		frappe.db.set_value("LMS Assignment Submission", submission.name, "status", "Pass")
+		response = insert({"doctype": "LMS Assignment Submission", "assignment": assignment.name,
+			"member": self.student.email, "answer": "Test answer"})
+		submission = frappe.get_doc("LMS Assignment Submission", response["name"])
+		self.assertEqual((submission.course, submission.lesson), (self.course.name, self.lesson.name))
+		self.assertFalse(can_access_lesson(second.name))
+		frappe.set_user(self.teacher.email)
+		submission.status = "Pass"
+		submission.save()
 		frappe.set_user(self.student.email)
 		self.assertTrue(can_access_lesson(second.name))
 		frappe.set_user(self.other.email)
 		self.assertFalse(can_access_lesson(second.name))
+
+	def test_embedded_answer_needs_one_accessible_placement_and_rechecks_old_answers(self):
+		from frappe.client import insert
+
+		assignment = frappe.get_doc({"doctype": "LMS Assignment", "title": "Embedded assignment",
+			"course": self.course.name, "type": "Text", "question": "Your answer"}).insert()
+		content = json.dumps({"blocks": [{"type": "assignment", "data": {"assignment": assignment.name}}]})
+		frappe.db.set_value("Course Lesson", self.lesson.name, "content", content)
+		doc = {"doctype": "LMS Assignment Submission", "assignment": assignment.name, "answer": "Test answer"}
+		frappe.set_user(self.other.email)
+		with self.assertRaises(frappe.PermissionError):
+			insert(doc.copy())
+		frappe.set_user("Administrator")
+		second = self._create_lesson("Alternate placement", self.chapter.name, self.course.name)
+		frappe.db.set_value("Course Lesson", second.name, "content", content)
+		frappe.set_user(self.student.email)
+		with self.assertRaises(frappe.PermissionError):
+			insert(doc.copy())
+		response = insert({**doc, "lesson": self.lesson.name})
+		frappe.set_user("Administrator")
+		frappe.db.set_value("Course Lesson", second.name, "content", "")
+		frappe.db.set_value("LMS Assignment Submission", response["name"], {"lesson": None, "course": None})
+		frappe.set_user(self.student.email)
+		submission = frappe.get_doc("LMS Assignment Submission", response["name"])
+		submission.answer = "Updated answer"
+		submission.save()
+		self.assertEqual(submission.lesson, self.lesson.name)
+		frappe.set_user("Administrator")
+		frappe.db.set_value("LMS Access Grant", self.grant.name, "status", "Frozen")
+		frappe.set_user(self.student.email)
+		submission.answer = "Changed answer"
+		with self.assertRaises(frappe.PermissionError):
+			submission.save()
 
 	def test_legacy_prerequisite_value_remains_accessible_and_normalizes_on_save(self):
 		from lms.lms.access_actions import get_grant_lessons
