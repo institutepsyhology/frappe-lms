@@ -9,7 +9,7 @@ from datetime import date, datetime, timedelta
 
 import frappe
 from frappe import _
-from frappe.utils import escape_html, validate_email_address
+from frappe.utils import escape_html, get_files_path, validate_email_address
 from frappe.utils.file_manager import is_safe_path
 
 from lms.lms.utils import create_user as create_lms_user
@@ -166,20 +166,74 @@ def get_course_assets(course, lessons, instructors, evaluator):
 			assets.append(instructor["user_image"])
 	if len(evaluator):
 		assets.append(evaluator[0].user_image)
-	return assets
+	course_documents = get_course_documents(course, lessons)
+	files_by_member = {}
+	for url in dict.fromkeys(url for url in assets if isinstance(url, str) and url):
+		file_doc = get_exportable_file(url, course_documents)
+		if not file_doc or not get_local_file_path(file_doc):
+			continue
+		# The legacy importer identifies files by basename. Reject ambiguous exports
+		# before creating the temporary ZIP so it cannot silently substitute an asset.
+		member = export_asset_member_name(file_doc)
+		if member in files_by_member:
+			frappe.throw(_("Two course files have the same name in the ZIP. Rename one before exporting."))
+		files_by_member[member] = file_doc
+	return list(files_by_member.values())
 
 
-def read_asset_content(url):
-	try:
-		file_doc = frappe.get_doc("File", {"file_url": url})
-		file_path = file_doc.get_full_path()
-		if not is_safe_path(file_path):
-			return None
-		with open(file_path, "rb") as f:
-			return f.read()
-	except Exception:
-		frappe.log_error(frappe.get_traceback(), f"Could not read asset: {url}")
+def get_course_documents(course, lessons):
+	documents = {("LMS Course", course.name)}
+	documents.update(("Course Chapter", row.chapter) for row in course.chapters)
+	documents.update(("Course Lesson", lesson.name) for lesson in lessons)
+	return documents
+
+
+def get_exportable_file(file_url, course_documents):
+	if not file_url.startswith(("/files/", "/private/files/")):
 		return None
+	# The database collation ignores case. Only the earliest exact URL can
+	# authorize export; later File records can be owned by a different user.
+	rows = frappe.get_all(
+		"File",
+		filters={"file_url": file_url, "is_folder": 0},
+		fields=["name", "file_url"],
+		order_by="creation asc",
+	)
+	original = next((row.name for row in rows if row.file_url == file_url), None)
+	if not original:
+		return None
+
+	file_doc = frappe.get_doc("File", original)
+	if file_doc.file_url != file_url:
+		return None
+	attachment = (file_doc.attached_to_doctype, file_doc.attached_to_name)
+	if attachment in course_documents or frappe.has_permission("File", "read", doc=file_doc):
+		return file_doc
+	return None
+
+
+def get_local_file_path(file_doc):
+	"""Resolve the actual file and require its exact canonical URL on this site."""
+	if not file_doc.file_url.startswith(("/files/", "/private/files/")):
+		return None
+	try:
+		file_path = os.path.realpath(file_doc.get_full_path())
+	except frappe.ValidationError:
+		frappe.clear_last_message()
+		return None
+	for prefix, is_private in (("/files/", 0), ("/private/files/", 1)):
+		root = os.path.realpath(get_files_path(is_private=is_private))
+		if os.path.commonpath((root, file_path)) == root and os.path.isfile(file_path):
+			if prefix + os.path.relpath(file_path, root) == file_doc.file_url:
+				return file_path
+	return None
+
+
+def export_asset_member_name(file_doc):
+	name = sanitize_string(os.path.basename(file_doc.file_url))
+	if name in ("", ".", ".."):
+		frappe.throw(_("A course file needs a valid name for the ZIP. Rename it before exporting."))
+	return f"assets/{name}"
 
 
 def create_course_zip(
@@ -270,17 +324,10 @@ def write_assessments_json(zip_file, assessments, questions, test_cases):
 
 
 def write_assets(zip_file, assets):
-	assets = list(set(assets))
-	for asset in assets:
-		real_path = frappe.get_site_path(asset.lstrip("/"))
-		if not asset or not isinstance(asset, str) or not is_safe_path(real_path):
-			continue
-
-		file_doc = frappe.get_doc("File", {"file_url": asset})
-		file_path = os.path.abspath(file_doc.get_full_path())
-
-		safe_filename = sanitize_string(os.path.basename(asset))
-		zip_file.write(file_path, f"assets/{safe_filename}")
+	for file_doc in assets:
+		file_path = get_local_file_path(file_doc)
+		if file_path:
+			zip_file.write(file_path, export_asset_member_name(file_doc))
 
 
 def move_zip_to_private(tmp_path, zip_filename):
