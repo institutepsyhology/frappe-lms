@@ -5,9 +5,11 @@ import os
 import re
 import shutil
 import stat
+import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 from datetime import timedelta
+from urllib.parse import unquote
 from xml.dom.minidom import parseString
 
 import frappe
@@ -33,9 +35,10 @@ from frappe.utils import (
 	now,
 )
 from frappe.utils.response import Response
+from frappe.utils.synchronization import filelock
 from pypika import functions as fn
 
-from lms.lms.course_import_export import export_course_zip, import_course_zip
+from lms.lms.course_import_export import export_course_zip, import_course_zip, validate_archive
 from lms.lms.doctype.course_lesson.course_lesson import (
 	cleanup_lesson_backreferences,
 	save_progress,
@@ -1509,13 +1512,15 @@ def upsert_chapter(
 			values.update(stored)
 			values["scorm_package"] = None
 		else:
-			extract_path = extract_package(course, title, scorm_package)
+			extract_path, manifest_file, launch_file = _extract_scorm_package(
+				course, title, scorm_package, require_launch=True
+			)
 			values.update(
 				{
 					"scorm_package": scorm_package.name,
 					"scorm_package_path": _scorm_url(extract_path),
-					"manifest_file": _scorm_url(get_manifest_file(extract_path)),
-					"launch_file": _scorm_url(get_launch_file(extract_path)),
+					"manifest_file": _scorm_url(manifest_file),
+					"launch_file": _scorm_url(launch_file),
 				}
 			)
 
@@ -1591,26 +1596,72 @@ def _scorm_extract_path(course: str, title: str) -> str:
 
 
 def extract_package(course: str, title: str, scorm_package: dict):
+	extract_path, _, _ = _extract_scorm_package(course, title, scorm_package, require_launch=False)
+	return extract_path
+
+
+def _extract_scorm_package(course: str, title: str, scorm_package: dict, *, require_launch: bool):
 	package = frappe.get_doc("File", scorm_package.name)
 	zip_path = package.get_full_path()
 	extract_path = _scorm_extract_path(course, title)
+	scorm_root = os.path.realpath(frappe.get_site_path("private", "scorm"))
+	os.makedirs(scorm_root, exist_ok=True)
+	with tempfile.TemporaryDirectory(prefix=".upload-", dir=scorm_root) as tmp:
+		staged = os.path.join(tmp, "package")
+		with zipfile.ZipFile(zip_path) as zf:
+			validate_archive(zf)
+			for info in zf.infolist():
+				if stat.S_ISLNK(info.external_attr >> 16):
+					frappe.throw(_("Invalid file path in package"))
+				target = os.path.realpath(os.path.join(staged, info.filename))
+				if target != staged and not target.startswith(staged + os.sep):
+					frappe.throw(_("Invalid file path in package"))
+			os.mkdir(staged)
+			zf.extractall(staged)
 
-	# Clear any previously extracted package so a re-upload doesn't leave stale files served (path confirmed under the course dir above).
-	if os.path.exists(extract_path):
-		shutil.rmtree(extract_path)
+		manifest = get_manifest_file(staged)
+		launch = get_launch_file(staged, manifest) if manifest else None
+		if require_launch and not launch:
+			frappe.throw(_("The SCORM package must contain a manifest with a launch resource."))
+		manifest = os.path.join(extract_path, os.path.relpath(manifest, staged)) if manifest else None
+		if launch:
+			# Parameters and fragments belong in the player URL, never in a filesystem check.
+			launch_path = launch.partition("?")[0].partition("#")[0]
+			suffix = launch[len(launch_path):]
+			relative_path = os.path.relpath(launch_path, staged)
+			local_file = os.path.realpath(os.path.join(staged, unquote(relative_path)))
+			if os.path.isdir(local_file):
+				local_file = os.path.join(local_file, "index.html")
+			elif not os.path.splitext(local_file)[1]:
+				local_file += ".html"
+			if not local_file.startswith(staged + os.sep):
+				frappe.throw(_("Invalid launch path in SCORM manifest"))
+			if require_launch and not os.path.isfile(local_file):
+				frappe.throw(_("The SCORM launch file is missing from the package."))
+			if relative_path == ".":
+				relative_path = "index.html"
+			launch = os.path.join(extract_path, relative_path) + suffix
 
-	with zipfile.ZipFile(zip_path, "r") as zf:
-		dest = os.path.realpath(extract_path)
-		for info in zf.infolist():
-			# Reject symlink entries outright: a symlink + a path through it could escape the course dir once materialised.
-			if stat.S_ISLNK(info.external_attr >> 16):
-				frappe.throw(_("Invalid file path in package"))
-			target = os.path.realpath(os.path.join(extract_path, info.filename))
-			if not target.startswith(dest + os.sep) and target != dest:
-				frappe.throw(_("Invalid file path in package"))
-		zf.extractall(extract_path)
+		# Keep the backup outside the temporary directory so even a failed rollback leaves it recoverable.
+		backup = tmp + ".previous"
+		with filelock("lms-scorm-publish"):
+			os.makedirs(os.path.dirname(extract_path), exist_ok=True)
+			replacing = os.path.exists(extract_path)
+			if replacing:
+				os.replace(extract_path, backup)
+			try:
+				os.replace(staged, extract_path)
+			except OSError:
+				if replacing:
+					os.replace(backup, extract_path)
+				raise
+		if replacing:
+			try:
+				shutil.rmtree(backup)
+			except OSError:
+				frappe.log_error(title="SCORM package backup cleanup failed")
 
-	return extract_path
+	return extract_path, manifest, launch
 
 
 def check_for_malicious_code(zip_path):
@@ -1648,13 +1699,16 @@ def get_manifest_file(extract_path: str):
 	return manifest_file
 
 
-def get_launch_file(extract_path: str):
+def get_launch_file(extract_path: str, manifest_file: str | None = None):
 	launch_file = None
-	manifest_file = get_manifest_file(extract_path)
+	manifest_file = manifest_file or get_manifest_file(extract_path)
 
 	if manifest_file:
-		with open(manifest_file) as file:
-			data = file.read()
+		with open(manifest_file, "rb") as file:
+			max_manifest_bytes = 10 * 1024 * 1024
+			data = file.read(max_manifest_bytes + 1)
+			if len(data) > max_manifest_bytes:
+				frappe.throw(_("The SCORM manifest is too large."))
 			dom = parseString(data)
 			resource = dom.getElementsByTagName("resource")
 			for res in resource:

@@ -35,6 +35,12 @@ ALLOWED_ASSET_EXTENSIONS = {
 	".pdf",
 }
 MAX_IMPORTED_ASSET_BYTES = 200 * 1024 * 1024
+MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024
+MAX_ARCHIVE_MEMBERS = 10_000
+MAX_COMPRESSION_RATIO = 100
+MIN_RATIO_CHECK_BYTES = 1024 * 1024
+MAX_ARCHIVE_JSON_BYTES = 10 * 1024 * 1024
+MIN_FREE_DISK_BYTES = 512 * 1024 * 1024
 
 
 def export_course_zip(course_name):
@@ -401,6 +407,7 @@ def import_course_zip(zip_file_path):
 	validate_zip_file(actual_path)
 
 	with zipfile.ZipFile(actual_path, "r") as zip_file:
+		validate_archive(zip_file)
 		course_data = read_json_from_zip(zip_file, "course.json")
 		if not course_data:
 			frappe.throw(_("Invalid course ZIP: Missing course.json"))
@@ -416,10 +423,48 @@ def import_course_zip(zip_file_path):
 		return course_doc.name
 
 
+def validate_archive(zip_file):
+	"""Check the central directory before reading course data or extracting a package."""
+	members = zip_file.infolist()
+	if len(members) > MAX_ARCHIVE_MEMBERS:
+		frappe.throw(_("The archive has more than {0} files").format(MAX_ARCHIVE_MEMBERS))
+
+	expanded_bytes = sum(info.file_size for info in members)
+	if expanded_bytes > MAX_ARCHIVE_BYTES:
+		frappe.throw(_("The archive expands to more than {0} MB").format(MAX_ARCHIVE_BYTES // 1048576))
+
+	for info in members:
+		if info.file_size > max(MIN_RATIO_CHECK_BYTES, MAX_COMPRESSION_RATIO * info.compress_size):
+			frappe.throw(
+				_("{0} in the archive is compressed too heavily to extract safely").format(
+					escape_html(info.filename)
+				)
+			)
+
+	free_bytes = shutil.disk_usage(frappe.get_site_path()).free
+	if free_bytes < expanded_bytes + MIN_FREE_DISK_BYTES:
+		frappe.throw(
+			_("Not enough disk space to import this archive. At least {0} MiB must remain free.").format(
+				MIN_FREE_DISK_BYTES // 1048576
+			)
+		)
+
+
+def read_zip_member(zip_file, name, limit):
+	"""Read a member by name or ZipInfo with a hard limit on the returned bytes."""
+	with zip_file.open(name) as member:
+		data = member.read(limit + 1)
+	if len(data) > limit:
+		filename = name.filename if isinstance(name, zipfile.ZipInfo) else name
+		frappe.throw(_("{0} in the archive is too large to import").format(escape_html(filename)))
+	return data
+
+
 def read_json_from_zip(zip_file, filename):
 	try:
-		with zip_file.open(filename) as f:
-			return json.load(f)
+		return json.loads(read_zip_member(zip_file, filename, MAX_ARCHIVE_JSON_BYTES))
+	except frappe.ValidationError:
+		raise
 	except Exception as e:
 		frappe.log_error(f"Error reading {filename} from ZIP: {e}")
 		return None
@@ -615,11 +660,18 @@ def create_chapter_docs(zip_file, course_name):
 			if chapter_data:
 				chapter_doc = frappe.new_doc("Course Chapter")
 				chapter_data.pop("lessons", None)
+				drop_scorm_fields(chapter_data)
 				chapter_doc.update(chapter_data)
 				chapter_doc.course = course_name
 				chapter_doc.insert(ignore_permissions=True)
 				chapter_docs.append(chapter_doc)
 	return chapter_docs
+
+
+def drop_scorm_fields(chapter_data):
+	"""A course export carries chapter metadata but does not include the SCORM package."""
+	for field in ("is_scorm_package", "scorm_package", "scorm_package_path", "manifest_file", "launch_file"):
+		chapter_data.pop(field, None)
 
 
 def get_chapter_name_for_lesson(zip_file, lesson_data, chapter_docs):
@@ -643,13 +695,8 @@ def get_assessment_title(zip_file, assessment_name, assessment_type):
 	doctype = "_".join(assessment_map.get(assessment_type).lower().split(" "))
 	assessment_name = "_".join(assessment_name.split(" "))
 	file_name = f"assessments/{doctype}_{assessment_name}.json"
-	try:
-		with zip_file.open(file_name) as f:
-			assessment_data = json.load(f)
-			return assessment_data.get("title")
-	except Exception as e:
-		frappe.log_error(f"Error reading {file_name} from ZIP: {e}")
-		return None
+	assessment_data = read_json_from_zip(zip_file, file_name)
+	return assessment_data.get("title") if isinstance(assessment_data, dict) else None
 
 
 def replace_assessment_names(zip_file, content):
@@ -903,11 +950,12 @@ def asset_is_private(privacy, asset_name):
 
 
 def process_asset_file(zip_file, file, privacy, existing):
-	if not is_safe_zip_member(file):
+	filename = file.filename if isinstance(file, zipfile.ZipInfo) else file
+	if not is_safe_zip_member(filename):
 		return
-	asset_name = base_name(file)
-	with zip_file.open(file) as f:
-		create_asset_doc(asset_name, f.read(), asset_is_private(privacy, asset_name), existing)
+	asset_name = base_name(filename)
+	content = read_zip_member(zip_file, file, MAX_IMPORTED_ASSET_BYTES)
+	create_asset_doc(asset_name, content, asset_is_private(privacy, asset_name), existing)
 
 
 def validate_assets(members):
@@ -961,7 +1009,7 @@ def create_assets(zip_file):
 	)
 	for info in members:
 		try:
-			process_asset_file(zip_file, info.filename, privacy, existing)
+			process_asset_file(zip_file, info, privacy, existing)
 		except Exception:
 			# One bad asset must not abort the import. The title stays constant because
 			# the member name is attacker-supplied and Error Log stores it in a Data
