@@ -1,7 +1,4 @@
-"""Custom page renderers for LMS app.
-
-Handles rendering of profile pages.
-"""
+"""Serve course packages after checking the learner's access to the owning chapter."""
 
 import mimetypes
 import os
@@ -12,61 +9,39 @@ from frappe.website.page_renderers.base_renderer import BaseRenderer
 from werkzeug.wrappers import Response
 from werkzeug.wsgi import wrap_file
 
+from lms.scorm_paths import chapter_package_key, is_chapter_key, is_path_segment, package_dir, package_owners
+
 
 class SCORMRenderer(BaseRenderer):
 	def can_render(self):
-		return "scorm/" in self.path
+		return self.path.lstrip("/").startswith("scorm/")
 
-	# Disk roots tried, in order, to resolve SCORM bytes. New packages are extracted
-	# under private/scorm (gated: /private is always routed through Frappe, so this
-	# permission gate runs in production too). Legacy packages already extracted under
-	# public/scorm are still served as a fallback, but the standard bench nginx config
-	# serves public/ directly (try_files .../public/$uri @webserver), so for those legacy
-	# files this Python gate is BYPASSED in production, exactly as before. Such packages
-	# stay ungated in prod until re-uploaded (re-extraction lands them in private). New
-	# uploads are gated in dev and prod alike.
-	_DISK_ROOTS = ("private", "public")
+	def _parts(self):
+		parts = [unquote(part) for part in self.path.strip("/").split("/")]
+		if len(parts) < 3 or parts[0] != "scorm" or not all(is_path_segment(part) for part in parts):
+			raise frappe.PermissionError
+		return parts
 
 	def _check_permission(self):
-		# Local import: course_chapter reaches lms.lms.utils at module load, the cycle
-		# the permissions import here already stepped around this way.
-		from lms.lms.doctype.course_chapter.course_chapter import (
-			get_scorm_lesson,
-			resolve_scorm_access,
-		)
+		from lms.lms.doctype.course_chapter.course_chapter import get_scorm_lesson, resolve_scorm_access
 
-		parts = self.path.strip("/").split("/")
-		# scorm/<course>/<title>/...
-		if len(parts) < 3 or parts[0] != "scorm":
+		_, course, key, *_ = self._parts()
+		owners = package_owners(course, key)
+		if len(owners) != 1 or not owners[0].is_scorm_package:
 			raise frappe.PermissionError
-		course, title = unquote(parts[1]), unquote(parts[2])
-
-		chapter = frappe.db.get_value(
-			"Course Chapter",
-			{"course": course, "title": title, "is_scorm_package": 1},
-			"name",
-		)
-		if not chapter:
+		chapter = owners[0].name
+		if is_chapter_key(key) and key != chapter_package_key(chapter):
 			raise frappe.PermissionError
-
-		lesson = get_scorm_lesson(chapter)
-		# Sequential courses gate the bytes too, otherwise the SCORM page is a route
-		# around the gate that never touches get_lesson. get_scorm_playback answers the
-		# player off this same predicate, so what it offers and what this serves cannot drift.
-		access = resolve_scorm_access(course, lesson)
+		access = resolve_scorm_access(course, get_scorm_lesson(chapter))
 		if not access.can_access or access.locked:
-			frappe.logger("lms.security").warning(
-				"SCORM resource access denied: user=%s path=%s",
-				frappe.session.user,
-				self.path,
-			)
 			raise frappe.PermissionError
 
 	def _is_safe_path(self, path):
+		_, course, key, *_ = self._parts()
 		resolved = os.path.realpath(path)
-		for base in self._DISK_ROOTS:
-			scorm_root = os.path.realpath(os.path.join(frappe.local.site_path, base, "scorm"))
-			if resolved == scorm_root or resolved.startswith(scorm_root + os.sep):
+		for base in ("private", "public"):
+			root = package_dir(frappe.get_site_path(base, "scorm"), course, key)
+			if root and (resolved == root or resolved.startswith(root + os.sep)):
 				return True
 		return False
 
@@ -74,49 +49,37 @@ class SCORMRenderer(BaseRenderer):
 		f = open(path, "rb")
 		response = Response(wrap_file(frappe.local.request.environ, f), direct_passthrough=True)
 		response.mimetype = mimetypes.guess_type(path)[0]
+		response.headers["Cache-Control"] = "private, no-store"
 		return response
 
 	def render(self):
 		self._check_permission()
-		# Try private/scorm first (new, gated), then public/scorm (legacy).
-		for base in self._DISK_ROOTS:
-			response = self._render_from_root(base)
-			if response is not None:
-				return response
-
-	def _render_from_root(self, base):
-		path = os.path.join(frappe.local.site_path, base, self.path.lstrip("/"))
-
-		if not self._is_safe_path(path):
-			raise frappe.PermissionError
-
-		extension = os.path.splitext(path)[1]
-		if not extension:
-			path = f"{path}.html"
-
-		# check if path exists and is actually a file and not a folder
-		if os.path.exists(path) and os.path.isfile(path):
-			return self._serve_file(path)
-		else:
-			path = path.replace(".html", "")
-			if os.path.exists(path) and os.path.isdir(path):
-				index_path = os.path.join(path, "index.html")
-				if os.path.exists(index_path):
-					return self._serve_file(index_path)
-			elif not os.path.exists(path):
-				chapter_folder = "/".join(self.path.split("/")[:3])
-				chapter_folder_path = os.path.realpath(frappe.get_site_path(base, chapter_folder))
-				file = path.split("/")[-1]
-				correct_file_path = None
-
-				if not self._is_safe_path(chapter_folder_path):
-					raise frappe.PermissionError
-
-				for root, _dirs, files in os.walk(chapter_folder_path):
-					if file in files:
-						correct_file_path = os.path.join(root, file)
-						break
-
-				if correct_file_path and self._is_safe_path(correct_file_path):
-					return self._serve_file(correct_file_path)
+		_, course, key, *resource = self._parts()
+		roots = ("private",) if is_chapter_key(key) else ("private", "public")
+		for base in roots:
+			directory = package_dir(frappe.get_site_path(base, "scorm"), course, key)
+			if directory and os.path.isdir(directory):
+				return self._render_from_root(directory, resource)
 		return None
+
+	def _render_from_root(self, directory, resource):
+		path = os.path.join(directory, *resource)
+		candidates = [path]
+		if resource and not os.path.splitext(path)[1]:
+			candidates.append(path + ".html")
+		candidates.append(os.path.join(path, "index.html"))
+		for candidate in candidates:
+			if os.path.isfile(candidate):
+				return self._serve_package_file(directory, candidate)
+		if resource:
+			# Some legacy players request a nested asset using only its filename.
+			for folder, _, files in os.walk(directory):
+				if resource[-1] in files:
+					return self._serve_package_file(directory, os.path.join(folder, resource[-1]))
+		return None
+
+	def _serve_package_file(self, directory, path):
+		resolved = os.path.realpath(path)
+		if not resolved.startswith(directory + os.sep):
+			raise frappe.PermissionError
+		return self._serve_file(resolved)

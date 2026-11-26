@@ -39,6 +39,13 @@ from frappe.utils.synchronization import filelock
 from pypika import functions as fn
 
 from lms.lms.course_import_export import export_course_zip, import_course_zip, validate_archive
+from lms.scorm_paths import (
+	chapter_package_key,
+	is_chapter_key,
+	package_dir,
+	package_owners,
+	stored_key,
+)
 from lms.lms.doctype.course_lesson.course_lesson import (
 	cleanup_lesson_backreferences,
 	save_progress,
@@ -1475,7 +1482,7 @@ def give_discussions_permission():
 				).save()
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def upsert_chapter(
 	title: str, course: str, is_scorm_package: bool, scorm_package: dict = None, name: str = None
 ):
@@ -1490,6 +1497,15 @@ def upsert_chapter(
 		frappe.throw(_("You do not have permission to modify this chapter."), frappe.PermissionError)
 
 	values = frappe._dict({"title": title, "course": course, "is_scorm_package": is_scorm_package})
+	if name:
+		chapter = frappe.get_doc("Course Chapter", name, for_update=True)
+		if chapter.course != course:
+			frappe.throw(_("This chapter does not belong to the selected course."), frappe.PermissionError)
+		chapter.check_permission("write")
+	else:
+		chapter = frappe.new_doc("Course Chapter")
+		chapter.update(values)
+		chapter.insert()
 
 	if is_scorm_package:
 		scorm_package = frappe._dict(scorm_package or {})
@@ -1500,20 +1516,15 @@ def upsert_chapter(
 
 		stored = _stored_scorm_values(name, scorm_package.name)
 		if stored:
-			# The File row was deleted out from under the chapter, but the package
-			# was already extracted to disk. Re-extracting is impossible and is not
-			# what a title edit asked for, so keep the extraction and let the save
-			# through — otherwise the chapter can never be renamed again.
-			#
-			# scorm_package itself is cleared rather than rewritten: it is a Link to
-			# File, and save() validates every non-empty Link unconditionally, so
-			# putting the missing name back would just trade this error for a
-			# LinkValidationError. The chapter stays playable off scorm_package_path.
+			# A title edit keeps the existing URL, including for packages uploaded before ID-based paths.
 			values.update(stored)
-			values["scorm_package"] = None
 		else:
+			frappe.has_permission("File", ptype="read", doc=scorm_package.name, throw=True)
+			key = chapter_package_key(chapter.name)
+			if any(owner.name != chapter.name for owner in package_owners(course, key)):
+				frappe.throw(_("The package directory is already used by another chapter."))
 			extract_path, manifest_file, launch_file = _extract_scorm_package(
-				course, title, scorm_package, require_launch=True
+				course, key, scorm_package, require_launch=True, transactional=True
 			)
 			values.update(
 				{
@@ -1524,15 +1535,11 @@ def upsert_chapter(
 				}
 			)
 
-	if name:
-		chapter = frappe.get_doc("Course Chapter", name)
-		chapter.update(values)
-		chapter.save()
-	else:
-		chapter = frappe.new_doc("Course Chapter")
+	if name or is_scorm_package:
 		chapter.update(values)
 		chapter.save()
 
+	if not name:
 		# Link the new chapter into the outline here (was client-side frappe.client.insert in ChapterModal.vue, which didn't reliably persist on CI); keeps the Chapter Reference atomic with the chapter.
 		course_doc = frappe.get_doc("LMS Course", course)
 		course_doc.append("chapters", {"chapter": chapter.name})
@@ -1545,19 +1552,8 @@ def upsert_chapter(
 
 
 def _stored_scorm_values(name: str | None, posted_package: str) -> dict | None:
-	"""The extraction already on `name`, when `posted_package` cannot be extracted.
-
-	Returns None — meaning "extract normally" — unless all three hold:
-
-	- this is an edit of an existing chapter,
-	- the File behind the posted package is gone, so extraction is impossible,
-	- and the caller posted the package the chapter already has.
-
-	That last condition is what keeps this to the rename case. Without it, a
-	creator replacing a package whose File row happened to be missing would get a
-	success response and a chapter still serving the old content.
-	"""
-	if not name or frappe.db.exists("File", posted_package):
+	"""Reuse the extraction when the edit keeps the same attached ZIP."""
+	if not name:
 		return None
 	stored = frappe.db.get_value(
 		"Course Chapter",
@@ -1569,29 +1565,21 @@ def _stored_scorm_values(name: str | None, posted_package: str) -> dict | None:
 		return None
 	if stored.get("scorm_package") != posted_package:
 		return None
+	if not frappe.db.exists("File", posted_package):
+		stored["scorm_package"] = None
 	return stored
 
 
 def _scorm_url(abs_path: str) -> str:
-	"""Map an extracted SCORM disk path (<site>/private/scorm/...) to the location-independent "/scorm/<course>/<title>/..." URL stored on Course Chapter. Same shape legacy public chapters have, so no DB change."""
+	"""Map a private package path to the chapter URL used by the SCORM player."""
 	rel = os.path.relpath(abs_path, frappe.get_site_path("private"))
 	return "/" + rel.replace(os.sep, "/")
 
 
 def _scorm_extract_path(course: str, title: str) -> str:
-	"""Resolve the SCORM extraction dir, contained to this course's directory (an attacker-controlled chapter title must not traverse out → cross-course overwrite / same-origin stored XSS)."""
-	scorm_root = os.path.realpath(frappe.get_site_path("private", "scorm"))
-	course_root = os.path.realpath(frappe.get_site_path("private", "scorm", course))
-
-	# The course segment must resolve strictly inside the scorm root, never the root itself (empty/"." course).
-	if not course_root.startswith(scorm_root + os.sep):
+	extract_path = package_dir(frappe.get_site_path("private", "scorm"), course, title)
+	if not extract_path:
 		frappe.throw(_("Invalid course or chapter name"))
-
-	# Must resolve strictly inside the course dir. A title of "."/""/"sub/.." collapses to course_root, whose rmtree would wipe every chapter.
-	extract_path = os.path.realpath(os.path.join(course_root, title))
-	if not extract_path.startswith(course_root + os.sep):
-		frappe.throw(_("Invalid course or chapter name"))
-
 	return extract_path
 
 
@@ -1600,7 +1588,9 @@ def extract_package(course: str, title: str, scorm_package: dict):
 	return extract_path
 
 
-def _extract_scorm_package(course: str, title: str, scorm_package: dict, *, require_launch: bool):
+def _extract_scorm_package(
+	course: str, title: str, scorm_package: dict, *, require_launch: bool, transactional: bool = False
+):
 	package = frappe.get_doc("File", scorm_package.name)
 	zip_path = package.get_full_path()
 	extract_path = _scorm_extract_path(course, title)
@@ -1642,7 +1632,7 @@ def _extract_scorm_package(course: str, title: str, scorm_package: dict, *, requ
 				relative_path = "index.html"
 			launch = os.path.join(extract_path, relative_path) + suffix
 
-		# Keep the backup outside the temporary directory so even a failed rollback leaves it recoverable.
+		# Keep the previous package until the chapter change commits.
 		backup = tmp + ".previous"
 		with filelock("lms-scorm-publish"):
 			os.makedirs(os.path.dirname(extract_path), exist_ok=True)
@@ -1655,11 +1645,25 @@ def _extract_scorm_package(course: str, title: str, scorm_package: dict, *, requ
 				if replacing:
 					os.replace(backup, extract_path)
 				raise
-		if replacing:
+		def remove_backup():
 			try:
 				shutil.rmtree(backup)
 			except OSError:
 				frappe.log_error(title="SCORM package backup cleanup failed")
+
+		def restore_package():
+			with filelock("lms-scorm-publish"):
+				if os.path.isdir(extract_path):
+					shutil.rmtree(extract_path)
+				if replacing:
+					os.replace(backup, extract_path)
+
+		if transactional:
+			frappe.db.after_rollback.add(restore_package)
+			if replacing:
+				frappe.db.after_commit.add(remove_backup)
+		elif replacing:
+			remove_backup()
 
 	return extract_path, manifest, launch
 
@@ -1751,20 +1755,17 @@ def add_lesson(title: str, chapter: str, course: str, idx: int):
 	return lesson.name
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def delete_chapter(chapter: str):
-	course = frappe.db.get_value("Course Chapter", chapter, "course")
+	if not isinstance(chapter, str) or not chapter:
+		frappe.throw(_("chapter must be a non-empty string"))
+	row = frappe.get_doc("Course Chapter", chapter, for_update=True)
+	course = row.course
 	if not can_modify_course(course):
 		frappe.throw(_("You do not have permission to delete this chapter."), frappe.PermissionError)
 
-	chapterInfo = frappe.db.get_value(
-		"Course Chapter", chapter, ["is_scorm_package", "scorm_package_path"], as_dict=True
-	)
-
-	if chapterInfo.is_scorm_package:
-		delete_scorm_package(chapterInfo.scorm_package_path)
-
-	course = frappe.db.get_value("Chapter Reference", {"chapter": chapter}, "parent")
+	if row.is_scorm_package and row.scorm_package_path:
+		delete_scorm_package(row)
 
 	# Clean up per-lesson dependants before the raw lesson delete below, else discussions/progress orphan at the deleted lessons.
 	lessons = frappe.get_all("Course Lesson", {"chapter": chapter}, pluck="name")
@@ -1799,10 +1800,30 @@ def delete_chapter(chapter: str):
 			i += 1
 
 
-def delete_scorm_package(scorm_package_path: str):
-	scorm_package_path = frappe.get_site_path("public", scorm_package_path[1:])
-	if os.path.exists(scorm_package_path):
-		shutil.rmtree(scorm_package_path)
+def delete_scorm_package(chapter):
+	key = stored_key(chapter)
+	if not key or (is_chapter_key(key) and key != chapter_package_key(chapter.name)):
+		return
+	if not is_chapter_key(key) and key != chapter.title:
+		# A legacy title may have changed; keep those files for a separate orphan review.
+		return
+	if any(row.name != chapter.name for row in package_owners(chapter.course, key)):
+		return
+
+	def remove_unused_package():
+		with filelock("lms-scorm-publish"):
+			if package_owners(chapter.course, key):
+				return
+			roots = ("private",) if is_chapter_key(key) else ("private", "public")
+			for root in roots:
+				directory = package_dir(frappe.get_site_path(root, "scorm"), chapter.course, key)
+				if directory and os.path.isdir(directory):
+					try:
+						shutil.rmtree(directory)
+					except OSError:
+						frappe.log_error(title="SCORM package cleanup failed")
+
+	frappe.db.after_commit.add(remove_unused_package)
 
 
 @frappe.whitelist()
