@@ -223,13 +223,42 @@ def validate_certification_eligibility(course):
 def has_permission(doc, ptype="read", user=None):
 	user = user or frappe.session.user
 	roles = frappe.get_roles(user)
-	if "Moderator" in roles or "Course Creator" in roles or "Batch Evaluator" in roles:
+	if "Moderator" in roles or "Course Creator" in roles:
+		return True
+	if "Batch Evaluator" in roles:
+		if ptype == "delete" and user != "Administrator" and "System Manager" not in roles:
+			return _can_delete_as_evaluator(doc.name, user)
 		return True
 	if doc.owner == user:
 		return True
 	if ptype not in ("read", "select", "print"):
 		return False
 	return doc.published
+
+
+def _can_delete_as_evaluator(name, user):
+	from lms.lms.utils import get_evaluator
+
+	# Only the persisted assignment can authorize deletion.
+	if not name:
+		return False
+	stored = frappe.db.get_value(
+		"LMS Certificate", name, ["evaluator", "course", "batch_name", "member"], as_dict=True
+	)
+	if not stored:
+		return False
+	if stored.evaluator == user:
+		return True
+	if stored.course:
+		return get_evaluator(stored.course, stored.batch_name) == user
+	if not stored.batch_name or not stored.member:
+		return False
+	return bool(
+		frappe.db.exists(
+			"Batch Course", {"parent": stored.batch_name, "parenttype": "LMS Batch", "evaluator": user}
+		)
+		and frappe.db.exists("LMS Batch Enrollment", {"batch": stored.batch_name, "member": stored.member})
+	)
 
 
 def get_permission_query_conditions(user):
