@@ -8,7 +8,7 @@ from frappe.model.mapper import get_mapped_doc
 from frappe.query_builder import Bracket
 from pypika.terms import LiteralValue
 
-from lms.lms.utils import get_evaluator, has_moderator_role
+from lms.lms.utils import get_evaluator, has_moderator_role, is_member_of_batch
 
 
 class LMSCertificateEvaluation(Document):
@@ -52,12 +52,29 @@ def has_permission(doc, ptype="read", user=None):
 		# same question save_evaluation_details asks: who is assigned to this
 		# course/batch? Members never create their own evaluation -- they book an
 		# LMS Certificate Request that an evaluator or Moderator converts.
-		return doc.evaluator == user and get_evaluator(doc.course, doc.batch_name) == user
+		return doc.evaluator == user and _can_grade_member(doc, user)
 
 	if ptype in ("write", "delete"):
-		return doc.evaluator == user
+		stored = frappe.db.get_value(
+			"LMS Certificate Evaluation", doc.name, ["evaluator", "course", "batch_name", "member"], as_dict=True
+		) if doc.name else None
+		if not stored or stored.evaluator != user or (stored.batch_name and not _can_grade_member(stored, user)):
+			return False
+		if ptype == "delete":
+			return True
+		if doc.evaluator != user:
+			return False
+		if (doc.course, doc.batch_name, doc.member) == (stored.course, stored.batch_name, stored.member):
+			return True
+		return _can_grade_member(doc, user)
 
 	return False
+
+
+def _can_grade_member(doc, user):
+	return get_evaluator(doc.course, doc.batch_name) == user and (
+		not doc.batch_name or is_member_of_batch(doc.member, doc.batch_name)
+	)
 
 
 def get_permission_query_conditions(user=None):
@@ -87,13 +104,29 @@ def create_lms_certificate(source_name: str, target_doc: dict = None):
 	if not isinstance(source_name, str):
 		frappe.throw(_("Evaluation must be a string."))
 
-	evaluator = frappe.db.get_value("LMS Certificate Evaluation", source_name, "evaluator")
-	if not is_evaluation_admin() and evaluator != frappe.session.user:
+	evaluation = frappe.db.get_value(
+		"LMS Certificate Evaluation", source_name, ["evaluator", "course", "batch_name", "member"], as_dict=True
+	)
+	if not evaluation or (not is_evaluation_admin() and (
+		evaluation.evaluator != frappe.session.user
+		or (evaluation.batch_name and not _can_grade_member(evaluation, frappe.session.user))
+	)):
 		frappe.throw(
 			_("You are not the assigned evaluator for this evaluation."),
 			frappe.PermissionError,
 		)
 
+	# Framework checks creation permission on the target before it maps the source.
+	if target_doc:
+		if isinstance(target_doc, str):
+			target_doc = frappe.parse_json(target_doc)
+		if isinstance(target_doc, dict):
+			target_doc = frappe.get_doc(target_doc)
+		if not isinstance(target_doc, Document) or target_doc.doctype != "LMS Certificate" or not target_doc.is_new():
+			frappe.throw(_("Expected a new certificate."))
+	else:
+		target_doc = frappe.new_doc("LMS Certificate")
+	target_doc.update({field: evaluation.get(field) for field in ("member", "course", "batch_name", "evaluator")})
 	doc = get_mapped_doc(
 		"LMS Certificate Evaluation",
 		source_name,

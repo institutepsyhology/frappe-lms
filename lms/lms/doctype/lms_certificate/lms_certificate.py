@@ -8,10 +8,19 @@ from frappe.model.document import Document
 from frappe.model.naming import make_autoname
 from frappe.utils import nowdate
 from frappe.utils.telemetry import capture
+from pypika.terms import Case
+
+from lms.lms.utils import is_member_of_batch
 
 
 class LMSCertificate(Document):
 	def validate(self):
+		if not self.flags.ignore_permissions:
+			user = frappe.session.user
+			if _is_bounded_evaluator(user, frappe.get_roles(user)) and not _evaluator_may_edit(
+				self, "create" if self.is_new() else "write", user
+			):
+				frappe.throw(_("You are not the assigned evaluator for this certificate."), frappe.PermissionError)
 		self.validate_criteria()
 		self.validate_duplicate_certificate()
 
@@ -70,10 +79,7 @@ class LMSCertificate(Document):
 
 	def validate_batch_enrollment(self):
 		if self.batch_name:
-			is_enrolled = frappe.db.exists(
-				"LMS Batch Enrollment", {"batch": self.batch_name, "member": self.member}
-			)
-			if not is_enrolled:
+			if not is_member_of_batch(self.member, self.batch_name):
 				frappe.throw(_("Certification cannot be issued as the member is not enrolled in this batch."))
 
 	def validate_course_enrollment(self):
@@ -106,6 +112,7 @@ class LMSCertificate(Document):
 					"member": self.member,
 					"name": ["!=", self.name],
 					"course": self.course,
+					"batch_name": self.batch_name or ["is", "not set"],
 				},
 				fields=["name", "course", "course_title"],
 			)
@@ -155,11 +162,26 @@ def has_website_permission(doc, ptype, user, verbose=False):
 	return False
 
 
+def get_latest_certificate(member, course):
+	certificate = frappe.qb.DocType("LMS Certificate")
+	no_batch = certificate.batch_name.isnull() | (certificate.batch_name == "")
+	rows = (
+		frappe.qb.from_(certificate)
+		.select(certificate.name, certificate.template, certificate.issue_date)
+		.where((certificate.member == member) & (certificate.course == course))
+		.orderby(Case().when(no_batch, 0).else_(1))
+		.orderby(certificate.issue_date, order=frappe.qb.desc)
+		.orderby(certificate.creation, order=frappe.qb.desc)
+		.orderby(certificate.name)
+		.limit(1)
+		.run(as_dict=True)
+	)
+	return rows[0] if rows else None
+
+
 def is_certified(course):
-	certificate = frappe.get_all("LMS Certificate", {"member": frappe.session.user, "course": course})
-	if len(certificate):
-		return certificate[0].name
-	return
+	certificate = get_latest_certificate(frappe.session.user, course)
+	return certificate.name if certificate else None
 
 
 @frappe.whitelist()
@@ -226,9 +248,11 @@ def has_permission(doc, ptype="read", user=None):
 	if "Moderator" in roles or "Course Creator" in roles:
 		return True
 	if "Batch Evaluator" in roles:
-		if ptype == "delete" and user != "Administrator" and "System Manager" not in roles:
-			return _can_delete_as_evaluator(doc.name, user)
-		return True
+		return (
+			not _is_bounded_evaluator(user, roles)
+			or ptype in ("read", "select", "print")
+			or _evaluator_may_edit(doc, ptype, user)
+		)
 	if doc.owner == user:
 		return True
 	if ptype not in ("read", "select", "print"):
@@ -236,28 +260,50 @@ def has_permission(doc, ptype="read", user=None):
 	return doc.published
 
 
-def _can_delete_as_evaluator(name, user):
-	from lms.lms.utils import get_evaluator
+def _is_bounded_evaluator(user, roles):
+	return user != "Administrator" and "Batch Evaluator" in roles and not any(
+		role in roles for role in ("System Manager", "Moderator", "Course Creator")
+	)
 
-	# Only the persisted assignment can authorize deletion.
-	if not name:
+
+def _evaluator_may_edit(doc, action, user):
+	if action == "create":
+		return doc.evaluator in (None, "", user) and _evaluates_scope(doc, user, require_enrollment=True)
+	if not doc.name:
 		return False
 	stored = frappe.db.get_value(
-		"LMS Certificate", name, ["evaluator", "course", "batch_name", "member"], as_dict=True
+		"LMS Certificate", doc.name, ["evaluator", "course", "batch_name", "member"], as_dict=True
 	)
 	if not stored:
 		return False
-	if stored.evaluator == user:
+	if stored.batch_name:
+		if not _evaluates_scope(stored, user, require_enrollment=True):
+			return False
+	elif stored.evaluator != user and not _evaluates_scope(stored, user):
+		return False
+	if action == "delete":
 		return True
-	if stored.course:
-		return get_evaluator(stored.course, stored.batch_name) == user
-	if not stored.batch_name or not stored.member:
+	if (doc.evaluator or None) != (stored.evaluator or None):
+		return False
+	if (doc.course, doc.batch_name, doc.member) == (stored.course, stored.batch_name, stored.member):
+		return True
+	return _evaluates_scope(doc, user, require_enrollment=True)
+
+
+def _evaluates_scope(doc, user, *, require_enrollment=False):
+	from lms.lms.utils import get_evaluator
+
+	if doc.course:
+		return get_evaluator(doc.course, doc.batch_name) == user and (
+			not require_enrollment or not doc.batch_name or is_member_of_batch(doc.member, doc.batch_name)
+		)
+	if not doc.batch_name or not doc.member:
 		return False
 	return bool(
 		frappe.db.exists(
-			"Batch Course", {"parent": stored.batch_name, "parenttype": "LMS Batch", "evaluator": user}
+			"Batch Course", {"parent": doc.batch_name, "parenttype": "LMS Batch", "evaluator": user}
 		)
-		and frappe.db.exists("LMS Batch Enrollment", {"batch": stored.batch_name, "member": stored.member})
+		and is_member_of_batch(doc.member, doc.batch_name)
 	)
 
 

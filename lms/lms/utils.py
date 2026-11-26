@@ -696,6 +696,10 @@ def get_course_completion_data():
 	]
 
 
+def is_member_of_batch(member, batch):
+	return bool(member and batch and frappe.db.exists("LMS Batch Enrollment", {"batch": batch, "member": member}))
+
+
 def get_evaluator(course: str, batch: str = None):
 	evaluator = None
 	if batch:

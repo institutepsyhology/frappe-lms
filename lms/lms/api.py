@@ -68,6 +68,7 @@ from lms.lms.utils import (
 	has_lms_role,
 	has_message,
 	has_moderator_role,
+	is_member_of_batch,
 	prepare_inline_images,
 )
 
@@ -1151,7 +1152,33 @@ def check_app_permission():
 	return has_lms_role()
 
 
-@frappe.whitelist()
+def _evaluation_record(doctype, member, course, batch_name):
+	# The user row also serializes the first issuance when no certificate row exists.
+	frappe.db.get_value("User", member, "name", for_update=True)
+	scope = {
+		"member": member,
+		"course": course or ["is", "not set"],
+		"batch_name": batch_name or ["is", "not set"],
+	}
+	return frappe.db.get_value(doctype, scope, "name", for_update=True)
+
+
+def _assigned_evaluator_for_details(member, course, batch_name):
+	frappe.only_for(["Batch Evaluator", "Moderator"])
+	if not isinstance(member, str) or not member or any(
+		value is not None and not isinstance(value, str) for value in (course, batch_name)
+	):
+		frappe.throw(_("Expected a student, course and group identifier."))
+	assigned = get_evaluator(course, batch_name) if course else None
+	if not has_moderator_role():
+		if frappe.session.user != assigned:
+			frappe.throw(_("You are not the assigned evaluator for this course and batch."), frappe.PermissionError)
+		if batch_name and not is_member_of_batch(member, batch_name):
+			frappe.throw(_("The student is not enrolled in this group."), frappe.PermissionError)
+	return assigned or frappe.session.user
+
+
+@frappe.whitelist(methods=["POST"])
 def save_evaluation_details(
 	member: str,
 	course: str,
@@ -1166,16 +1193,9 @@ def save_evaluation_details(
 	"""
 	Save evaluation details for a member against a course.
 	"""
-	frappe.only_for(["Batch Evaluator", "Moderator"])
-	assigned_evaluator = get_evaluator(course, batch_name)
-	if not has_moderator_role() and frappe.session.user != assigned_evaluator:
-		frappe.throw(
-			_("You are not the assigned evaluator for this course and batch."),
-			frappe.PermissionError,
-		)
-	evaluator = assigned_evaluator or frappe.session.user
+	evaluator = _assigned_evaluator_for_details(member, course, batch_name)
 
-	evaluation = frappe.db.exists("LMS Certificate Evaluation", {"member": member, "course": course})
+	evaluation = _evaluation_record("LMS Certificate Evaluation", member, course, batch_name)
 
 	details = {
 		"date": date_value,
@@ -1204,7 +1224,7 @@ def save_evaluation_details(
 		return doc.name
 
 
-@frappe.whitelist()
+@frappe.whitelist(methods=["POST"])
 def save_certificate_details(
 	member: str,
 	issue_date: str,
@@ -1217,16 +1237,9 @@ def save_certificate_details(
 	"""
 	Save certificate details for a member against a course.
 	"""
-	frappe.only_for(["Batch Evaluator", "Moderator"])
-	assigned_evaluator = get_evaluator(course, batch_name)
-	if not has_moderator_role() and frappe.session.user != assigned_evaluator:
-		frappe.throw(
-			_("You are not the assigned evaluator for this course and batch."),
-			frappe.PermissionError,
-		)
-	evaluator = assigned_evaluator or frappe.session.user
+	evaluator = _assigned_evaluator_for_details(member, course, batch_name)
 
-	certificate = frappe.db.exists("LMS Certificate", {"member": member, "course": course})
+	certificate = _evaluation_record("LMS Certificate", member, course, batch_name)
 
 	details = {
 		"published": published,
@@ -2152,12 +2165,9 @@ def get_certification_details(course: str) -> dict:
 		)
 		or frappe._dict()
 	)
-	certificate = frappe.db.get_value(
-		"LMS Certificate",
-		{"member": frappe.session.user, "course": course},
-		["name", "template", "issue_date"],
-		as_dict=1,
-	)
+	from lms.lms.doctype.lms_certificate.lms_certificate import get_latest_certificate
+
+	certificate = get_latest_certificate(frappe.session.user, course)
 
 	return {
 		"title": details.title,

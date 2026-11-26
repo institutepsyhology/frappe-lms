@@ -108,6 +108,7 @@ class CertificatePermissionTests(unittest.TestCase):
 
 	def test_eligible_student_can_still_receive_own_certificate(self):
 		issue = inspect.unwrap(certificates.create_certificate)
+		self.enterContext(patch.object(certificates, "get_latest_certificate", return_value=None))
 		with patch.object(certificates, "nowdate", return_value="2026-01-01"), patch.object(
 			certificates, "get_default_certificate_template", return_value="Sample"
 		):
